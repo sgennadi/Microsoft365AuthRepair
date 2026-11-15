@@ -331,7 +331,8 @@ internal sealed class GoogleDiagnosticsGateway : IDisposable
             reason = reason switch
             {
                 "not_configured" or "invalid_evidence" or "busy" or "github_not_confirmed" or
-                "github_receipt_invalid" or "rate_limited" or "not_confirmed" => reason,
+                "github_receipt_invalid" or "rate_limited" or "daily_limit" or
+                "temporarily_unavailable" or "not_confirmed" => reason,
                 _ => "server_rejected"
             };
             throw new InvalidOperationException("GATEWAY_" + reason);
