@@ -26,6 +26,7 @@ internal static class Program
                 using var reports = new DiagnosticsCenter(uiSelfTest: true);
                 using var sendReview = new ReportSendDialog(
                     new PreparedDiagnostic("00000000-0000-4000-8000-000000000001", "{}"), null);
+                using var taskStatus = new AllUsersTaskStatusForm();
                 using var wizard = new AllUsersWizard(ScheduledWorkerMode.Exe,
                     initialScheduleOnly: false, elevated: false);
                 using var signInGuide = new SignInErrorDialog();
@@ -35,6 +36,7 @@ internal static class Program
                 reports.CreateControl();
                 sendReview.CreateControl();
                 wizard.CreateControl();
+                taskStatus.CreateControl();
                 signInGuide.CreateControl();
                 volumeLicensing.CreateControl();
                 // On a headless Windows CI runner the GUI has no console.
@@ -60,6 +62,8 @@ internal static class Program
                     ("Review approval default", () => sendReview.ConsentInitiallyChecked &&
                         sendReview.ConfirmedIssue is null),
                     ("All users wizard", AllUsersWizard.SelfTest),
+                    ("Read-only task status window", taskStatus.SelfTest),
+                    ("Task history reconciliation", TaskRunHistory.SelfTest),
                     ("Sign-in error codes", SignInIssueAdvisor.SelfTest),
                     ("Sign-in guide", SignInErrorDialog.SelfTest),
                     ("Microsoft Learn knowledge base", SignInKnowledgeBase.SelfTest),
@@ -80,6 +84,7 @@ internal static class Program
                     ("Reports buttons", () => UiTheme.VerifyButtons(reports, 3)),
                     ("Review buttons", () => UiTheme.VerifyButtons(sendReview, 2)),
                     ("Wizard buttons", () => UiTheme.VerifyButtons(wizard, 3)),
+                    ("Task status buttons", () => UiTheme.VerifyButtons(taskStatus, 2)),
                     ("Sign-in guide buttons", () => UiTheme.VerifyButtons(signInGuide, 1)),
                     ("Volume licensing buttons", () => UiTheme.VerifyButtons(volumeLicensing, 2))
                 };
