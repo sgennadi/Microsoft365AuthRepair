@@ -41,7 +41,7 @@ internal sealed class DiagnosticsCenter : Form
         root.Controls.Add(status, 0, 3);
         Controls.Add(root);
         preview.Text = BuildPreview();
-        save.Click += (_, _) => Capture();
+        save.Click += (_, _) => SaveReviewedReport();
         open.Click += (_, _) =>
         {
             var path = UniversalDiagnosticsEmbedded.QueueDirectory(Project);
@@ -71,7 +71,7 @@ internal sealed class DiagnosticsCenter : Form
         }, new JsonSerializerOptions { WriteIndented = true });
     }
 
-    private void Capture()
+    private void SaveReviewedReport()
     {
         try
         {
