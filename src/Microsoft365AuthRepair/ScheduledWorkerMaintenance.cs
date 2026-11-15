@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace Microsoft365AuthRepair;
@@ -28,7 +27,13 @@ internal static class ScheduledWorkerMaintenance
         $service.Connect()
         try { $folder = $service.GetFolder('\Microsoft365AuthRepair') }
         catch { $folder = $null }
-        $allTasks = if ($null -ne $folder) { @($folder.GetTasks(1)) } else { @() }
+        $allTasks = @()
+        if ($null -ne $folder) {
+            $collection = $folder.GetTasks(1)
+            for ($i = 1; $i -le [int]$collection.Count; $i++) {
+                $allTasks += $collection.Item($i)
+            }
+        }
         $owned = @()
         $foreign = 0
         $now = Get-Date
@@ -55,13 +60,21 @@ internal static class ScheduledWorkerMaintenance
                 $arguments = [string]$action.Arguments
                 $expectedExe = Join-Path $env:ProgramData 'Microsoft365AuthRepair\Microsoft365AuthRepair.exe'
                 $expectedPs1 = Join-Path $env:ProgramData 'Microsoft365AuthRepair\WamReregisterWorker.ps1'
-                $validExe = $path -ieq $expectedExe -and
-                    $arguments -match '^--worker [a-f0-9]{32} S-1-5-21-' -and
-                    $arguments.EndsWith(' ' + $name)
-                $validPs1 = $path -match '(?i)\\powershell\.exe$' -and
+                $validExe = $false
+                if ($path -ieq $expectedExe -and
+                    $arguments -cmatch '^--worker ([a-f0-9]{32}) (S-1-5-21-(?:[0-9]+-){3}[0-9]+) (WAM_S_1_5_21_(?:[0-9]+_){3}[0-9]+_[a-f0-9]{8}) (reregister|full)$') {
+                    $validExe = $matches[2] -ceq $principalSid -and
+                        $matches[3] -ceq $name -and
+                        $matches[1].Substring(0,8) -ceq $name.Substring($name.Length-8)
+                }
+                $validPs1 = $false
+                if ($path -match '(?i)\\powershell\.exe$' -and
                     $arguments.Contains('-File "' + $expectedPs1 + '"') -and
                     $arguments.Contains('-ExpectedSid ' + $principalSid) -and
-                    $arguments.EndsWith('-TaskName ' + $name)
+                    $arguments.EndsWith('-TaskName ' + $name) -and
+                    $arguments -cmatch '-RunId ([a-f0-9]{32})') {
+                    $validPs1 = $matches[1].Substring(0,8) -ceq $name.Substring($name.Length-8)
+                }
                 if (-not ($validExe -or $validPs1)) {
                     $foreign++
                     continue
@@ -119,8 +132,7 @@ internal static class ScheduledWorkerMaintenance
     {
         var response = ExternalCommand.RunPowerShell(script, 35);
         if (response.ExitCode != 0)
-            throw new IOException("Could not inspect our scheduled tasks: " +
-                response.StdErr.Trim().Split('\n').FirstOrDefault());
+            throw new IOException("Could not inspect our scheduled tasks (exit code " + response.ExitCode + ").");
         var json = response.StdOut.Trim();
         if (json.Length == 0 || json.Length > 8192)
             throw new IOException("Unexpected Task Scheduler response.");
