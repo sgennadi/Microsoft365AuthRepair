@@ -17,6 +17,12 @@ internal sealed class MainForm : Form
     private readonly PictureBox statusGlyph = UiIcons.CreateStatus();
     private readonly DiagnosticResultCard diagnosticResult = new();
     private readonly Label officeLicenseSummary = UiTheme.Caption(string.Empty);
+    private readonly LinkLabel officeVolumeLink = new()
+    {
+        AutoSize = true, Visible = false, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(7, 4, 0, 8)
+    };
     private OfficeLicenseSnapshot? lastOfficeLicense;
     private string? recommendedHelpKey;
     private readonly LinkLabel technicalToggle = new()
@@ -97,12 +103,12 @@ internal sealed class MainForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(20), AutoScroll = true,
-            ColumnCount = 1, RowCount = 12,
+            ColumnCount = 1, RowCount = 13,
             BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas
         };
         mainLayout = root;
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var row = 0; row < 11; row++)
+        for (var row = 0; row < 12; row++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         // Only the canvas receives unused space on a maximized window.
         // Never stretch a read-only textbox into an empty grey rectangle.
@@ -188,8 +194,9 @@ internal sealed class MainForm : Form
         officeLicenseSummary.Visible = false;
         officeLicenseSummary.Margin = new Padding(4, 8, 0, 4);
         root.Controls.Add(officeLicenseSummary, 0, 8);
-        root.Controls.Add(technicalToggle, 0, 9);
-        root.Controls.Add(detail, 0, 10);
+        root.Controls.Add(officeVolumeLink, 0, 9);
+        root.Controls.Add(technicalToggle, 0, 10);
+        root.Controls.Add(detail, 0, 11);
         Controls.Add(ResponsiveLayout.Center(this, root, 1340));
         Controls.Add(progress);
         progress.BringToFront();
@@ -212,6 +219,11 @@ internal sealed class MainForm : Form
             if (detail.Visible) mainLayout?.ScrollControlIntoView(detail);
         };
         diagnosticToggle.LinkClicked += (_, _) => SetDiagnosticsCollapsed(!diagnosticsCollapsed);
+        officeVolumeLink.LinkClicked += (_, _) =>
+        {
+            using var licensing = new OfficeVolumeLicenseForm();
+            licensing.ShowDialog(this);
+        };
         root.SizeChanged += (_, _) =>
         {
             int available = Math.Max(180, root.ClientSize.Width - root.Padding.Horizontal - 25);
@@ -365,6 +377,11 @@ internal sealed class MainForm : Form
         signInErrors.Text = UpdateUiText.T("Explain sign-in error",
             "Объяснить ошибку входа", "הסבר שגיאת התחברות");
         signInErrors.AccessibleName = signInErrors.Text;
+        officeVolumeLink.Text = UpdateUiText.T(
+            "Office / Visio / Project — Volume KMS / MAK",
+            "Office / Visio / Project — лицензирование KMS / MAK",
+            "Office / Visio / Project — רישוי KMS / MAK");
+        officeVolumeLink.AccessibleName = officeVolumeLink.Text;
         diagnostics.Text = UiStrings.T("debug");
         updates.Text = availableUpdate is null ? UiStrings.T("updater") :
             $"{UiStrings.T("updater")}  •  v{availableUpdate.Version}";
@@ -421,6 +438,7 @@ internal sealed class MainForm : Form
                 OfficeLicenseDiagnostics.Details(lastOfficeLicense);
         }
         officeLicenseSummary.Visible = lastOfficeLicense is not null && !diagnosticsCollapsed;
+        officeVolumeLink.Visible = lastOfficeLicense is not null && !diagnosticsCollapsed;
         diagnosticResult.ShowResult(report);
         diagnosticToggle.Visible = true;
         statusBanner!.Visible = true;
@@ -428,6 +446,7 @@ internal sealed class MainForm : Form
         {
             diagnosticResult.Visible = false;
             officeLicenseSummary.Visible = false;
+            officeVolumeLink.Visible = false;
             technicalToggle.Visible = false;
             detail.Visible = false;
         }
@@ -435,6 +454,7 @@ internal sealed class MainForm : Form
         {
             diagnosticResult.Visible = true;
             officeLicenseSummary.Visible = lastOfficeLicense is not null;
+            officeVolumeLink.Visible = lastOfficeLicense is not null;
             technicalToggle.Visible = true;
             detail.Visible = technicalWasOpen;
         }
@@ -641,6 +661,7 @@ internal sealed class MainForm : Form
         lastOfficeLicense = null;
         recommendedHelpKey = null;
         officeLicenseSummary.Visible = false;
+        officeVolumeLink.Visible = false;
         diagnosticsCollapsed = false;
         technicalWasOpen = false;
         diagnosticToggle.Visible = false;
@@ -738,6 +759,7 @@ internal sealed class MainForm : Form
         lastOfficeLicense = null;
         recommendedHelpKey = null;
         officeLicenseSummary.Visible = false;
+        officeVolumeLink.Visible = false;
         diagnosticsCollapsed = false;
         technicalWasOpen = false;
         detail.Visible = false;
@@ -782,6 +804,7 @@ internal sealed class MainForm : Form
             lastOfficeLicense = null;
             recommendedHelpKey = null;
             officeLicenseSummary.Visible = false;
+            officeVolumeLink.Visible = false;
             diagnosticToggle.Visible = false;
             diagnosticResult.ClearResult();
             statusBanner!.Visible = true;
