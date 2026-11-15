@@ -49,6 +49,9 @@ internal static class Program
                     ("Settings state", () => settings.TaskMethod == ScheduledWorkerMode.PowerShell &&
                         settings.ScheduleOnly && !settings.CleanupAfterRepair),
                     ("Responsive geometry", ResponsiveLayout.SelfTest),
+                    ("Updater channel precedence", UpdaterIntegration.SelfTest),
+                    ("Updater default channel", () => updater.IncludesPreviews == UpdaterIntegration.InstalledIsPreview),
+                    ("Update notes layout", () => updater.ChangeListHasSeparateLines),
                     ("Review approval default", () => sendReview.ConsentInitiallyChecked &&
                         sendReview.ConfirmedIssue is null),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
