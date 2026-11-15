@@ -678,6 +678,7 @@ internal sealed class MainForm : Form
         var everyone = scope.SelectedIndex == 1;
         var selectedMode = everyone ? allUsersTaskMethod : ScheduledWorkerMode.Exe;
         var onlySchedule = everyone && allUsersScheduleOnly;
+        bool verifyCurrentUserAfterSuccess = false;
 
         if (everyone && full && selectedMode == ScheduledWorkerMode.PowerShell)
         {
@@ -799,6 +800,10 @@ internal sealed class MainForm : Form
             technicalToggle.Visible = true;
             UpdateTechnicalLink();
             var failed = result.Contains("FAILED", StringComparison.Ordinal);
+            // The local user has already finished repair synchronously.
+            // A scheduled all-users / elevated worker has NOT necessarily
+            // finished: never auto-claim a queued task as a successful repair.
+            verifyCurrentUserAfterSuccess = !failed && !everyone && !elevated;
             ShowStatus(failed ? UiStrings.T("failed") : elevated
                 ? UpdateUiText.T("Per-user tasks queued; check user logs for completion.",
                     "Задачи пользователей назначены. Проверяйте результат в их журналах.",
@@ -815,6 +820,12 @@ internal sealed class MainForm : Form
             UpdateTechnicalLink();
         }
         finally { SetBusy(false); }
+
+        // No second Check button is needed after a successful direct repair.
+        // Read-only post-check still cannot prove Word/Teams/OneDrive login.
+        // Do not run it for queued per-user jobs.
+        if (verifyCurrentUserAfterSuccess && !IsDisposed && !Disposing)
+            await RunDiagnoseAsync();
     }
 
     private static string ScheduleAdminRepair(bool everyone, bool full,
