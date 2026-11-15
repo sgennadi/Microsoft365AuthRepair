@@ -29,21 +29,43 @@ internal static class Program
                 form.CreateControl();
                 updater.CreateControl();
                 reports.CreateControl();
-                return form.MinimumSize.Width >= 600
-                    && UiIcons.Verify(form)
-                    && UiIcons.Verify(updater)
-                    && UiIcons.Verify(reports)
-                    && UpdateUiText.SelfTest()
-                    && M365DiagnosticPayload.SelfTest()
-                    && UpdateHandoff.SelfTest()
-                    && UserScopeSupport.SelfTest()
-                    && Scheduling.SelfTest()
-                    && FirstLogonDeployment.SelfTest()
-                    && PortableSelfCleanup.SelfTest()
-                    && UiTheme.VerifyButtons(form, 6)
-                    && UiTheme.VerifyButtons(updater, 5)
-                    && UiTheme.VerifyButtons(reports, 5)
-                    ? 0 : 2;
+                // On a headless Windows CI runner the GUI has no console.
+                // Record boolean test names only; never log user identities.
+                var tests = new (string Name, Func<bool> Run)[]
+                {
+                    ("Main minimum size", () => form.MinimumSize.Width >= 600),
+                    ("Main icon", () => UiIcons.Verify(form)),
+                    ("Updater icon", () => UiIcons.Verify(updater)),
+                    ("Reports icon", () => UiIcons.Verify(reports)),
+                    ("What's New format", UpdateUiText.SelfTest),
+                    ("Diagnostic payload", M365DiagnosticPayload.SelfTest),
+                    ("Updater helper", UpdateHandoff.SelfTest),
+                    ("User scope", UserScopeSupport.SelfTest),
+                    ("Scheduled worker resource", Scheduling.SelfTest),
+                    ("Legacy logon cleanup", FirstLogonDeployment.SelfTest),
+                    ("Portable cleanup", PortableSelfCleanup.SelfTest),
+                    ("Main buttons", () => UiTheme.VerifyButtons(form, 6)),
+                    ("Updater buttons", () => UiTheme.VerifyButtons(updater, 5)),
+                    ("Reports buttons", () => UiTheme.VerifyButtons(reports, 5))
+                };
+                var outcomes = new List<string>();
+                bool passed = true;
+                foreach (var test in tests)
+                {
+                    try
+                    {
+                        bool ok = test.Run();
+                        outcomes.Add(test.Name + ": " + (ok ? "PASS" : "FAIL"));
+                        passed &= ok;
+                    }
+                    catch (Exception error)
+                    {
+                        outcomes.Add(test.Name + ": EXCEPTION " + error.GetType().Name);
+                        passed = false;
+                    }
+                }
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "Microsoft365AuthRepair-UiTest.txt"), outcomes);
+                return passed ? 0 : 2;
             }
             // Post-UAC launch selects All users only. It never starts repair
             // or full reset automatically; the operator must confirm again.
@@ -78,6 +100,15 @@ internal static class Program
         catch (Exception ex)
         {
             // Avoid outputting account identities or raw diagnostic data.
+            if (args.Length == 1 && args[0] == "--ui-self-test")
+            {
+                try
+                {
+                    File.WriteAllText(Path.Combine(Path.GetTempPath(), "Microsoft365AuthRepair-UiTest.txt"),
+                        "GUI construction: EXCEPTION " + ex.GetType().Name);
+                }
+                catch { /* Read-only CI probe; never block startup on logging. */ }
+            }
             if (args.Length == 0) MessageBox.Show(ex.Message, "Microsoft 365 Auth Repair", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 2;
         }

@@ -121,6 +121,8 @@ jobs:
           # LASTEXITCODE when invoked directly. Wait on its process handle.
           $selfTestExe = (Resolve-Path "publish/win-x64/Microsoft365AuthRepair.exe").Path
           $selfTest = Start-Process -FilePath $selfTestExe -ArgumentList '--ui-self-test' -PassThru -Wait
+          $diagnostic = Join-Path $env:TEMP 'Microsoft365AuthRepair-UiTest.txt'
+          if (Test-Path -LiteralPath $diagnostic) { Get-Content -LiteralPath $diagnostic | Write-Host }
           if ($selfTest.ExitCode -ne 0) { throw "x64 GUI self-test failed: $($selfTest.ExitCode)" }
       - name: Reject invalid background-worker requests without touching WAM
         shell: pwsh
