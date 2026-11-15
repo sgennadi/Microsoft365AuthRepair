@@ -55,8 +55,7 @@ internal static class UpdaterIntegration
         var previewOrder = CheckOrder(withPreview: true, previewInstalled: true);
         var stableOrder = CheckOrder(withPreview: true, previewInstalled: false);
         var stableOnly = CheckOrder(withPreview: false, previewInstalled: true);
-        return InstalledIsPreview &&
-            previewOrder.SequenceEqual([UpdateChannel.Prerelease, UpdateChannel.Stable]) &&
+        return previewOrder.SequenceEqual([UpdateChannel.Prerelease, UpdateChannel.Stable]) &&
             stableOrder.SequenceEqual([UpdateChannel.Stable, UpdateChannel.Prerelease]) &&
             stableOnly.SequenceEqual([UpdateChannel.Stable]) &&
             SemanticVersion.Parse("1.0.1") > SemanticVersion.Parse("1.0.1-preview.10") &&
@@ -103,13 +102,18 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. Diagnostic capture runs without freezing the window.\n2. Exact JSON is shown only in Send anonymously.\n3. Saved reports can be reviewed and sent explicitly.\n4. Stable build and repair methods remain unchanged.",
-        "1. Сбор отчёта не блокирует интерфейс.\n2. Полный JSON показывается только в окне анонимной отправки.\n3. Сохранённый отчёт можно отдельно просмотреть и отправить.\n4. Стабильная версия и восстановление не изменены.",
-        "1. יצירת הדוח אינה מקפיאה את הממשק.\n2. JSON מלא מוצג רק בחלון השליחה.\n3. ניתן לעיין בדוח שמור ולשלוח אותו באישור מפורש.\n4. הגרסה היציבה ופעולות התיקון לא שונו.");
+        "1. Update Center and main window open wider automatically.\n2. Preview installations check Preview first, then Stable.\n3. Report generation stays responsive and uses one Send review screen.\n4. Updates are offered only when newer by SemVer.",
+        "1. Основное окно и окно обновлений автоматически расширяются.\n2. Для установленной Preview сначала проверяется Preview, затем Stable.\n3. Сбор отчёта не блокирует интерфейс, JSON показывается только перед отправкой.\n4. Предлагается только действительно более новая версия.",
+        "1. חלונות התוכנה והעדכון נפתחים באופן רחב יותר.\n2. גרסאות Preview נבדקות תחילה ולאחר מכן Stable.\n3. יצירת דוח אינה מקפיאה את הממשק והנתונים נבדקים לפני שליחה.\n4. מוצע רק עדכון חדש יותר.");
+
+    internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
 
     internal static bool SelfTest() => FormatWhatsNew(
         "## What's new\n1. Alpha\n2. Beta\n## Limitations\n- Private") ==
-        $"1. Alpha{Environment.NewLine}2. Beta";
+        $"1. Alpha{Environment.NewLine}2. Beta" &&
+        ForMultilineBox("1. Alpha\n2. Beta") ==
+        $"1. Alpha{Environment.NewLine}2. Beta" &&
+        CurrentChangelog().Split(Environment.NewLine).Length == 1; // Newlines are normalized at display time.
 }
 
 internal sealed class UpdateCenter : Form
@@ -139,7 +143,7 @@ internal sealed class UpdateCenter : Form
         Dock = DockStyle.Fill, Multiline = true, ReadOnly = true,
         WordWrap = true, ScrollBars = ScrollBars.Vertical,
         BorderStyle = BorderStyle.FixedSingle,
-        MinimumSize = new Size(0, 180),
+        MinimumSize = new Size(0, 245),
         Font = new Font("Segoe UI", 10f),
         Margin = new Padding(0, 6, 0, 0),
         BackColor = SystemColors.Window
@@ -152,23 +156,26 @@ internal sealed class UpdateCenter : Form
     private readonly Button page = UiTheme.CreateActionButton("Release page");
     private readonly Button folder = UiTheme.CreateActionButton("Open folder");
     private readonly Button cancel = UiTheme.CreateActionButton("Cancel");
+    internal bool IncludesPreviews => channel.SelectedIndex == 1;
+    internal bool ChangeListHasSeparateLines => changes.Text.Contains(Environment.NewLine, StringComparison.Ordinal);
     private UpdateRelease? release;
     private StagedPackage? staged;
     private CancellationTokenSource? active;
     private bool busy;
 
-    internal UpdateCenter(bool autoUpdate = false, bool includePreviews = false)
+    // A null preference uses the installed build's channel. Explicit
+    // Stable-only is preserved during an elevated update handoff.
+    internal UpdateCenter(bool autoUpdate = false, bool? includePreviews = null)
     {
         Text = $"Microsoft 365 Auth Repair v{Repair.Version} - Updates";
         Font = UiTheme.BodyFont();
         AutoScaleMode = AutoScaleMode.Dpi;
-        MinimumSize = new Size(660, 510);
-        Size = new Size(890, 680);
+        MinimumSize = new Size(760, 520);
+        Size = new Size(1140, 780);
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
-        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-        Size = new Size(Math.Min(Size.Width, area.Width),
-            Math.Min(Size.Height, area.Height));
         StartPosition = FormStartPosition.CenterParent;
+        ResponsiveLayout.FitInitialWindow(this, new Size(1140, 780),
+            new Size(1440, 1040), widthFraction: 0.90, heightFraction: 0.92);
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true,
             Padding = new Padding(18), ColumnCount = 1, RowCount = 8 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -199,7 +206,7 @@ internal sealed class UpdateCenter : Form
             UpdateUiText.T("Stable", "Стабильная", "יציבה"),
             "Preview + Stable"
         ]);
-        channel.SelectedIndex = includePreviews || UpdaterIntegration.InstalledIsPreview ? 1 : 0;
+        channel.SelectedIndex = (includePreviews ?? UpdaterIntegration.InstalledIsPreview) ? 1 : 0;
         top.Controls.Add(channel);
         root.Controls.Add(top, 0, 1);
 
@@ -234,9 +241,9 @@ internal sealed class UpdateCenter : Form
         actions.Controls.Add(cancel);
         root.Controls.Add(actions, 0, 5);
         root.Controls.Add(UiTheme.Caption(UpdateUiText.T("What's new", "Что нового", "מה חדש")), 0, 6);
-        changes.Text = UpdateUiText.CurrentChangelog();
+        changes.Text = UpdateUiText.ForMultilineBox(UpdateUiText.CurrentChangelog());
         root.Controls.Add(changes, 0, 7);
-        Controls.Add(ResponsiveLayout.Center(this, root, 940));
+        Controls.Add(ResponsiveLayout.Center(this, root, 1320));
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(download, UiGlyph.Updates, primary: true);
         download.UseMnemonic = false;
@@ -248,6 +255,7 @@ internal sealed class UpdateCenter : Form
         tips.SetToolTip(download, "One click: download, SHA-256 and architecture verification, safe install, health check and rollback.");
         tips.SetToolTip(channel, "Preview installations check Preview then Stable; the highest newer version wins. Stable-only can be selected manually.");
         download.Enabled = page.Enabled = folder.Enabled = cancel.Enabled = false;
+        cancel.Visible = false;
         refresh.LinkClicked += async (_, _) => await CheckAsync();
         download.Click += async (_, _) => await UpdateAsync();
         cancel.Click += (_, _) => active?.Cancel();
@@ -294,6 +302,7 @@ internal sealed class UpdateCenter : Form
         busy = value;
         refresh.Enabled = channel.Enabled = !value;
         cancel.Enabled = value;
+        cancel.Visible = value;
         download.Enabled = !value && release is not null && staged is null;
         page.Enabled = !value && release is not null;
         folder.Enabled = !value && staged is not null;
@@ -314,7 +323,7 @@ internal sealed class UpdateCenter : Form
             {
                 available.Text = UpdateUiText.T("Available: none", "Доступно: нет", "זמין: אין");
                 status.Text = UpdateUiText.T("You're up to date.", "Установлена актуальная версия.", "הגרסה מעודכנת.");
-                changes.Text = UpdateUiText.CurrentChangelog();
+                changes.Text = UpdateUiText.ForMultilineBox(UpdateUiText.CurrentChangelog());
             }
             else
             {
@@ -325,7 +334,7 @@ internal sealed class UpdateCenter : Form
                     $"New: v{release.Version} ({releaseChannel}, {release.Rule.Architecture})",
                     $"Доступна: v{release.Version} ({releaseChannel}, {release.Rule.Architecture})",
                     $"זמין: v{release.Version} ({releaseChannel}, {release.Rule.Architecture})");
-                changes.Text = UpdateUiText.FormatWhatsNew(release.ReleaseNotes);
+                changes.Text = UpdateUiText.ForMultilineBox(UpdateUiText.FormatWhatsNew(release.ReleaseNotes));
                 download.Focus(); // Keyboard users can update directly after release discovery.
                 status.Text = UpdateUiText.T("Update available.", "Есть обновление.", "עדכון זמין.");
                 bytesText.Text = UpdateUiText.T("Update will verify, install and restart (same-user writable installs).",
