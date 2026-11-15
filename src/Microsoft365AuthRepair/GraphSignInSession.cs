@@ -105,6 +105,83 @@ internal sealed class GraphSignInSession
             throw new InvalidOperationException("Microsoft returned an invalid Graph token.");
     }
 
+    // Certificate /.default inherits every Graph application role assigned to
+    // the registered app. Never reuse a BitKeyBridge certificate with BitLocker,
+    // LAPS or Intune roles for an audit-only diagnostic session. Require a
+    // dedicated AuditLog.Read.All app even when tenant/client/thumbprint exist.
+    private static void RequireAuditOnlyAccess(string accessToken,
+        GraphSignInAuthMode mode)
+    {
+        var segments = accessToken.Split('.');
+        if (segments.Length < 3)
+            throw new InvalidOperationException("Unsupported Graph token format.");
+        string base64 = segments[1].Replace('-', '+').Replace('_', '/');
+        base64 = base64.PadRight((base64.Length + 3) / 4 * 4, '=');
+        using var doc = JsonDocument.Parse(Convert.FromBase64String(base64));
+        var payload = doc.RootElement;
+        if (!payload.TryGetProperty("aud", out var audElement))
+            throw new InvalidOperationException("Graph token audience is missing.");
+        var audience = audElement.GetString() ?? "";
+        if (audience is not ("https://graph.microsoft.com" or
+            "00000003-0000-0000-c000-000000000000"))
+            throw new InvalidOperationException("Graph token has an unexpected audience.");
+        if (mode == GraphSignInAuthMode.Certificate)
+        {
+            if (!payload.TryGetProperty("roles", out var roles) ||
+                roles.ValueKind != JsonValueKind.Array)
+                throw new InvalidOperationException("Graph app-only roles are missing.");
+            var list = roles.EnumerateArray().Select(x => x.GetString() ?? "").ToArray();
+            if (list.Length != 1 ||
+                !list[0].Equals("AuditLog.Read.All", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Use a dedicated audit-only certificate app; Graph token contains other roles.");
+        }
+        else
+        {
+            if (!payload.TryGetProperty("scp", out var scopes) ||
+                scopes.ValueKind != JsonValueKind.String)
+                throw new InvalidOperationException("Delegated Graph scopes missing.");
+            var list = (scopes.GetString() ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (list.Length != 1 ||
+                !list[0].Equals("AuditLog.Read.All", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Delegated token must contain only AuditLog.Read.All.");
+        }
+    }
+
+    internal static bool AuditAccessPolicySelfTest()
+    {
+        string Token(string permissions, bool appOnly)
+        {
+            var claim = appOnly
+                ? new Dictionary<string, object>
+                {
+                    ["aud"] = "https://graph.microsoft.com",
+                    ["roles"] = permissions.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                }
+                : new Dictionary<string, object>
+                {
+                    ["aud"] = "https://graph.microsoft.com", ["scp"] = permissions
+                };
+            return "header." + Base64Url(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(claim))) +
+                ".signature";
+        }
+        bool Accepts(string value, GraphSignInAuthMode mode)
+        {
+            try { RequireAuditOnlyAccess(value, mode); return true; }
+            catch (Exception ex) when (ex is InvalidOperationException or
+                ArgumentException or FormatException or JsonException) { return false; }
+        }
+        return Accepts(Token("AuditLog.Read.All", false), GraphSignInAuthMode.DeviceCode) &&
+            Accepts(Token("AuditLog.Read.All", true), GraphSignInAuthMode.Certificate) &&
+            !Accepts(Token("AuditLog.Read.All BitlockerKey.Read.All", true),
+                GraphSignInAuthMode.Certificate) &&
+            !Accepts(Token("AuditLog.Read.All Device.Read.All", false),
+                GraphSignInAuthMode.DeviceCode) &&
+            !Accepts(Token("BitlockerKey.Read.All", true),
+                GraphSignInAuthMode.Certificate);
+    }
+
     private static DateTimeOffset Expiry(JsonElement response)
     {
         int seconds = response.TryGetProperty("expires_in", out var t) &&
@@ -164,7 +241,9 @@ internal sealed class GraphSignInSession
                     await tokenResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
                 if (tokenResponse.IsSuccessStatusCode)
                 {
-                    active = new Token(TokenFrom(doc.RootElement), Expiry(doc.RootElement),
+                    var accessToken = TokenFrom(doc.RootElement);
+                    RequireAuditOnlyAccess(accessToken, GraphSignInAuthMode.DeviceCode);
+                    active = new Token(accessToken, Expiry(doc.RootElement),
                         tenant, client, GraphSignInAuthMode.DeviceCode, "");
                     return;
                 }
@@ -255,7 +334,9 @@ internal sealed class GraphSignInSession
             if (!response.IsSuccessStatusCode)
                 throw new InvalidOperationException("Certificate Graph login: " +
                     SafeOauthError(doc.RootElement));
-            active = new Token(TokenFrom(doc.RootElement), Expiry(doc.RootElement),
+            var accessToken = TokenFrom(doc.RootElement);
+            RequireAuditOnlyAccess(accessToken, GraphSignInAuthMode.Certificate);
+            active = new Token(accessToken, Expiry(doc.RootElement),
                 tenant, client, GraphSignInAuthMode.Certificate, thumbprint);
         }
         finally { authGate.Release(); }
@@ -320,7 +401,7 @@ internal sealed class GraphSignInSession
     internal static bool SelfTest()
     {
         var client = "11111111-1111-1111-1111-111111111111";
-        return ValidTenant("organizations", true) &&
+        return AuditAccessPolicySelfTest() && ValidTenant("organizations", true) &&
             !ValidTenant("organizations", false) &&
             ValidTenant("contoso.onmicrosoft.com", false) &&
             ValidTenant(client, false) &&
