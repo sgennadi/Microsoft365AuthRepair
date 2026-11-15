@@ -141,6 +141,11 @@ internal static class ScheduledWorkerMaintenance
 
     private static bool ExistsSafe(string path)
     {
+        // The parent is a fixed, administrator-owned ProgramData location.
+        // Never follow a junction/symlink when deleting shared workers.
+        if (Directory.Exists(Root) &&
+            (File.GetAttributes(Root) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("Protected worker folder is a reparse point. Cleanup denied.");
         if (!File.Exists(path)) return false;
         if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
             throw new IOException("Worker path is a reparse point. Cleanup denied.");
