@@ -1,3 +1,13 @@
+## Preview v1.0.1-preview.14 — automatic Office 2024 KMS key recommendations
+
+1. **No manual GVLK lookup:** selecting a verified Office LTSC 2024 Professional Plus or Standard, Visio LTSC 2024 Professional or Standard, or Project 2024 Professional or Standard Volume edition displays the matching Microsoft-published KMS Client Setup Key in a copyable read-only field.
+2. **No extra buttons:** the suggested GVLK appears under the existing KMS/MAK choice and is automatically used when the administrator confirms the existing KMS activation flow. The KMS host remains separate and can be detected or entered manually.
+3. **Safety:** no GVLK is proposed to unknown 2026 Preview, Retail or Microsoft 365 Apps subscription editions, mismatched installed product IDs, or unsupported Preview licenses. Switching to MAK hides the suggestion and requires the organization's confidential key.
+4. **Unchanged consent:** Office LTSC 2024 Preview key removal still requires explicit checkbox and independent destructive confirmation, exact Office product identity and full post-operation license recheck. Stable v1.0.0 remains untouched.
+5. **Active Office wins:** Click-to-Run inventory is matched to Office WMI entries, and an already activated Volume license is shown first. Duplicate unlicensed MAK/KMS templates are hidden behind a small “Show other WMI records” link. Active editions and unrelated template records cannot be re-keyed accidentally.
+6. **Compact UI:** Settings and the language selector now occupy separately aligned header rows. Office license refresh/KMS discovery use small links rather than large buttons; KMS discovery runs automatically when the dialog opens.
+7. Windows x64/ARM64 CI and GUI smoke tests verify the mapping, activated-record selection, responsive header and the new UI. Real KMS/MAK and 100–200% DPI tests still require pilot verification. [Preview.14 release notes](docs/releases/v1.0.1-preview.14.md).
+
 ## Preview v1.0.1-preview.13 — Microsoft-guided diagnosis and native Office licensing
 
 1. **Microsoft Learn troubleshooting:** the offline sign-in guide includes symptom, check, possible cause, safe action, and the Microsoft Learn reference for WAM, PRT, Entra, MFA, Conditional Access, network, personal CloudExperienceHost, Office licensing and RDS/VDI SCA. No passwords or logs are uploaded.

@@ -22,8 +22,16 @@ internal sealed record OfficeVolumeProduct(
 }
 
 internal sealed record OfficeKmsEndpoint(string Host, int Port, string Source);
+// GVLKs are PUBLIC keys published by Microsoft, not private KMS host or MAK keys.
+// A suggestion is purely local and does not install or activate anything.
+internal sealed record OfficeGvlkSuggestion(string Sku, string ProductName, string Key, string SourceUrl);
 internal sealed record OfficeVolumeInventory(IReadOnlyList<OfficeVolumeProduct> Products,
-    IReadOnlyList<string> ProductReleaseIds, string? Warning);
+    IReadOnlyList<string> ProductReleaseIds, string? Warning)
+{
+    internal bool InstalledProductsVerified { get; init; }
+    internal string InstalledOfficeBuild { get; init; } = "";
+    internal string InstallationSource { get; init; } = "Click-to-Run inventory";
+}
 internal sealed record OfficeLicenseChangeResult(bool Success, string Stage, string Status,
     bool PreviewKeyRemoved, bool ActivationVerified);
 
@@ -32,6 +40,7 @@ internal static class OfficeVolumeLicensing
     internal const string OfficeApplicationId = "0ff1ce15-a989-479d-af46-f275c6370663";
     internal const string GvlkSource = "https://learn.microsoft.com/en-us/office/volume-license-activation/gvlks";
     private const string ConfigKey = @"SOFTWARE\Microsoft\Office\ClickToRun\Configuration";
+    private const string InstalledInventoryKey = @"SOFTWARE\Microsoft\Office\ClickToRun\Inventory\Office\16.0";
     private const string WmiPath = @"\\.\root\cimv2";
 
     // Exactly six Microsoft-published GVLKs for supported 2024 suites,
@@ -61,14 +70,14 @@ internal static class OfficeVolumeLicensing
             ["VisioPro2024Volume"] = ["WXGKQ", "CPVG7"]
         };
 
-    private static string? ReadConfigValue(string key)
+    private static string? ReadOfficeRegistry(string path, string key)
     {
         foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
         {
             try
             {
                 using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-                using var cfg = hklm.OpenSubKey(ConfigKey);
+                using var cfg = hklm.OpenSubKey(path, writable: false);
                 var value = cfg?.GetValue(key);
                 if (value is not null) return Convert.ToString(value, CultureInfo.InvariantCulture);
             }
@@ -77,6 +86,11 @@ internal static class OfficeVolumeLicensing
         }
         return null;
     }
+
+    private static IReadOnlyList<string> ReleaseIds(string? text) =>
+        (text ?? "").Split(new[] { ',', ';' },
+            StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(48).ToArray();
 
     private static string Str(ManagementBaseObject item, string field)
     {
@@ -139,9 +153,15 @@ internal static class OfficeVolumeLicensing
 
     internal static OfficeVolumeInventory Read()
     {
-        var releases = (ReadConfigValue("ProductReleaseIds") ?? "")
-            .Split(new[] { ',', ';' }, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase).Take(48).ToArray();
+        // Microsoft recommends the Click-to-Run Inventory, not
+        // Configuration.VersionToReport, as the installed-product authority.
+        var inventoryIds = ReadOfficeRegistry(InstalledInventoryKey, "OfficeProductReleaseIds");
+        var build = ReadOfficeRegistry(InstalledInventoryKey, "OfficePackageVersion") ?? "";
+        var authoritative = !string.IsNullOrWhiteSpace(inventoryIds);
+        // Configuration is display-only fallback when Inventory is missing:
+        // it cannot authorize a destructive key operation.
+        var releases = ReleaseIds(authoritative ? inventoryIds :
+            ReadOfficeRegistry(ConfigKey, "ProductReleaseIds"));
         var rows = new List<OfficeVolumeProduct>();
         string? warning = null;
         try
@@ -175,7 +195,7 @@ internal static class OfficeVolumeLicensing
                         ProductStatus(Str(entry, "LicenseStatus")),
                         IsPreviewLabel(combinedLabel) || knownPreviewKey ||
                             IsUnverified2026(combinedLabel),
-                        Gvlk.ContainsKey(sku) &&
+                        authoritative && Gvlk.ContainsKey(sku) &&
                             foundRelease.Equals(sku, StringComparison.OrdinalIgnoreCase) &&
                             !IsUnverified2026(combinedLabel) &&
                             !IsPreviewLabel(combinedLabel) && !knownPreviewKey,
@@ -192,14 +212,61 @@ internal static class OfficeVolumeLicensing
             warning = "Office licensing provider unavailable: " + ex.GetType().Name;
         }
 
-        return new OfficeVolumeInventory(rows, releases, warning);
+        return new OfficeVolumeInventory(rows, releases, warning)
+        {
+            InstalledProductsVerified = authoritative,
+            InstalledOfficeBuild = build,
+            InstallationSource = authoritative ? "Click-to-Run inventory" :
+                "Configuration fallback (unverified)"
+        };
     }
 
     // For a new preview candidate, do not enable conversion merely because
     // another unrelated suite has an official 2024 Volume GVLK.
+    internal static bool IsActive(OfficeVolumeProduct product) =>
+        product.HasKey && product.Status.Equals("Licensed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ActiveSibling(OfficeVolumeProduct product, OfficeVolumeInventory inventory) =>
+        inventory.Products.Any(x =>
+            x.ActivationId != product.ActivationId &&
+            x.ProductId.Equals(product.ProductId, StringComparison.OrdinalIgnoreCase) &&
+            IsActive(x));
+
+    // Show one canonical record per installed SKU by default. WMI can include
+    // many empty MAK/KMS template rows in addition to one activated product.
+    // Other rows remain accessible through "Show other license records".
+    internal static IReadOnlyList<OfficeVolumeProduct> PreferredProducts(OfficeVolumeInventory inventory)
+    {
+        var installed = inventory.Products.Where(x => MatchesInstalledProduct(x, inventory)).ToArray();
+        var candidates = installed.Length > 0 ? installed : inventory.Products.ToArray();
+        return candidates
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.ProductId) ? x.Name : x.ProductId,
+                StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(IsActive)
+                .ThenByDescending(x => x.HasKey)
+                .ThenByDescending(x => x.IsPreview)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).First())
+            .OrderByDescending(x => MatchesInstalledProduct(x, inventory))
+            .ThenByDescending(IsActive)
+            .ThenBy(x => x.ProductId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    internal static IReadOnlyList<OfficeVolumeProduct> AllProductRecords(OfficeVolumeInventory inventory) =>
+        inventory.Products
+            .OrderByDescending(x => MatchesInstalledProduct(x, inventory))
+            .ThenByDescending(IsActive)
+            .ThenByDescending(x => x.HasKey)
+            .ThenBy(x => x.ProductId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
     internal static bool CanReplacePreview(OfficeVolumeProduct product, OfficeVolumeInventory inventory)
     {
-        if (!product.IsPreview || !product.HasKey ||
+        if (!inventory.InstalledProductsVerified ||
+            !MatchesInstalledProduct(product, inventory) ||
+            IsActive(product) || ActiveSibling(product, inventory) ||
+            !product.IsPreview || !product.HasKey ||
             IsUnverified2026(product.Name + " " + product.Description))
             return false;
         var sku = DetectSku(product.Name + " " + product.Description);
@@ -213,17 +280,81 @@ internal static class OfficeVolumeLicensing
         return IsKnownPreviewKey(sku, product.PartialKey);
     }
 
-    internal static bool CanApply(OfficeVolumeProduct product, OfficeVolumeInventory inventory) =>
-        product.CanChange || CanReplacePreview(product, inventory);
+    internal static bool CanApply(OfficeVolumeProduct product, OfficeVolumeInventory inventory)
+    {
+        var sku = DetectSku(product.Name + " " + product.Description);
+        if (!inventory.InstalledProductsVerified || IsActive(product) ||
+            ActiveSibling(product, inventory) ||
+            !MatchesInstalledProduct(product, inventory) ||
+            sku is null || !sku.Equals(product.ProductId, StringComparison.OrdinalIgnoreCase) ||
+            IsUnverified2026(product.Name + " " + product.Description) ||
+            !ProductReleaseMatches(sku, inventory.ProductReleaseIds))
+            return false;
+        // A verified installed Volume 2024 product without a key is a
+        // supported scenario (Office24...VL_MAK_AE3, "Unlicensed · no key").
+        // It can receive the official GVLK without first removing anything.
+        return (product.IsSupported2024Volume && !product.IsPreview) ||
+            CanReplacePreview(product, inventory);
+    }
 
     // Preflight must be conservative: we will not remove the target product's
     // only key if its exact Preview identity is not independently verified.
     internal static bool ShouldRemoveOldKey(OfficeVolumeProduct product, OfficeVolumeInventory inventory) =>
         CanReplacePreview(product, inventory);
 
+    internal static string FriendlyName(string? sku) => sku switch
+    {
+        "ProPlus2024Volume" => "Office LTSC Professional Plus 2024",
+        "Standard2024Volume" => "Office LTSC Standard 2024",
+        "ProjectPro2024Volume" => "Project Professional 2024",
+        "ProjectStd2024Volume" => "Project Standard 2024",
+        "VisioPro2024Volume" => "Visio LTSC Professional 2024",
+        "VisioStd2024Volume" => "Visio LTSC Standard 2024",
+        _ => "Unrecognized Office edition"
+    };
+
+    internal static bool MatchesInstalledProduct(OfficeVolumeProduct product,
+        OfficeVolumeInventory inventory) =>
+        !string.IsNullOrEmpty(product.ProductId) &&
+        ProductReleaseMatches(product.ProductId, inventory.ProductReleaseIds);
+
     internal static string? GvlkFor(OfficeVolumeProduct product) =>
         DetectSku(product.Name + " " + product.Description) is { } key &&
         Gvlk.TryGetValue(key, out var gvlk) ? gvlk : null;
+
+    // The selected edition AND the installed C2R product release must match
+    // one of the official 2024 Volume product IDs. A license row carrying an
+    // unverified 2026 label, a Retail/subscription edition or a mismatched
+    // ProductId must never receive a suggested 2024 key.
+    internal static OfficeGvlkSuggestion? SuggestGvlk(
+        OfficeVolumeProduct product, OfficeVolumeInventory inventory)
+    {
+        // A licensed edition can still DISPLAY the corresponding public
+        // Microsoft GVLK, but CanApply blocks reinstalling it over a working
+        // license. Never offer a key to non-installed or unverified editions.
+        if (!inventory.InstalledProductsVerified ||
+            !MatchesInstalledProduct(product, inventory) ||
+            !(product.IsSupported2024Volume || CanReplacePreview(product, inventory)) ||
+            IsUnverified2026(product.Name + " " + product.Description))
+            return null;
+        var sku = DetectSku(product.Name + " " + product.Description);
+        if (sku is null || !ProductReleaseMatches(sku, inventory.ProductReleaseIds) ||
+            !string.Equals(product.ProductId, sku, StringComparison.OrdinalIgnoreCase) ||
+            !Gvlk.TryGetValue(sku, out var key))
+            return null;
+
+        var name = sku switch
+        {
+            "ProPlus2024Volume" => "Office LTSC Professional Plus 2024",
+            "Standard2024Volume" => "Office LTSC Standard 2024",
+            "ProjectPro2024Volume" => "Project Professional 2024",
+            "ProjectStd2024Volume" => "Project Standard 2024",
+            "VisioPro2024Volume" => "Visio LTSC Professional 2024",
+            "VisioStd2024Volume" => "Visio LTSC Standard 2024",
+            _ => sku
+        };
+        return new OfficeGvlkSuggestion(sku, name, key, GvlkSource);
+    }
 
     internal static string? ValidateHost(string candidate)
     {
@@ -346,7 +477,8 @@ internal static class OfficeVolumeLicensing
         if (!CanApply(product, oldInventory))
             return new(false, "Validation", "Unknown, subscription, 2026 or unsupported Preview products cannot be changed.", false, false);
 
-        string? key = mak ? inputKey?.Trim().ToUpperInvariant() : GvlkFor(product);
+        string? key = mak ? inputKey?.Trim().ToUpperInvariant() :
+            SuggestGvlk(product, oldInventory)?.Key;
         if (key is null || !Regex.IsMatch(key, @"^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$",
                 RegexOptions.CultureInvariant))
             return new(false, "Validation", "Invalid or missing key format. No changes made.", false, false);
@@ -476,12 +608,23 @@ internal static class OfficeVolumeLicensing
             Name = "Office 24, Office24VisioPro2024VL_KMS_Client edition",
             IsPreview = false, IsSupported2024Volume = true
         };
-        var inv = new OfficeVolumeInventory([preview], ["VisioPro2024Volume-Preview"], null);
-        var safe = new OfficeVolumeInventory([valid], ["VisioPro2024Volume"], null);
+        var inv = new OfficeVolumeInventory([preview], ["VisioPro2024Volume-Preview"], null)
+            { InstalledProductsVerified = true };
+        var safe = new OfficeVolumeInventory([valid], ["VisioPro2024Volume"], null)
+            { InstalledProductsVerified = true };
         var realPreview = preview with { PartialKey = "WXGKQ",
             Name = "Office 24, Office24VisioPro2024VL_KMS_Client edition" };
-        var realPreviewInventory = new OfficeVolumeInventory([realPreview], ["VisioPro2024Volume"], null);
+        var realPreviewInventory = new OfficeVolumeInventory([realPreview], ["VisioPro2024Volume"], null)
+            { InstalledProductsVerified = true };
         var unrelated = preview with { PartialKey = "QWERT" };
+        var noKey = valid with { PartialKey = "" };
+        var noKeyInventory = new OfficeVolumeInventory([noKey], ["VisioPro2024Volume"], null)
+            { InstalledProductsVerified = true };
+        var activated = valid with { ActivationId = Guid.NewGuid().ToString("D"),
+            Status = "Licensed", PartialKey = "YY89G" };
+        var duplicated = new OfficeVolumeInventory([noKey, noKey, activated],
+            ["VisioPro2024Volume"], null) { InstalledProductsVerified = true };
+        var nonverified = new OfficeVolumeInventory([valid], ["VisioPro2024Volume"], null);
         var invalid = preview with { Name = "Office 2026 Preview", ProductId = "" };
         return DetectSku(preview.Name) == "VisioPro2024Volume" &&
             IsPreviewLabel(preview.Name) && IsUnverified2026(invalid.Name) &&
@@ -496,8 +639,31 @@ internal static class OfficeVolumeLicensing
             CanReplacePreview(realPreview with { IsPreview = true }, realPreviewInventory) &&
             !CanReplacePreview(unrelated, realPreviewInventory) &&
             !ShouldRemoveOldKey(invalid, inv) &&
-            CanApply(valid, safe) && !CanApply(invalid, inv) &&
+            CanApply(valid, safe) && CanApply(noKey, noKeyInventory) &&
+            !CanApply(activated, duplicated) &&
+            !CanApply(noKey, duplicated) &&
+            PreferredProducts(duplicated).Count == 1 &&
+            PreferredProducts(duplicated)[0].ActivationId == activated.ActivationId &&
+            AllProductRecords(duplicated).Count == 3 &&
+            SuggestGvlk(activated, duplicated)?.Key == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
+            !CanApply(valid, nonverified) &&
+            SuggestGvlk(noKey, noKeyInventory)?.Key == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
+            MatchesInstalledProduct(noKey, noKeyInventory) &&
+            !CanApply(invalid, inv) &&
             GvlkFor(valid) == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
+            SuggestGvlk(valid, safe)?.Key == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
+            SuggestGvlk(preview, inv)?.Key == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
+            SuggestGvlk(invalid, inv) is null &&
+            SuggestGvlk(valid with { ProductId = "ProjectPro2024Volume" }, safe) is null &&
+            SuggestGvlk(valid, new OfficeVolumeInventory([valid], ["O365ProPlusRetail"], null)
+                { InstalledProductsVerified = true }) is null &&
+            Gvlk.All(x => SuggestGvlk(
+                new OfficeVolumeProduct(Guid.NewGuid().ToString("D"),
+                    "Office24" + x.Key.Replace("Volume", "") + "VL_KMS_Client",
+                    "", x.Key, "ABCDE", "Unlicensed", false, true,
+                    null, null, null, null),
+                new OfficeVolumeInventory(Array.Empty<OfficeVolumeProduct>(), [x.Key], null)
+                    { InstalledProductsVerified = true })?.Key == x.Value) &&
             ValidateHost("kms.example.com") == "kms.example.com" &&
             ValidateHost("192.0.2.8") == "192.0.2.8" &&
             ValidateHost("https://bad.example.org") is null &&

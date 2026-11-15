@@ -21,6 +21,22 @@ internal sealed class OfficeVolumeLicenseForm : Form
     };
     private readonly RadioButton kms = new() { AutoSize = true };
     private readonly RadioButton mak = new() { AutoSize = true };
+    // Public Microsoft GVLK, not an organization's confidential MAK.
+    // Selected automatically by exact Office 2024 Volume SKU, copyable with Ctrl+C.
+    private readonly FlowLayoutPanel gvlkRow = new()
+    {
+        AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        Dock = DockStyle.Fill, WrapContents = true,
+        Margin = new Padding(0, 2, 0, 8)
+    };
+    private readonly Label gvlkCaption = UiTheme.Caption(string.Empty);
+    private readonly TextBox gvlkValue = new()
+    {
+        Width = 295, ReadOnly = true, TabStop = true, ShortcutsEnabled = true,
+        Margin = new Padding(8, 3, 6, 5),
+        AccessibleName = "Microsoft published KMS client setup key for selected Office product"
+    };
+    private readonly Label gvlkHelp = UiTheme.Caption(string.Empty);
     private readonly Label hostLabel = UiTheme.Caption(string.Empty);
     private readonly TextBox host = new()
     {
@@ -40,10 +56,29 @@ internal sealed class OfficeVolumeLicenseForm : Form
         AutoSize = true,
         Checked = false
     };
-    private readonly Button refresh = UiTheme.CreateActionButton(
-        UpdateUiText.T("Refresh products", "Обновить список", "רענן מוצרים"));
-    private readonly Button discover = UiTheme.CreateActionButton(
-        UpdateUiText.T("Find KMS", "Найти KMS", "מצא KMS"));
+    private readonly LinkLabel refreshLink = new()
+    {
+        AutoSize = true, TabStop = true, LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(12, 12, 4, 5)
+    };
+    private readonly LinkLabel kmsLookupLink = new()
+    {
+        AutoSize = true, TabStop = true, LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(12, 6, 0, 5)
+    };
+    private readonly LinkLabel otherRecordsLink = new()
+    {
+        AutoSize = true, Visible = false, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(0, 5, 0, 7)
+    };
+    private readonly Label portCaption = UiTheme.Caption(string.Empty);
+    private readonly Label makCaption = UiTheme.Caption("MAK:");
+    private IReadOnlyList<OfficeVolumeProduct> displayedProducts = [];
+    private bool showTechnicalRows;
+    private bool populatingProducts;
+    private bool manualKmsHost;
+    private bool settingKmsHost;
     private readonly Button apply = UiTheme.CreateActionButton(
         UpdateUiText.T("Review & activate", "Проверить и активировать", "בדוק והפעל"), primary: true);
     private readonly Button close = UiTheme.CreateActionButton(
@@ -61,6 +96,10 @@ internal sealed class OfficeVolumeLicenseForm : Form
     internal bool HasSelectedSupportedProduct =>
         selected is not null && inventory is not null &&
         OfficeVolumeLicensing.CanApply(selected, inventory);
+    internal string? SuggestedKmsKey =>
+        selected is not null && inventory is not null
+            ? OfficeVolumeLicensing.SuggestGvlk(selected, inventory)?.Key
+            : null;
 
     internal OfficeVolumeLicenseForm()
     {
@@ -71,29 +110,29 @@ internal sealed class OfficeVolumeLicenseForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = UiTheme.BodyFont();
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
-        Size = new Size(900, 650);
-        MinimumSize = new Size(620, 490);
-        ResponsiveLayout.FitInitialWindow(this, new Size(900, 650),
-            new Size(1160, 850), widthFraction: 0.77, heightFraction: 0.76);
+        Size = new Size(900, 545);
+        MinimumSize = new Size(620, 425);
+        ResponsiveLayout.FitInitialWindow(this, new Size(900, 545),
+            new Size(1120, 720), widthFraction: 0.77, heightFraction: 0.61);
 
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, AutoScroll = true,
-            ColumnCount = 1, RowCount = 9,
+            ColumnCount = 1, RowCount = 10,
             Padding = new Padding(18)
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 8; i++)
+        // All rows are content-sized; no giant unused footer on tall screens.
+        for (int i = 0; i < 10; i++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         title.Text = UpdateUiText.T("Office LTSC 2024 / Visio / Project",
             "Office LTSC 2024 / Visio / Project",
             "Office LTSC 2024 / Visio / Project");
         info.Text = UpdateUiText.T(
-            "Read-only WMI inventory. Only a verified Volume 2024 license can be changed. Subscription, Retail and unknown 2026 Preview editions are protected. Removing a verified 2024 Preview key is an optional destructive step.",
-            "Инвентаризация WMI — без изменений. Менять ключ разрешено только у проверенной Volume-редакции 2024. Подписки, Retail и неизвестные Preview 2026 защищены. Удаление подтверждённого ключа Preview 2024 требует отдельного согласия.",
-            "בדיקת WMI בלבד. שינוי מפתחות רק למהדורת Volume 2024 מאומתת. מחיקת Preview מחייבת אישור.");
+            "Installed product first. Additional licensing records can be expanded below. Activated products are protected against unnecessary key changes.",
+            "Сначала установленный продукт. Дополнительные записи лицензирования можно раскрыть ниже. Активированные продукты защищены от ненужной замены ключей.",
+            "מוצרים מותקנים מוצגים ראשונים. ניתן לפתוח רשומות נוספות בהמשך. רישיון פעיל מוגן משינוי.");
         root.Controls.Add(title, 0, 0);
         root.Controls.Add(info, 0, 1);
 
@@ -104,8 +143,12 @@ internal sealed class OfficeVolumeLicenseForm : Form
         };
         productRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         productRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        refreshLink.Text = UpdateUiText.T("Refresh", "Обновить", "רענן");
+        refreshLink.AccessibleName = UpdateUiText.T(
+            "Refresh installed Office products", "Обновить список установленного Office",
+            "רענן מוצרי Office מותקנים");
         productRow.Controls.Add(productList, 0, 0);
-        productRow.Controls.Add(refresh, 1, 0);
+        productRow.Controls.Add(refreshLink, 1, 0);
         root.Controls.Add(productRow, 0, 2);
         root.Controls.Add(selectedStatus, 0, 3);
 
@@ -120,6 +163,21 @@ internal sealed class OfficeVolumeLicenseForm : Form
         options.Controls.Add(mak);
         root.Controls.Add(options, 0, 4);
 
+        gvlkCaption.Text = UpdateUiText.T(
+            "Suggested KMS client key (GVLK):",
+            "Предлагаемый KMS-ключ (GVLK):",
+            "מפתח KMS מומלץ (GVLK):");
+        gvlkHelp.Text = UpdateUiText.T(
+            "Official Microsoft key; inserted automatically at activation. Copy with Ctrl+C. Does not replace a KMS server.",
+            "Официальный ключ Microsoft. Подставится автоматически при активации. Ctrl+C — копировать. Не заменяет KMS-сервер.",
+            "מפתח רשמי של Microsoft. יוזן אוטומטית בהפעלה. להעתקה Ctrl+C. לא מחליף שרת KMS.");
+        gvlkValue.AccessibleDescription = gvlkHelp.Text;
+        gvlkRow.Controls.Add(gvlkCaption);
+        gvlkRow.Controls.Add(gvlkValue);
+        gvlkRow.Controls.Add(gvlkHelp);
+        gvlkRow.Visible = false;
+        root.Controls.Add(gvlkRow, 0, 5);
+
         var entry = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill, AutoSize = true, WrapContents = true,
@@ -127,37 +185,45 @@ internal sealed class OfficeVolumeLicenseForm : Form
         };
         hostLabel.Text = UpdateUiText.T("KMS server (optional):", "KMS-сервер (необязательно):",
             "שרת KMS (לא חובה):");
+        portCaption.Text = UpdateUiText.T("Port:", "Порт:", "יציאה:");
+        kmsLookupLink.Text = UpdateUiText.T("Find again", "Найти снова", "חפש שוב");
+        kmsLookupLink.AccessibleName = UpdateUiText.T(
+            "Rediscover KMS host via Office and DNS",
+            "Повторить поиск KMS через Office и DNS",
+            "חיפוש KMS מחדש דרך Office ו-DNS");
         entry.Controls.Add(hostLabel);
         entry.Controls.Add(host);
-        entry.Controls.Add(UiTheme.Caption(UpdateUiText.T("Port:", "Порт:", "יציאה:")));
+        entry.Controls.Add(portCaption);
         entry.Controls.Add(port);
-        entry.Controls.Add(discover);
-        entry.Controls.Add(UiTheme.Caption("MAK:"));
+        entry.Controls.Add(kmsLookupLink);
+        entry.Controls.Add(makCaption);
         entry.Controls.Add(makKey);
-        root.Controls.Add(entry, 0, 5);
+        root.Controls.Add(entry, 0, 6);
 
         removePreview.Text = UpdateUiText.T(
             "I approve removing the identified Office 2024 Preview key BEFORE installation of the new key.",
             "Разрешаю удалить найденный ключ Office 2024 Preview ДО установки нового ключа.",
             "אני מאשר להסיר מפתח Preview 2024 לפני התקנת מפתח חדש.");
-        root.Controls.Add(removePreview, 0, 6);
+        removePreview.Visible = false;
+        root.Controls.Add(removePreview, 0, 7);
 
         var statusPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, AutoSize = true,
-            ColumnCount = 1, RowCount = 3,
+            ColumnCount = 1, RowCount = 4,
             Margin = new Padding(0, 6, 0, 6)
         };
         statusPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 4; i++)
             statusPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        statusPanel.Controls.Add(kmsStatus, 0, 0);
-        statusPanel.Controls.Add(outcome, 0, 1);
+        statusPanel.Controls.Add(otherRecordsLink, 0, 0);
+        statusPanel.Controls.Add(kmsStatus, 0, 1);
+        statusPanel.Controls.Add(outcome, 0, 2);
         docs.Text = UpdateUiText.T("Microsoft Learn — Official Office KMS keys",
             "Microsoft Learn — официальные KMS-ключи Office",
             "Microsoft Learn — מפתחות KMS רשמיים");
-        statusPanel.Controls.Add(docs, 0, 2);
-        root.Controls.Add(statusPanel, 0, 7);
+        statusPanel.Controls.Add(docs, 0, 3);
+        root.Controls.Add(statusPanel, 0, 8);
 
         var buttons = new FlowLayoutPanel
         {
@@ -166,12 +232,10 @@ internal sealed class OfficeVolumeLicenseForm : Form
         };
         buttons.Controls.Add(close);
         buttons.Controls.Add(apply);
-        root.Controls.Add(buttons, 0, 8);
+        root.Controls.Add(buttons, 0, 9);
         Controls.Add(ResponsiveLayout.Center(this, root, 1110));
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(apply, UiGlyph.Save, primary: true);
-        UiIcons.Assign(refresh, UiGlyph.Updates);
-        UiIcons.Assign(discover, UiGlyph.Search);
         UiIcons.TrackDpi(this);
         CancelButton = close;
 
@@ -181,13 +245,26 @@ internal sealed class OfficeVolumeLicenseForm : Form
             info.MaximumSize = selectedStatus.MaximumSize =
                 kmsStatus.MaximumSize = outcome.MaximumSize =
                 removePreview.MaximumSize = max;
+            gvlkHelp.MaximumSize = new Size(Math.Max(170, max.Width - 24), 0);
         };
-        productList.SelectedIndexChanged += (_, _) => SelectProduct();
+        productList.SelectedIndexChanged += (_, _) =>
+        {
+            if (!populatingProducts) SelectProduct();
+        };
         kms.CheckedChanged += (_, _) => UpdateControls();
         mak.CheckedChanged += (_, _) => UpdateControls();
         removePreview.CheckedChanged += (_, _) => UpdateControls();
-        refresh.Click += async (_, _) => await RefreshAsync();
-        discover.Click += async (_, _) => await DiscoverAsync();
+        refreshLink.LinkClicked += async (_, _) => await RefreshAsync();
+        kmsLookupLink.LinkClicked += async (_, _) => await DiscoverAsync();
+        otherRecordsLink.LinkClicked += (_, _) =>
+        {
+            showTechnicalRows = !showTechnicalRows;
+            PopulateProductList(selected?.ActivationId);
+        };
+        host.TextChanged += (_, _) =>
+        {
+            if (!settingKmsHost) manualKmsHost = true;
+        };
         apply.Click += async (_, _) => await ApplyAsync();
         close.Click += (_, _) => Close();
         docs.LinkClicked += (_, _) =>
@@ -212,12 +289,33 @@ internal sealed class OfficeVolumeLicenseForm : Form
         bool canChange = HasSelectedSupportedProduct && Identity.IsElevated();
         bool isPreview = selected is not null && inventory is not null &&
             OfficeVolumeLicensing.ShouldRemoveOldKey(selected, inventory);
+        host.Visible = hostLabel.Visible = portCaption.Visible =
+            port.Visible = kmsLookupLink.Visible = kms.Checked;
+        makKey.Visible = makCaption.Visible = mak.Checked;
         host.Enabled = port.Enabled = kms.Checked && !busy;
-        discover.Enabled = kms.Checked && selected is not null && !busy;
+        kmsLookupLink.Enabled = kms.Checked && selected is not null && !busy;
         makKey.Enabled = mak.Checked && !busy;
+        removePreview.Visible = isPreview;
         removePreview.Enabled = isPreview && !busy;
-        apply.Enabled = canChange && !busy && (!isPreview || removePreview.Checked);
-        if (selected is not null && !Identity.IsElevated())
+        // No extra "Choose key" button: only an exact 2024 Volume match
+        // exposes the public GVLK, which is used by ReplaceKey automatically.
+        var suggestion = selected is not null && inventory is not null
+            ? OfficeVolumeLicensing.SuggestGvlk(selected, inventory) : null;
+        gvlkValue.Text = suggestion?.Key ?? string.Empty;
+        gvlkRow.Visible = kms.Checked && suggestion is not null;
+        apply.Enabled = canChange && !busy && (!isPreview || removePreview.Checked) &&
+            (!kms.Checked || suggestion is not null);
+        gvlkHelp.Text = selected is not null && OfficeVolumeLicensing.IsActive(selected)
+            ? UpdateUiText.T(
+                "Already activated. Public KMS key shown for reference only; replacement is disabled.",
+                "Уже активирован. Публичный KMS-ключ показан для справки; замена отключена.",
+                "הרישיון פעיל. המפתח מוצג לעיון בלבד.")
+            : UpdateUiText.T(
+                "The Microsoft GVLK is selected automatically. A KMS server is still required.",
+                "Ключ Microsoft GVLK выбирается автоматически. Сервер KMS всё равно необходим.",
+                "מפתח Microsoft GVLK נבחר אוטומטית. עדיין נדרש שרת KMS.");
+        if (selected is not null && !Identity.IsElevated() &&
+            !OfficeVolumeLicensing.IsActive(selected))
             outcome.Text = UpdateUiText.T(
                 "Changes require elevation. Read-only inventory is available without administrator rights.",
                 "Изменение ключа требует прав администратора. Просмотр доступен без повышения прав.",
@@ -227,16 +325,17 @@ internal sealed class OfficeVolumeLicenseForm : Form
     private void SetBusy(bool flag)
     {
         busy = flag;
-        productList.Enabled = refresh.Enabled = kms.Enabled = mak.Enabled = !flag;
+        productList.Enabled = refreshLink.Enabled = otherRecordsLink.Enabled =
+            kms.Enabled = mak.Enabled = !flag;
         UpdateControls();
         UseWaitCursor = flag;
     }
 
     private void SelectProduct()
     {
-        selected = inventory is not null && productList.SelectedIndex >= 0 &&
-            productList.SelectedIndex < inventory.Products.Count
-            ? inventory.Products[productList.SelectedIndex] : null;
+        selected = productList.SelectedIndex >= 0 &&
+            productList.SelectedIndex < displayedProducts.Count
+            ? displayedProducts[productList.SelectedIndex] : null;
         removePreview.Checked = false;
         if (selected is null)
         {
@@ -250,23 +349,80 @@ internal sealed class OfficeVolumeLicenseForm : Form
         var product = selected;
         bool isPreview = inventory is not null &&
             OfficeVolumeLicensing.ShouldRemoveOldKey(product, inventory);
-        selectedStatus.Text = product.Name + Environment.NewLine +
-            "License: " + product.Status +
-            (product.HasKey ? "  ·  *****-" + product.PartialKey : "  ·  no key") +
+        selectedStatus.Text = OfficeVolumeLicensing.FriendlyName(product.ProductId) +
+            "  ·  " + product.Status +
+            (product.HasKey ? "  ·  *****-" + product.PartialKey : "") +
             (product.IsPreview ? "  ·  Preview" : "") + Environment.NewLine +
-            (isPreview
-                ? UpdateUiText.T("Verified Office LTSC 2024 Preview key. It must be removed first for replacement.",
-                    "Подтверждён ключ Office LTSC 2024 Preview. Для замены сначала требуется его удалить.",
-                    "זוהה מפתח Preview 2024. יש להסיר אותו לפני החלפה.")
-                : HasSelectedSupportedProduct
-                    ? UpdateUiText.T("Supported Office LTSC 2024 Volume key",
-                        "Поддерживаемая корпоративная лицензия Office LTSC 2024",
-                        "רישיון Volume 2024 נתמך")
-                    : UpdateUiText.T(
-                        "Read-only: product/Preview cannot be verified as a supported Volume 2024 SKU.",
-                        "Только просмотр: продукт/Preview не подтверждён как поддерживаемый Volume 2024.",
-                        "קריאה בלבד: המוצר לא אומת."));
+            (OfficeVolumeLicensing.IsActive(product)
+                ? UpdateUiText.T(
+                    "Office is already activated. No license change is needed.",
+                    "Office уже активирован. Менять лицензию не требуется.",
+                    "Office כבר מופעל. אין צורך להחליף רישיון.")
+                : isPreview
+                    ? UpdateUiText.T(
+                        "Verified 2024 Preview key: separate approval required before replacement.",
+                        "Обнаружен Preview-ключ 2024: для замены потребуется отдельное подтверждение.",
+                        "זוהה מפתח Preview 2024; נדרש אישור נפרד.")
+                    : HasSelectedSupportedProduct
+                        ? UpdateUiText.T(
+                            "Installed 2024 Volume edition: review KMS or MAK activation.",
+                            "Установлена Volume-редакция 2024: можно проверить KMS/MAK-активацию.",
+                            "זוהתה מהדורת Volume 2024; ניתן לבדוק KMS או MAK.")
+                        : UpdateUiText.T(
+                            "Read-only: installed edition or license identity could not be verified.",
+                            "Только просмотр: не удалось подтвердить установленную редакцию или лицензию.",
+                            "מידע בלבד: לא ניתן לאמת רישיון או מהדורה."));
         UpdateControls();
+    }
+
+    private string DisplayName(OfficeVolumeProduct product)
+    {
+        var productName = OfficeVolumeLicensing.FriendlyName(product.ProductId);
+        if (productName == "Unrecognized Office edition") productName = product.Name;
+        var current = OfficeVolumeLicensing.IsActive(product)
+            ? UpdateUiText.T("Activated", "Активирован", "מופעל")
+            : product.Status == "Unlicensed"
+                ? UpdateUiText.T("Not activated", "Не активирован", "לא מופעל")
+                : product.Status;
+        return productName + " — " + current +
+            (product.HasKey ? " · *****-" + product.PartialKey : "") +
+            (product.IsPreview ? " · Preview" : "");
+    }
+
+    private void PopulateProductList(string? preferredId)
+    {
+        if (inventory is null) return;
+        var preferred = OfficeVolumeLicensing.PreferredProducts(inventory);
+        displayedProducts = showTechnicalRows
+            ? OfficeVolumeLicensing.AllProductRecords(inventory)
+            : preferred;
+        populatingProducts = true;
+        try
+        {
+            productList.BeginUpdate();
+            productList.Items.Clear();
+            foreach (var item in displayedProducts)
+                productList.Items.Add(DisplayName(item));
+            int ix = string.IsNullOrEmpty(preferredId) ? -1 :
+                displayedProducts.ToList().FindIndex(x =>
+                    x.ActivationId.Equals(preferredId, StringComparison.OrdinalIgnoreCase));
+            productList.SelectedIndex = ix >= 0 ? ix :
+                displayedProducts.Count > 0 ? 0 : -1;
+        }
+        finally
+        {
+            productList.EndUpdate();
+            populatingProducts = false;
+        }
+        int hidden = Math.Max(0, inventory.Products.Count - preferred.Count);
+        otherRecordsLink.Visible = hidden > 0;
+        otherRecordsLink.Text = showTechnicalRows
+            ? UpdateUiText.T("Hide extra WMI records", "Скрыть дополнительные записи WMI",
+                "הסתר רשומות WMI נוספות")
+            : UpdateUiText.T("Show other WMI records", "Показать остальные записи WMI",
+                "הצג רשומות WMI נוספות") + " (" + hidden + ")";
+        otherRecordsLink.AccessibleName = otherRecordsLink.Text;
+        SelectProduct();
     }
 
     private async Task RefreshAsync()
@@ -280,16 +436,9 @@ internal sealed class OfficeVolumeLicenseForm : Form
         {
             var result = await Task.Run(OfficeVolumeLicensing.Read);
             if (IsDisposed || Disposing) return;
+            var previousId = selected?.ActivationId;
             inventory = result;
-            productList.Items.Clear();
-            foreach (var item in result.Products)
-                productList.Items.Add(item.Name + " · " + item.Status +
-                    (item.HasKey ? " · *****-" + item.PartialKey : "") +
-                    (item.IsPreview ? " · Preview" : ""));
-            if (productList.Items.Count > 0)
-                productList.SelectedIndex = 0;
-            else
-                SelectProduct();
+            PopulateProductList(previousId);
             var unverified = result.ProductReleaseIds
                 .Where(OfficeVolumeLicensing.IsUnverified2026).ToArray();
             outcome.Text = result.Warning ??
@@ -298,10 +447,15 @@ internal sealed class OfficeVolumeLicenseForm : Form
                         "Unverified Office/Visio/Project 2026 Preview detected. Do not install 2024 keys.",
                         "Обнаружена непроверенная Office/Visio/Project 2026 Preview. Ключи 2024 не устанавливаются.",
                         "זוהתה גרסת Preview 2026 לא מאומתת. אין להתקין מפתחות 2024.")
-                    : UpdateUiText.T(
-                        "Inventory complete. Find KMS or enter your own authorized server.",
-                        "Инвентаризация завершена. Найдите KMS или укажите собственный сервер.",
-                        "סריקה הושלמה. מצא שרת KMS או הזן ידנית."));
+                    : result.Products.Any(OfficeVolumeLicensing.IsActive)
+                        ? UpdateUiText.T(
+                            "Activated Office license detected. Empty WMI templates are hidden by default.",
+                            "Обнаружена активированная лицензия Office. Пустые записи WMI скрыты.",
+                            "זוהה רישיון Office פעיל. רשומות WMI ריקות מוסתרות.")
+                        : UpdateUiText.T(
+                            "Office inventory complete. KMS discovery starts automatically.",
+                            "Инвентаризация Office завершена. Поиск KMS запускается автоматически.",
+                            "בדיקת Office הושלמה. גילוי KMS מתחיל אוטומטית."));
         }
         catch (Exception ex)
         {
@@ -312,6 +466,8 @@ internal sealed class OfficeVolumeLicenseForm : Form
         {
             if (!IsDisposed && !Disposing) SetBusy(false);
         }
+        if (!IsDisposed && !Disposing && selected is not null && kms.Checked)
+            await DiscoverAsync();
     }
 
     private async Task DiscoverAsync()
@@ -329,16 +485,24 @@ internal sealed class OfficeVolumeLicenseForm : Form
             if (endpoints.Count > 0)
             {
                 var match = endpoints[0];
-                host.Text = match.Host;
-                port.Value = match.Port;
-                kmsStatus.Text = "KMS: " + match.Host + ":" + match.Port +
-                    " (" + match.Source + ") — not yet contacted or verified.";
+                if (!manualKmsHost || string.IsNullOrWhiteSpace(host.Text))
+                {
+                    settingKmsHost = true;
+                    try
+                    {
+                        host.Text = match.Host;
+                        port.Value = match.Port;
+                    }
+                    finally { settingKmsHost = false; }
+                }
+                kmsStatus.Text = "KMS detected: " + match.Host + ":" + match.Port +
+                    " (" + match.Source + ") — discovery only, activation not verified.";
             }
             else
                 kmsStatus.Text = UpdateUiText.T(
-                    "KMS not found. Enter a permitted KMS host and port manually (default 1688).",
-                    "KMS не найден. Укажите разрешённый сервер и порт вручную (по умолчанию 1688).",
-                    "לא נמצא KMS. הזן שרת ויציאה ידנית.");
+                    "KMS not found automatically. Enter a permitted host and port (default 1688).",
+                    "KMS автоматически не найден. Введите разрешённый сервер и порт (по умолчанию 1688).",
+                    "לא נמצא KMS אוטומטית. הזן שרת מורשה ויציאה.");
         }
         catch (Exception ex)
         {
@@ -360,6 +524,14 @@ internal sealed class OfficeVolumeLicenseForm : Form
         bool isPreview = OfficeVolumeLicensing.ShouldRemoveOldKey(product, snapshot);
         if (isPreview && !removePreview.Checked) return;
         var isMak = mak.Checked;
+        if (!isMak && OfficeVolumeLicensing.SuggestGvlk(product, snapshot) is null)
+        {
+            outcome.Text = UpdateUiText.T(
+                "No verified Microsoft 2024 KMS key for this edition. No changes made.",
+                "Для этой редакции не найден подтверждённый ключ Microsoft KMS 2024. Изменения не выполнены.",
+                "לא נמצא מפתח KMS מאומת עבור מהדורה זו. לא בוצעו שינויים.");
+            return;
+        }
         var provided = isMak ? makKey.Text.Trim().ToUpperInvariant() : null;
         // Never send a malformed or empty key to the global Windows licensing
         // provider, especially before removing an existing Preview license.
@@ -444,9 +616,49 @@ internal sealed class OfficeVolumeLicenseForm : Form
     internal static bool SelfTest()
     {
         using var form = new OfficeVolumeLicenseForm();
-        return form.ReadOnlyUntilConfirmed && form.MakHidden &&
-            !form.HasSelectedSupportedProduct &&
+        var initial = form.ReadOnlyUntilConfirmed && form.MakHidden &&
+            form.SuggestedKmsKey is null && !form.HasSelectedSupportedProduct &&
             !form.apply.Enabled && !form.removePreview.Checked &&
-            UiTheme.VerifyButtons(form, 4);
+            form.refreshLink.TabStop && form.kmsLookupLink.TabStop;
+        var visio = new OfficeVolumeProduct(Guid.Empty.ToString("D"),
+            "Office24VisioPro2024VL_KMS_Client", "", "VisioPro2024Volume",
+            "ABCDE", "Unlicensed", false, true, null, null, null, null);
+        form.inventory = new OfficeVolumeInventory([visio], ["VisioPro2024Volume"], null)
+            { InstalledProductsVerified = true };
+        form.selected = visio;
+        form.kms.Checked = true;
+        form.UpdateControls();
+        bool automatic = form.SuggestedKmsKey == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
+            form.gvlkValue.Text == form.SuggestedKmsKey && form.gvlkValue.ReadOnly;
+        form.mak.Checked = true;
+        form.UpdateControls();
+        // When MAK is selected the recommendation remains in state but is not
+        // used; the input is an independent private key.
+        bool makMode = form.mak.Checked && !form.kms.Checked &&
+            form.gvlkValue.ReadOnly && form.makKey.Enabled;
+        form.selected = visio with { ProductId = "ProPlus2024Volume" };
+        form.UpdateControls();
+        bool wrongEdition = form.SuggestedKmsKey is null &&
+            form.gvlkValue.Text.Length == 0;
+        var activated = visio with
+        {
+            ActivationId = Guid.NewGuid().ToString("D"),
+            PartialKey = "YY89G",
+            Status = "Licensed"
+        };
+        form.inventory = new OfficeVolumeInventory([visio, activated],
+            ["VisioPro2024Volume"], null) { InstalledProductsVerified = true };
+        form.showTechnicalRows = false;
+        form.PopulateProductList(null);
+        var activeFirst = form.selected?.ActivationId == activated.ActivationId &&
+            form.displayedProducts.Count == 1 &&
+            !string.IsNullOrWhiteSpace(form.otherRecordsLink.Text) && !form.apply.Enabled &&
+            form.selectedStatus.Text.Contains("Licensed", StringComparison.Ordinal);
+        form.showTechnicalRows = true;
+        form.PopulateProductList(null);
+        var allRecords = form.displayedProducts.Count == 2 &&
+            form.selected?.ActivationId == activated.ActivationId;
+        return initial && automatic && makMode && wrongEdition &&
+            activeFirst && allRecords && UiTheme.VerifyButtons(form, 2);
     }
 }
