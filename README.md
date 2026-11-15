@@ -1,3 +1,13 @@
+## Preview v1.0.1-preview.4 — user scope and diagnostics repair
+
+1. The scope picker now shows `Current user — DOMAIN\username` (the actual desktop owner, not an unrelated elevated administrator) and `All users on this PC`. The latter means local **and domain** accounts that already have a Windows profile on this PC.
+2. Current-user WAM Repair and Full identity reset work as that user **without administrator rights**. Full reset still asks confirmation because it removes that user's Office/WAM sign-in caches.
+3. **All users** is selectable without elevation, but executing it shows a scope/UAC warning. Only after operator consent does Windows open an elevated instance with All users selected. Nothing is repaired or reset until the operator clicks the action and confirms again.
+4. The elevated process uses per-user scheduled tasks to run actual BrokerPlugin registration/identity-reset in each user's Windows security context, rather than operating under the administrator's SID. Active sessions may be interrupted; offline profiles execute their queued job at their next logon.
+5. Advanced displays the target Windows account (or all-user scope), likely sign-out impact, and whether administrator rights are needed. Labels are available in English, Russian and Hebrew.
+6. Diagnostics & Reports adds `Check receiver` (read-only GET, no token/report sent) to verify that the **live** shared Google Apps Script deployment advertises gateway schema 3. It distinguishes a missing `GITHUB_M365_ISSUES_TOKEN` script property from old gateway code. Reports stay pending if GitHub delivery is unconfirmed.
+7. Stable `v1.0.0` remains unchanged. Preview requires field QA of UAC, per-user scheduled tasks, actual WAM repair, public GitHub Issue creation, and ARM64 runtime.
+
 ## Preview 1.0.1-preview.3
 
 1. **Update** replaces "Download & verify": one click downloads the matching x64/ARM64 release with live progress, validates SHA-256/ZIP/architecture, hands off to a copy of the app, waits for the original process to exit, installs with a .bak rollback checkpoint, runs a GUI health check, and restarts.

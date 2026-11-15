@@ -32,17 +32,21 @@ internal static class Program
                     && UpdateUiText.SelfTest()
                     && M365DiagnosticPayload.SelfTest()
                     && UpdateHandoff.SelfTest()
+                    && UserScopeSupport.SelfTest()
                     && UiTheme.VerifyButtons(form, 6)
                     && UiTheme.VerifyButtons(updater, 5)
                     && UiTheme.VerifyButtons(reports, 5)
                     ? 0 : 2;
             }
-            if (args.Length > 0) return 2;
+            // Post-UAC launch selects All users only. It never starts repair
+            // or full reset automatically; the operator must confirm again.
+            bool adminAll = args.Length == 1 && args[0] == "--all-users";
+            if (args.Length > 0 && !adminAll) return 2;
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             UpdateHandoff.CleanupOldHelpers();
-            Application.Run(new MainForm());
+            Application.Run(new MainForm(preferAllUsers: adminAll && Identity.IsElevated()));
             return 0;
         }
         catch (Exception ex)

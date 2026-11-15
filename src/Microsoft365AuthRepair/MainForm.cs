@@ -7,6 +7,7 @@ namespace Microsoft365AuthRepair;
 internal sealed class MainForm : Form
 {
     private readonly bool elevated = Identity.IsElevated();
+    private readonly DesktopUser desktopUser = UserScopeSupport.Resolve();
     private readonly Label title = UiTheme.Caption(string.Empty, true);
     private readonly Label subtitle = UiTheme.Caption(string.Empty);
     private readonly Label account = UiTheme.Caption(string.Empty);
@@ -15,7 +16,7 @@ internal sealed class MainForm : Form
     private readonly Label status = UiTheme.Caption(string.Empty);
     private readonly PictureBox statusGlyph = UiIcons.CreateStatus();
     private readonly Label advancedExplanation = UiTheme.Caption(string.Empty);
-    private readonly ComboBox scope = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320, Margin = new Padding(0, 4, 0, 8) };
+    private readonly ComboBox scope = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 420, Margin = new Padding(0, 4, 0, 8) };
     private readonly ComboBox language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 115, Margin = new Padding(10, 2, 0, 0) };
     private readonly Button repair = UiTheme.CreateActionButton(string.Empty, primary: true);
     private readonly Button reset = UiTheme.CreateActionButton(string.Empty, destructive: true);
@@ -35,7 +36,7 @@ internal sealed class MainForm : Form
     private bool busy;
     private UniversalUpdater.UpdateRelease? availableUpdate;
 
-    internal MainForm()
+    internal MainForm(bool preferAllUsers = false)
     {
         Text = $"Microsoft 365 Auth Repair v{Repair.Version}";
         StartPosition = FormStartPosition.CenterScreen;
@@ -79,17 +80,11 @@ internal sealed class MainForm : Form
         var target = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
         target.Controls.Add(scopeLabel);
         target.Controls.Add(scope);
-        if (elevated)
-        {
-            scope.Items.AddRange([UiStrings.T("current"), UiStrings.T("all")]);
-            scope.SelectedIndex = 0;
-        }
-        else
-        {
-            scope.Items.Add(UiStrings.T("current"));
-            scope.SelectedIndex = 0;
-            scope.Enabled = false;
-        }
+        // Standard users may SELECT All users. Only executing that scope
+        // requires a consented UAC restart; current-user operations never do.
+        scope.Items.AddRange([CurrentUserOption(), UiStrings.T("all")]);
+        scope.SelectedIndex = preferAllUsers && elevated ? 1 : 0;
+        scope.Enabled = true;
         target.Controls.Add(privilege);
         root.Controls.Add(target, 0, 3);
 
@@ -104,9 +99,17 @@ internal sealed class MainForm : Form
 
         var advanced = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 2 };
         advanced.Controls.Add(showAdvanced, 0, 0);
-        var advancedInner = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true, AutoSize = true };
-        advancedInner.Controls.Add(reset);
-        advancedInner.Controls.Add(advancedExplanation);
+        var advancedInner = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 2
+        };
+        advancedInner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        advancedInner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        advancedInner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        advancedInner.Controls.Add(reset, 0, 0);
+        advancedExplanation.MaximumSize = new Size(725, 0);
+        advancedExplanation.UseMnemonic = false;
+        advancedInner.Controls.Add(advancedExplanation, 0, 1);
         advancedPanel.Controls.Add(advancedInner);
         advanced.Controls.Add(advancedPanel, 0, 1);
         root.Controls.Add(advanced, 0, 5);
@@ -137,8 +140,14 @@ internal sealed class MainForm : Form
         hints.SetToolTip(diagnostics, "Review a sanitized diagnostic report before saving it locally.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
+        hints.SetToolTip(scope, "Current user never requires UAC. All users on this PC requires administrator consent and uses per-user tasks.");
 
-        showAdvanced.CheckedChanged += (_, _) => advancedPanel.Visible = showAdvanced.Checked;
+        showAdvanced.CheckedChanged += (_, _) =>
+        {
+            advancedPanel.Visible = showAdvanced.Checked;
+            UpdateScopeExplanation();
+        };
+        scope.SelectedIndexChanged += (_, _) => UpdateScopeExplanation();
         repair.Click += async (_, _) => await RunRepairAsync(false);
         reset.Click += async (_, _) => await RunRepairAsync(true);
         diagnose.Click += async (_, _) => await RunDiagnoseAsync();
@@ -172,14 +181,17 @@ internal sealed class MainForm : Form
     {
         title.Text = $"{UiStrings.T("title")}  v{Repair.Version}";
         subtitle.Text = UiStrings.T("subtitle");
-        account.Text = $"{Environment.UserDomainName}\\{Environment.UserName} | Session {Identity.SessionId()} | {(elevated ? "Administrator" : "Standard user")}";
-        privilege.Text = UiStrings.T(elevated ? "admin" : "standard");
+        account.Text = UpdateUiText.T(
+            $"Desktop user: {desktopUser.Name}  |  Session {Identity.SessionId()}  |  {(elevated ? "Administrator" : "Standard")}",
+            $"Пользователь сеанса: {desktopUser.Name}  |  Сеанс {Identity.SessionId()}  |  {(elevated ? "Администратор" : "Обычный доступ")}",
+            $"משתמש פעיל: {desktopUser.Name}  |  הפעלה {Identity.SessionId()}  |  {(elevated ? "מנהל" : "משתמש רגיל")}");
         scopeLabel.Text = UiStrings.T("scope") + ": ";
         var previous = scope.SelectedIndex < 0 ? 0 : scope.SelectedIndex;
         scope.Items.Clear();
-        scope.Items.Add(UiStrings.T("current"));
-        if (elevated) scope.Items.Add(UiStrings.T("all"));
+        scope.Items.Add(CurrentUserOption());
+        scope.Items.Add(UiStrings.T("all"));
         scope.SelectedIndex = Math.Min(previous, scope.Items.Count - 1);
+        showAdvanced.Text = UpdateUiText.T("Advanced", "Дополнительно", "מתקדם");
         repair.Text = UiStrings.T("repair");
         reset.Text = UiStrings.T("full");
         diagnose.Text = UiStrings.T("diagnose");
@@ -199,7 +211,7 @@ internal sealed class MainForm : Form
         logs.Text = UiStrings.T("logs");
         foreach (var button in new[] { repair, reset, diagnose, diagnostics, updates, logs })
             button.AccessibleName = button.Text;
-        advancedExplanation.Text = UiStrings.T("advanced");
+        UpdateScopeExplanation();
         if (string.IsNullOrWhiteSpace(status.Text)) ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
@@ -215,20 +227,112 @@ internal sealed class MainForm : Form
     {
         busy = isBusy;
         repair.Enabled = reset.Enabled = diagnose.Enabled = diagnostics.Enabled = updates.Enabled = !isBusy;
-        scope.Enabled = elevated && !isBusy;
+        scope.Enabled = !isBusy;
         progress.Visible = isBusy;
+    }
+
+    private string CurrentUserOption() =>
+        $"{UiStrings.T("current")} — {desktopUser.Name}";
+
+    private void UpdateScopeExplanation()
+    {
+        if (scope.SelectedIndex < 0) return;
+        bool everyone = scope.SelectedIndex == 1;
+        var admin = everyone
+            ? elevated
+                ? UpdateUiText.T("Administrator enabled; each user runs under their own account.",
+                    "Права администратора есть; задача выполняется от имени каждого пользователя.",
+                    "הרשאת מנהל פעילה; הפעולה מתבצעת בחשבון של כל משתמש.")
+                : UpdateUiText.T("Administrator required (UAC when you start). Nothing runs after UAC until you confirm again.",
+                    "Нужен администратор (UAC при запуске). После UAC действие не начнётся без повторного подтверждения.",
+                    "דרושה הרשאת מנהל (UAC). לאחר האישור הפעולה לא תתחיל ללא לחיצה נוספת.")
+            : elevated
+                ? UpdateUiText.T("Elevated window; actions will be scheduled as the desktop user (never as a different administrator).",
+                    "Окно администратора; действие выполняется под пользователем сеанса, а не чужой учётной записью администратора.",
+                    "חלון מנהל: הפעולה תרוץ בחשבון משתמש שולחן העבודה.")
+                : UpdateUiText.T("No administrator rights required. Only this user's sign-in is affected.",
+                    "Права администратора не нужны. Затрагивается только авторизация этого пользователя.",
+                    "אין צורך בהרשאת מנהל. רק התחברות המשתמש הזה תושפע.");
+
+        var target = everyone
+            ? UpdateUiText.T("All users with profiles on this PC (local and domain users)",
+                "Все пользователи с профилями на этом ПК (локальные и доменные)",
+                "כל המשתמשים עם פרופיל במחשב זה (מקומיים ודומיין)")
+            : desktopUser.Name;
+        privilege.Text = admin;
+        advancedExplanation.Text = UpdateUiText.T(
+            $"Target: {target}. Full reset clears Office/WAM sign-in caches; affected users may need to sign in again.",
+            $"Для кого: {target}. Полный сброс очистит кеши Office/WAM; потребуется повторный вход.",
+            $"יעד: {target}. איפוס מלא מוחק מטמון כניסה של Office/WAM; ייתכן שתידרש התחברות מחדש.");
+        advancedExplanation.AccessibleDescription = admin;
+        reset.AccessibleDescription = $"Full identity reset, target: {target}. {admin}";
+        repair.AccessibleDescription = $"Re-register WAM, target: {target}. {admin}";
     }
 
     private async Task RunRepairAsync(bool full)
     {
         if (busy) return;
-        var everyone = elevated && scope.SelectedIndex == 1;
-        if (full)
+        var everyone = scope.SelectedIndex == 1;
+
+        // A normal user never needs UAC for their own WAM/Office caches.
+        // Elevation is ONLY offered when they explicitly choose all profiles.
+        if (UserScopeSupport.RequiresUac(everyone, elevated))
         {
-            var warning = everyone ? UiStrings.T("confirmAll") : UiStrings.T("confirmCurrent");
-            if (MessageBox.Show(this, warning, UiStrings.T("confirmTitle"), MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            var prompt = UpdateUiText.T(
+                "All users on this PC requires administrator rights. A UAC window will open. The elevated application will select All users, but will NOT start any repair until you confirm the action again. Continue?",
+                "Для всех пользователей этого ПК нужны права администратора. Откроется UAC. Новое окно выберет «Все пользователи», но ничего не запустит до повторного подтверждения. Продолжить?",
+                "לפעולה על כל המשתמשים נדרשת הרשאת מנהל. ייפתח UAC, אך לא תתחיל פעולה עד לאישור חוזר.");
+            if (MessageBox.Show(this, prompt,
+                    UpdateUiText.T("Administrator required", "Требуются права администратора", "דרושה הרשאת מנהל"),
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                return;
+            if (UserScopeSupport.TryElevateForAll(out var reason))
+            {
+                Close(); // Only after Windows confirms the new process started.
+            }
+            else if (reason == "UAC_CANCELLED")
+            {
+                ShowStatus(UpdateUiText.T("UAC cancelled. No changes made.",
+                    "UAC отменён. Изменений нет.", "ההרשאה בוטלה. לא בוצעו שינויים."), UiGlyph.Info);
+            }
+            else
+            {
+                ShowStatus(UpdateUiText.T("Unable to start the administrator window: " + reason,
+                    "Не удалось открыть окно администратора: " + reason,
+                    "לא ניתן להפעיל חלון מנהל: " + reason), UiGlyph.Error);
+            }
+            return;
         }
+
+        if (!everyone && !UserScopeSupport.CanRunCurrent(elevated, desktopUser))
+        {
+            ShowStatus(UpdateUiText.T(
+                "Desktop owner cannot be identified. Run as that user, or choose All users with administrator approval.",
+                "Не удалось определить пользователя сеанса. Запустите от его имени либо выберите «Все пользователи» с правами администратора.",
+                "לא ניתן לזהות את המשתמש הפעיל. הפעל בחשבונו או בחר את כל המשתמשים עם הרשאת מנהל."), UiGlyph.Error);
+            return;
+        }
+
+        if (everyone || full)
+        {
+            var target = everyone ? UiStrings.T("confirmAll") : UiStrings.T("confirmCurrent");
+            var prompt = everyone && !full
+                ? UpdateUiText.T(
+                    "Run WAM re-registration for ALL existing user profiles on this PC? Online users may have Office apps interrupted; offline users will run at their next sign-in.",
+                    "Запустить восстановление WAM у ВСЕХ пользователей с профилями на этом ПК? У активных пользователей могут закрыться приложения Office; у остальных — при следующем входе.",
+                    "להריץ תיקון WAM לכל המשתמשים? ייתכן שיישומי Office ייסגרו.")
+                : target;
+            if (!everyone)
+                prompt += Environment.NewLine + UpdateUiText.T(
+                    "Selected desktop user: ", "Выбранный пользователь: ", "המשתמש שנבחר: ") + desktopUser.Name;
+            var caption = !full && everyone
+                ? UpdateUiText.T("Confirm repair for all users", "Подтвердите восстановление всех пользователей", "אישור תיקון לכל המשתמשים")
+                : UiStrings.T("confirmTitle");
+            if (MessageBox.Show(this, prompt, caption, MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                return;
+        }
+
         SetBusy(true);
         ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
@@ -242,7 +346,9 @@ internal sealed class MainForm : Form
             detail.AppendText(result + Environment.NewLine);
             var failed = result.Contains("FAILED", StringComparison.Ordinal);
             ShowStatus(failed ? UiStrings.T("failed") : elevated
-                ? "Scheduled. Per-user completion must be checked in each user log."
+                ? UpdateUiText.T("Per-user tasks queued; check user logs for completion.",
+                    "Задачи пользователей назначены. Проверяйте результат в их журналах.",
+                    "המשימות תוזמנו. בדוק את יומני המשתמשים.")
                 : UiStrings.T("done"), failed ? UiGlyph.Error : UiGlyph.Success);
         }
         catch (Exception ex)

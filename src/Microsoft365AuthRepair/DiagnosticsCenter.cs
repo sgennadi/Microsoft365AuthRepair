@@ -15,7 +15,13 @@ internal sealed class DiagnosticsCenter : Form
         ScrollBars = ScrollBars.Vertical, WordWrap = false,
         Font = new Font("Consolas", 9f), BackColor = SystemColors.Window
     };
-    private readonly Label status = UiTheme.Caption(string.Empty);
+    private readonly TextBox status = new()
+    {
+        Multiline = true, ReadOnly = true, BorderStyle = BorderStyle.None,
+        Dock = DockStyle.Fill, Height = 70, MinimumSize = new Size(0, 58),
+        BackColor = SystemColors.Control, ForeColor = SystemColors.ControlText,
+        ScrollBars = ScrollBars.Vertical, TabStop = true
+    };
     private readonly CheckBox consent = new()
     {
         AutoSize = true, Text = "I approve sending these reviewed fields to a PUBLIC GitHub Issue.",
@@ -24,6 +30,7 @@ internal sealed class DiagnosticsCenter : Form
     private readonly Button generate = UiTheme.CreateActionButton("Generate report", true);
     private readonly Button load = UiTheme.CreateActionButton("Load pending JSON");
     private readonly Button open = UiTheme.CreateActionButton("Open local queue");
+    private readonly Button checkServer = UiTheme.CreateActionButton("Check receiver");
     private readonly Button send = UiTheme.CreateActionButton("Send anonymously", true);
     private readonly Button close = UiTheme.CreateActionButton("Close");
 
@@ -37,8 +44,8 @@ internal sealed class DiagnosticsCenter : Form
         Text = $"Microsoft 365 Auth Repair v{Repair.Version} - Diagnostics & Reports";
         Font = UiTheme.BodyFont();
         AutoScaleMode = AutoScaleMode.Dpi;
-        Size = new Size(770, 600);
-        MinimumSize = new Size(620, 480);
+        Size = new Size(900, 660);
+        MinimumSize = new Size(700, 510);
         StartPosition = FormStartPosition.CenterParent;
 
         var root = new TableLayoutPanel
@@ -65,6 +72,7 @@ internal sealed class DiagnosticsCenter : Form
         actions.Controls.Add(generate);
         actions.Controls.Add(load);
         actions.Controls.Add(open);
+        actions.Controls.Add(checkServer);
         root.Controls.Add(actions, 0, 2);
 
         root.Controls.Add(consent, 0, 3);
@@ -84,6 +92,7 @@ internal sealed class DiagnosticsCenter : Form
         UiIcons.Assign(generate, UiGlyph.Reports, primary: true);
         UiIcons.Assign(load, UiGlyph.Folder);
         UiIcons.Assign(open, UiGlyph.Logs);
+        UiIcons.Assign(checkServer, UiGlyph.Search);
         UiIcons.Assign(send, UiGlyph.Link, primary: true);
         UiIcons.Assign(close, UiGlyph.Reset);
         UiIcons.TrackDpi(this);
@@ -91,6 +100,7 @@ internal sealed class DiagnosticsCenter : Form
         consent.CheckedChanged += (_, _) => UpdateSendState();
         generate.Click += (_, _) => Generate();
         load.Click += (_, _) => LoadPending();
+        checkServer.Click += async (_, _) => await CheckReceiverAsync();
         open.Click += (_, _) =>
         {
             var folder = UniversalDiagnosticsEmbedded.QueueDirectory(Project);
@@ -111,7 +121,7 @@ internal sealed class DiagnosticsCenter : Form
     private void UpdateSendState()
     {
         send.Enabled = !busy && consent.Checked && prepared is not null;
-        generate.Enabled = load.Enabled = open.Enabled = !busy;
+        generate.Enabled = load.Enabled = open.Enabled = checkServer.Enabled = !busy;
         close.Enabled = !busy;
     }
 
@@ -123,6 +133,45 @@ internal sealed class DiagnosticsCenter : Form
         consent.Checked = false;
         status.Text = "Ready for review. Nothing has been sent.";
         UpdateSendState();
+    }
+
+    private async Task CheckReceiverAsync()
+    {
+        if (busy) return;
+        busy = true;
+        UpdateSendState();
+        status.Text = "Checking the currently deployed receiver (read-only; no report or token sent)...";
+        sending = new CancellationTokenSource(TimeSpan.FromSeconds(18));
+        try
+        {
+            using var gateway = new GoogleDiagnosticsGateway();
+            var result = await gateway.CheckReceiverAsync(sending.Token);
+            status.Text = result.Code switch
+            {
+                "GATEWAY_V3_ONLINE" =>
+                    "Receiver schema v3 is active. This check cannot verify the GitHub token; only a consented report submission can confirm delivery. The report remains local.",
+                "DEPLOY_GATEWAY_V3" =>
+                    "Old receiver deployment. Update the shared Code.gs and deploy a NEW VERSION of the EXISTING Apps Script web app. Retain the same /exec URL.",
+                "GATEWAY_SCHEMA_UNAVAILABLE" =>
+                    "The live receiver does not advertise schema v3. Deploy the updated shared Code.gs.",
+                _ => "Receiver unavailable (" + result.Code + "). No report was sent."
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            status.Text = "Receiver check timed out. No report was sent.";
+        }
+        catch (Exception ex)
+        {
+            status.Text = "Receiver check failed (" + ex.GetType().Name + "). No report was sent.";
+        }
+        finally
+        {
+            sending.Dispose();
+            sending = null;
+            busy = false;
+            UpdateSendState();
+        }
     }
 
     private void Generate()
@@ -214,9 +263,29 @@ internal sealed class DiagnosticsCenter : Form
         {
             status.Text = "Send cancelled or timed out; check GitHub Issues before retrying.";
         }
+        catch (InvalidOperationException ex) when
+            (ex.Message.Contains("GATEWAY_not_configured", StringComparison.Ordinal))
+        {
+            status.Text = "NOT DELIVERED. Google Apps Script is missing GITHUB_M365_ISSUES_TOKEN. " +
+                "Open the EXISTING Apps Script > Project Settings > Script Properties; " +
+                "add that key with a fine-grained GitHub PAT granting Issues read/write to " +
+                "sgennadi/Microsoft365AuthRepair. Keep the Termsrv token unchanged. " +
+                "Save the property in the SAME Google Apps Script project behind the /exec URL. " +
+                "If Check receiver already reports v3, you do not need to redeploy just to change script properties. " +
+                "Your report remains in the local queue. Never put the token in this EXE or chat.";
+        }
+        catch (InvalidOperationException ex) when
+            (ex.Message.Contains("GATEWAY_invalid_evidence", StringComparison.Ordinal))
+        {
+            status.Text = "NOT DELIVERED. The receiver did not recognize the Microsoft 365 schema. " +
+                "Redeploy the updated common Code.gs as Web App > New version. " +
+                "Do not change the existing Termsrv token. Your report remains pending.";
+        }
         catch (Exception ex)
         {
-            status.Text = "Not confirmed: " + ex.Message;
+            status.Text = "NOT DELIVERED (" + ex.GetType().Name +
+                "). Check the receiver and GitHub Issues before trying again. " +
+                "The report remains in the local queue.";
         }
         finally
         {

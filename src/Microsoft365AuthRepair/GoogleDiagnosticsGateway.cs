@@ -223,6 +223,64 @@ internal sealed class GoogleDiagnosticsGateway : IDisposable
         url.AbsolutePath == "/macros/echo" && url.Fragment.Length == 0 &&
         url.AbsoluteUri.Length < 4096;
 
+    // Read-only live receiver check; sends no diagnostic data or credentials.
+    // A ready GET proves the deployed Code.gs schema, NOT that its token works.
+    internal async Task<(bool Ready, string Code)> CheckReceiverAsync(CancellationToken ct)
+    {
+        if (!ApprovedEndpoint(Endpoint))
+            return (false, "UNTRUSTED_ENDPOINT");
+        using var request = new HttpRequestMessage(HttpMethod.Get, Endpoint);
+        using var first = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        HttpResponseMessage? redirected = null;
+        try
+        {
+            HttpResponseMessage actual = first;
+            if (first.StatusCode is HttpStatusCode.Found or HttpStatusCode.SeeOther)
+            {
+                var location = first.Headers.Location;
+                if (!ValidGoogleReceipt(location))
+                    return (false, "UNTRUSTED_REDIRECT");
+                using var next = new HttpRequestMessage(HttpMethod.Get, location);
+                redirected = await http.SendAsync(next, HttpCompletionOption.ResponseHeadersRead, ct);
+                if (redirected.RequestMessage?.RequestUri != location)
+                    return (false, "UNEXPECTED_ENDPOINT");
+                actual = redirected;
+            }
+            if (actual.StatusCode != HttpStatusCode.OK)
+                return (false, "HTTP_" + (int)actual.StatusCode);
+            if (actual.Content.Headers.ContentLength is > 8192)
+                return (false, "INVALID_RESPONSE");
+            await using var stream = await actual.Content.ReadAsStreamAsync(ct);
+            using var buffer = new MemoryStream();
+            byte[] bytes = new byte[2048];
+            int count;
+            while ((count = await stream.ReadAsync(bytes, ct)) > 0)
+            {
+                if (buffer.Length + count > 8192)
+                    return (false, "INVALID_RESPONSE");
+                buffer.Write(bytes, 0, count);
+            }
+            using var doc = JsonDocument.Parse(buffer.ToArray());
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("gateway_schema_version", out var schema) ||
+                schema.ValueKind != JsonValueKind.Number ||
+                !schema.TryGetInt32(out var version))
+                return (false, "GATEWAY_SCHEMA_UNAVAILABLE");
+            if (version < 3 ||
+                !root.TryGetProperty("capabilities", out var capabilities) ||
+                capabilities.ValueKind != JsonValueKind.Array ||
+                !capabilities.EnumerateArray().Any(x => x.ValueKind == JsonValueKind.String &&
+                    x.GetString() == "microsoft365-auth-repair/v1"))
+                return (false, "DEPLOY_GATEWAY_V3");
+            return (true, "GATEWAY_V3_ONLINE");
+        }
+        catch (JsonException)
+        {
+            return (false, "INVALID_RESPONSE");
+        }
+        finally { redirected?.Dispose(); }
+    }
+
     internal async Task<Uri> SendAsync(PreparedDiagnostic payload, CancellationToken ct)
     {
         if (!ApprovedEndpoint(Endpoint))
@@ -270,8 +328,13 @@ internal sealed class GoogleDiagnosticsGateway : IDisposable
         {
             var reason = result.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String
                 ? e.GetString() : "not_confirmed";
-            throw new InvalidOperationException("Google gateway did not confirm GitHub delivery: " +
-                reason + ". Check deployment version, separate M365 token and GitHub Issues before retry.");
+            reason = reason switch
+            {
+                "not_configured" or "invalid_evidence" or "busy" or "github_not_confirmed" or
+                "github_receipt_invalid" or "rate_limited" or "not_confirmed" => reason,
+                _ => "server_rejected"
+            };
+            throw new InvalidOperationException("GATEWAY_" + reason);
         }
         if (!result.TryGetProperty("issue_url", out var issue) ||
             issue.ValueKind != JsonValueKind.String || !ApprovedIssueUrl(issue.GetString() ?? ""))

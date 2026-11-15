@@ -1,3 +1,11 @@
+## 1.0.1-preview.4 — 2026-11-15 — Preview
+
+1. Show the actual current desktop username beside the scope selector.
+2. Rename All local Windows profiles to All users on this PC (including locally cached domain profiles).
+3. Keep current-user repair/reset non-elevated. Request UAC only on a confirmed all-users operation; never execute immediately after elevation.
+4. Clearly identify scope, rights and reauthentication impact in Advanced.
+5. Add a read-only Check receiver and actionable reporting errors for missing Google Apps Script configuration; never mark an unconfirmed report as delivered.
+
 ## 1.0.1-preview.3 — 2026-11-15 — Preview
 
 1. Replaced Download & verify with a one-click Update and same-user transactional updater helper.
