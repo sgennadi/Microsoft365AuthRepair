@@ -454,6 +454,155 @@ internal sealed class OfficeVolumeLicenseForm : Form
         SelectProduct();
     }
 
+    private void UpdatePreviewPanel()
+    {
+        selectedPreviewForAction = null;
+        canRemoveLegacyPreview = false;
+        if (inventory is null)
+        {
+            previewInfo.Text = "";
+            previewAction.Text = "";
+            previewAction.Visible = previewPanel.Visible = false;
+            return;
+        }
+
+        // Preview WMI entries must remain visible in the summary even if the
+        // main selector correctly prioritizes an activated production Office.
+        var found = inventory.Products.Where(x => x.IsPreview).ToArray();
+        if (found.Length == 0)
+        {
+            previewInfo.Text = "";
+            previewAction.Text = "";
+            previewAction.Visible = previewPanel.Visible = false;
+            return;
+        }
+
+        previewPanel.Visible = true;
+        var keyed = OfficeVolumeLicensing.PreviewKeyRecords(inventory);
+        if (keyed.Count == 0)
+        {
+            previewInfo.Text = UpdateUiText.T(
+                $"Preview licensing entries detected: {found.Length}. No Preview key is installed in those entries; nothing needs removing.",
+                $"Найдено записей лицензирования Preview: {found.Length}. В них нет установленного Preview-ключа — удалять нечего.",
+                $"נמצאו {found.Length} רשומות Preview ללא מפתח מותקן; אין מה להסיר.");
+        }
+        else
+        {
+            previewInfo.Text = UpdateUiText.T(
+                $"Preview entries: {found.Length}, with a partial key: {keyed.Count}. Only verified 2024 keys can be removed.",
+                $"Записей Preview: {found.Length}, с установленным ключом: {keyed.Count}. Удалять можно только подтверждённые ключи 2024.",
+                $"רשומות Preview: {found.Length}; עם מפתח: {keyed.Count}. ניתן להסיר רק מפתחות 2024 מאומתים.");
+            var obsolete = keyed.FirstOrDefault(x =>
+                OfficeVolumeLicensing.CanRemoveLegacyPreview(x, inventory));
+            if (obsolete is not null)
+            {
+                selectedPreviewForAction = obsolete;
+                canRemoveLegacyPreview = true;
+                previewAction.Text = UpdateUiText.T(
+                    "Review removal of verified obsolete Preview key…",
+                    "Проверить удаление подтверждённого старого Preview-ключа…",
+                    "בדוק הסרת מפתח Preview ישן ומאומת…");
+                previewInfo.Text += Environment.NewLine + UpdateUiText.T(
+                    "A separate active production Office license was verified.",
+                    "Отдельная действующая лицензия Office подтверждена.",
+                    "זוהה רישיון Office פעיל ונפרד.");
+            }
+            else
+            {
+                selectedPreviewForAction = keyed.FirstOrDefault(x =>
+                    OfficeVolumeLicensing.CanApply(x, inventory));
+                if (selectedPreviewForAction is not null)
+                {
+                    previewAction.Text = UpdateUiText.T(
+                        "Review Preview-to-KMS/MAK replacement…",
+                        "Проверить замену Preview на KMS/MAK…",
+                        "בדוק החלפת Preview ב-KMS/MAK…");
+                    previewInfo.Text += Environment.NewLine + UpdateUiText.T(
+                        "No separate active production license. Replacement requires a new key and two confirmations.",
+                        "Нет отдельной действующей лицензии. Для замены нужны новый ключ и два подтверждения.",
+                        "אין רישיון פעיל נפרד; להחלפה נדרשים מפתח ואישורים.");
+                }
+                else
+                {
+                    previewInfo.Text += Environment.NewLine + UpdateUiText.T(
+                        "No safe automatic action for these Preview keys. Ask IT to verify the edition and license.",
+                        "Для этих Preview-ключей нет безопасного автоматического действия. Требуется проверка IT.",
+                        "אין פעולה אוטומטית בטוחה; נדרשת בדיקת IT.");
+                    previewAction.Text = "";
+                }
+            }
+        }
+        previewAction.Visible = selectedPreviewForAction is not null;
+        previewAction.AccessibleName = previewAction.Text;
+    }
+
+    private async Task HandlePreviewActionAsync()
+    {
+        var preview = selectedPreviewForAction;
+        var original = inventory;
+        if (busy || preview is null || original is null) return;
+
+        if (!canRemoveLegacyPreview)
+        {
+            // Select the exact Preview record for the normal explicit
+            // Preview-to-Volume workflow. This selection does NOT remove it.
+            showTechnicalRows = true;
+            PopulateProductList(preview.ActivationId);
+            outcome.Text = UpdateUiText.T(
+                "Review the selected Preview license, choose KMS/MAK, approve old-key removal, then confirm activation. No changes made.",
+                "Проверьте выбранный Preview-ключ, выберите KMS/MAK, разрешите удаление и подтвердите активацию. Пока ничего не изменено.",
+                "בדוק רישיון Preview, בחר KMS/MAK ואשר את הפעולה. לא בוצע שינוי.");
+            return;
+        }
+
+        if (!Identity.IsElevated())
+        {
+            outcome.Text = UpdateUiText.T(
+                "To remove an obsolete Preview key, run the app as administrator. Nothing changed.",
+                "Для удаления старого Preview-ключа запустите программу от администратора. Изменений нет.",
+                "להסרת Preview נדרשות הרשאות מנהל. לא בוצע שינוי.");
+            return;
+        }
+        var warning = UpdateUiText.T(
+            $"Remove ONLY old Preview key *****-{preview.PartialKey} from {OfficeVolumeLicensing.FriendlyName(preview.ProductId)}? " +
+            "A separate activated non-Preview license exists. The program will recheck both licenses before deletion. This cannot be undone using only the last five characters. Continue?",
+            $"Удалить ТОЛЬКО старый Preview-ключ *****-{preview.PartialKey} из {OfficeVolumeLicensing.FriendlyName(preview.ProductId)}? " +
+            "Найдена отдельная действующая лицензия без Preview. Перед удалением обе лицензии будут проверены повторно. По последним пяти символам восстановить ключ нельзя. Продолжить?",
+            $"להסיר רק מפתח Preview *****-{preview.PartialKey}? " +
+            "קיים רישיון פעיל נפרד. שתי הרשומות ייבדקו שוב לפני ההסרה. להמשיך?");
+        if (MessageBox.Show(this, warning,
+                UpdateUiText.T("Confirm old Preview key cleanup",
+                    "Подтвердите удаление старого Preview-ключа",
+                    "אישור הסרת מפתח Preview"),
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
+
+        SetBusy(true);
+        try
+        {
+            var result = await Task.Run(() =>
+                OfficeVolumeLicensing.RemoveLegacyPreviewKey(preview, original));
+            if (IsDisposed || Disposing) return;
+            outcome.Text = result.Stage + ": " + result.Status;
+            // Refresh only via the read-only inventory path, even after an
+            // unsuccessful delete; never retry a partial operation silently.
+            SetBusy(false);
+            await RefreshAsync();
+            if (!IsDisposed && !Disposing)
+                outcome.Text = result.Stage + ": " + result.Status;
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                outcome.Text = "Preview cleanup: " + ex.GetType().Name;
+        }
+        finally
+        {
+            if (!IsDisposed && !Disposing) SetBusy(false);
+        }
+    }
+
     private async Task RefreshAsync()
     {
         if (busy) return;
@@ -468,6 +617,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
             var previousId = selected?.ActivationId;
             inventory = result;
             PopulateProductList(previousId);
+            UpdatePreviewPanel();
             var unverified = result.ProductReleaseIds
                 .Where(OfficeVolumeLicensing.IsUnverified2026).ToArray();
             outcome.Text = result.Warning ??
@@ -687,7 +837,28 @@ internal sealed class OfficeVolumeLicenseForm : Form
         form.PopulateProductList(null);
         var allRecords = form.displayedProducts.Count == 2 &&
             form.selected?.ActivationId == activated.ActivationId;
+        var preview = visio with
+        {
+            ActivationId = Guid.NewGuid().ToString("D"),
+            Name = "Office24VisioPro2024PreviewVL_KMS_Client_AE",
+            PartialKey = "WXGKQ", IsPreview = true, IsSupported2024Volume = false,
+            Status = "Unlicensed"
+        };
+        form.inventory = new OfficeVolumeInventory([visio, activated, preview],
+            ["VisioPro2024Volume"], null) { InstalledProductsVerified = true };
+        form.UpdatePreviewPanel();
+        bool oldPreview = form.canRemoveLegacyPreview &&
+            form.selectedPreviewForAction?.ActivationId == preview.ActivationId &&
+            form.previewAction.Text.Contains("Preview", StringComparison.Ordinal);
+        form.inventory = new OfficeVolumeInventory([visio, activated,
+            preview with { PartialKey = "" }], ["VisioPro2024Volume"], null)
+            { InstalledProductsVerified = true };
+        form.UpdatePreviewPanel();
+        bool emptyPreview = !form.canRemoveLegacyPreview &&
+            form.selectedPreviewForAction is null &&
+            form.previewInfo.Text.Length > 15;
         return initial && automatic && makMode && wrongEdition &&
-            activeFirst && allRecords && UiTheme.VerifyButtons(form, 2);
+            activeFirst && allRecords && oldPreview && emptyPreview &&
+            UiTheme.VerifyButtons(form, 2);
     }
 }
