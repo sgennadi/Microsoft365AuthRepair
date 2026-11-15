@@ -436,16 +436,9 @@ internal sealed class OfficeVolumeLicenseForm : Form
         {
             var result = await Task.Run(OfficeVolumeLicensing.Read);
             if (IsDisposed || Disposing) return;
+            var previousId = selected?.ActivationId;
             inventory = result;
-            productList.Items.Clear();
-            foreach (var item in result.Products)
-                productList.Items.Add(item.Name + " · " + item.Status +
-                    (item.HasKey ? " · *****-" + item.PartialKey : "") +
-                    (item.IsPreview ? " · Preview" : ""));
-            if (productList.Items.Count > 0)
-                productList.SelectedIndex = 0;
-            else
-                SelectProduct();
+            PopulateProductList(previousId);
             var unverified = result.ProductReleaseIds
                 .Where(OfficeVolumeLicensing.IsUnverified2026).ToArray();
             outcome.Text = result.Warning ??
@@ -454,10 +447,15 @@ internal sealed class OfficeVolumeLicenseForm : Form
                         "Unverified Office/Visio/Project 2026 Preview detected. Do not install 2024 keys.",
                         "Обнаружена непроверенная Office/Visio/Project 2026 Preview. Ключи 2024 не устанавливаются.",
                         "זוהתה גרסת Preview 2026 לא מאומתת. אין להתקין מפתחות 2024.")
-                    : UpdateUiText.T(
-                        "Inventory complete. Find KMS or enter your own authorized server.",
-                        "Инвентаризация завершена. Найдите KMS или укажите собственный сервер.",
-                        "סריקה הושלמה. מצא שרת KMS או הזן ידנית."));
+                    : result.Products.Any(OfficeVolumeLicensing.IsActive)
+                        ? UpdateUiText.T(
+                            "Activated Office license detected. Empty WMI templates are hidden by default.",
+                            "Обнаружена активированная лицензия Office. Пустые записи WMI скрыты.",
+                            "זוהה רישיון Office פעיל. רשומות WMI ריקות מוסתרות.")
+                        : UpdateUiText.T(
+                            "Office inventory complete. KMS discovery starts automatically.",
+                            "Инвентаризация Office завершена. Поиск KMS запускается автоматически.",
+                            "בדיקת Office הושלמה. גילוי KMS מתחיל אוטומטית."));
         }
         catch (Exception ex)
         {
@@ -468,6 +466,8 @@ internal sealed class OfficeVolumeLicenseForm : Form
         {
             if (!IsDisposed && !Disposing) SetBusy(false);
         }
+        if (!IsDisposed && !Disposing && selected is not null && kms.Checked)
+            await DiscoverAsync();
     }
 
     private async Task DiscoverAsync()
@@ -485,16 +485,24 @@ internal sealed class OfficeVolumeLicenseForm : Form
             if (endpoints.Count > 0)
             {
                 var match = endpoints[0];
-                host.Text = match.Host;
-                port.Value = match.Port;
-                kmsStatus.Text = "KMS: " + match.Host + ":" + match.Port +
-                    " (" + match.Source + ") — not yet contacted or verified.";
+                if (!manualKmsHost || string.IsNullOrWhiteSpace(host.Text))
+                {
+                    settingKmsHost = true;
+                    try
+                    {
+                        host.Text = match.Host;
+                        port.Value = match.Port;
+                    }
+                    finally { settingKmsHost = false; }
+                }
+                kmsStatus.Text = "KMS detected: " + match.Host + ":" + match.Port +
+                    " (" + match.Source + ") — discovery only, activation not verified.";
             }
             else
                 kmsStatus.Text = UpdateUiText.T(
-                    "KMS not found. Enter a permitted KMS host and port manually (default 1688).",
-                    "KMS не найден. Укажите разрешённый сервер и порт вручную (по умолчанию 1688).",
-                    "לא נמצא KMS. הזן שרת ויציאה ידנית.");
+                    "KMS not found automatically. Enter a permitted host and port (default 1688).",
+                    "KMS автоматически не найден. Введите разрешённый сервер и порт (по умолчанию 1688).",
+                    "לא נמצא KMS אוטומטית. הזן שרת מורשה ויציאה.");
         }
         catch (Exception ex)
         {
