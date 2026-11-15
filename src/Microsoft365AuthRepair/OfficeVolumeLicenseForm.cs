@@ -618,11 +618,13 @@ internal sealed class OfficeVolumeLicenseForm : Form
         using var form = new OfficeVolumeLicenseForm();
         var initial = form.ReadOnlyUntilConfirmed && form.MakHidden &&
             form.SuggestedKmsKey is null && !form.HasSelectedSupportedProduct &&
-            !form.apply.Enabled && !form.removePreview.Checked;
+            !form.apply.Enabled && !form.removePreview.Checked &&
+            form.refreshLink.TabStop && form.kmsLookupLink.TabStop;
         var visio = new OfficeVolumeProduct(Guid.Empty.ToString("D"),
             "Office24VisioPro2024VL_KMS_Client", "", "VisioPro2024Volume",
             "ABCDE", "Unlicensed", false, true, null, null, null, null);
-        form.inventory = new OfficeVolumeInventory([visio], ["VisioPro2024Volume"], null);
+        form.inventory = new OfficeVolumeInventory([visio], ["VisioPro2024Volume"], null)
+            { InstalledProductsVerified = true };
         form.selected = visio;
         form.kms.Checked = true;
         form.UpdateControls();
@@ -638,7 +640,25 @@ internal sealed class OfficeVolumeLicenseForm : Form
         form.UpdateControls();
         bool wrongEdition = form.SuggestedKmsKey is null &&
             form.gvlkValue.Text.Length == 0;
+        var activated = visio with
+        {
+            ActivationId = Guid.NewGuid().ToString("D"),
+            PartialKey = "YY89G",
+            Status = "Licensed"
+        };
+        form.inventory = new OfficeVolumeInventory([visio, activated],
+            ["VisioPro2024Volume"], null) { InstalledProductsVerified = true };
+        form.showTechnicalRows = false;
+        form.PopulateProductList(null);
+        var activeFirst = form.selected?.ActivationId == activated.ActivationId &&
+            form.displayedProducts.Count == 1 &&
+            form.otherRecordsLink.Visible && !form.apply.Enabled &&
+            form.selectedStatus.Text.Contains("Licensed", StringComparison.Ordinal);
+        form.showTechnicalRows = true;
+        form.PopulateProductList(null);
+        var allRecords = form.displayedProducts.Count == 2 &&
+            form.selected?.ActivationId == activated.ActivationId;
         return initial && automatic && makMode && wrongEdition &&
-            UiTheme.VerifyButtons(form, 4);
+            activeFirst && allRecords && UiTheme.VerifyButtons(form, 2);
     }
 }
