@@ -5,7 +5,12 @@ namespace Microsoft365AuthRepair;
 
 internal enum WamHealthLevel { Healthy, AttentionRequired, RepairRecommended }
 
-internal sealed record WamHealthResult(WamHealthLevel Level, string Summary, string Details);
+// Short on-screen findings are separate from the complete technical report.
+internal sealed record WamHealthResult(WamHealthLevel Level, string Summary, string Details)
+{
+    internal IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
+    internal IReadOnlyList<string> NextSteps { get; init; } = Array.Empty<string>();
+}
 
 internal static class WamHealthAnalysis
 {
@@ -201,7 +206,11 @@ internal static class WamHealthAnalysis
             "Проверка без изменений. Данные авторизации не изменены и никуда не отправлены.",
             "בדיקה לקריאה בלבד. לא בוצעו שינויים ולא נשלח מידע."));
 
-        return new WamHealthResult(level, summary, sb.ToString());
+        return new WamHealthResult(level, summary, sb.ToString())
+        {
+            Findings = findings.ToArray(),
+            NextSteps = advice.ToArray()
+        };
     }
 
     internal static bool SelfTest()
@@ -213,7 +222,10 @@ internal static class WamHealthAnalysis
         const string rejected = "BrokerPlugin: PRESENT\nAzureAdJoined : YES\n" +
             "DeviceAuthStatus : FAILED\nAzureAdPrt : NO\nWamDefaultSet : YES\nAADSTS50155";
         return Evaluate(healthy, true).Level == WamHealthLevel.Healthy &&
+            Evaluate(healthy, true).NextSteps.Count > 0 &&
+            Evaluate(healthy, true).Findings.Count > 0 &&
             Evaluate(missing, true).Level == WamHealthLevel.RepairRecommended &&
+            Evaluate(missing, true).NextSteps.Count > 0 &&
             Evaluate(rejected, true).Level == WamHealthLevel.AttentionRequired &&
             Evaluate(healthy, false).Level == WamHealthLevel.AttentionRequired &&
             Evaluate("", true).Level == WamHealthLevel.AttentionRequired &&
