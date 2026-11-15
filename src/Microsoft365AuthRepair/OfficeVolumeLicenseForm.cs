@@ -361,6 +361,18 @@ internal sealed class OfficeVolumeLicenseForm : Form
         if (isPreview && !removePreview.Checked) return;
         var isMak = mak.Checked;
         var provided = isMak ? makKey.Text.Trim().ToUpperInvariant() : null;
+        // Never send a malformed or empty key to the global Windows licensing
+        // provider, especially before removing an existing Preview license.
+        if (isMak && (provided is null ||
+            !System.Text.RegularExpressions.Regex.IsMatch(
+                provided, @"^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$")))
+        {
+            outcome.Text = UpdateUiText.T(
+                "Enter a valid 25-character Office 2024 Volume MAK before removing any Preview key.",
+                "Введите корректный 25-символьный Office 2024 Volume MAK до удаления Preview-ключа.",
+                "הזן מפתח MAK תקין של Office 2024 לפני הסרת Preview.");
+            return;
+        }
         OfficeKmsEndpoint? server = null;
         if (!isMak && !string.IsNullOrWhiteSpace(host.Text))
         {
@@ -372,6 +384,14 @@ internal sealed class OfficeVolumeLicenseForm : Form
                 return;
             }
             server = new OfficeKmsEndpoint(valid, (int)port.Value, "Manual selection");
+        }
+        if (isPreview && !isMak && server is null)
+        {
+            outcome.Text = UpdateUiText.T(
+                "Before removing Preview key, choose Find KMS or enter the organization's approved server and port.",
+                "Перед удалением Preview-ключа нажмите «Найти KMS» либо укажите разрешённый KMS-сервер и порт.",
+                "לפני הסרת Preview מצא שרת KMS או הזן שרת ארגוני מאושר.");
+            return;
         }
 
         var text = UpdateUiText.T(
