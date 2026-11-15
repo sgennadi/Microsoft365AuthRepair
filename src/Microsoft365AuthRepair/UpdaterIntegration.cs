@@ -74,9 +74,9 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. Guided Check & Diagnose explains Entra/WAM status and next steps.\n2. Settings groups all-user tasks and portable cleanup.\n3. Generate report opens a separate reviewed Send anonymously dialog.\n4. Adaptive layouts for normal and maximized windows.",
-        "1. Проверка Entra/WAM объясняет состояние и следующие действия.\n2. Настройки заданий для всех пользователей и очистка EXE.\n3. Отчёт: отдельное окно просмотра и анонимной отправки.\n4. Интерфейс адаптируется к размеру окна.",
-        "1. בדיקת Entra/WAM עם הסברים והמלצות.\n2. הגדרות משימות לכל המשתמשים וניקוי EXE.\n3. דוח בחלון נפרד לאישור ושליחה.\n4. ממשק מותאם לגודל החלון.");
+        "1. Diagnostic capture runs without freezing the window.\n2. Exact JSON is shown only in Send anonymously.\n3. Saved reports can be reviewed and sent explicitly.\n4. Stable build and repair methods remain unchanged.",
+        "1. Сбор отчёта не блокирует интерфейс.\n2. Полный JSON показывается только в окне анонимной отправки.\n3. Сохранённый отчёт можно отдельно просмотреть и отправить.\n4. Стабильная версия и восстановление не изменены.",
+        "1. יצירת הדוח אינה מקפיאה את הממשק.\n2. JSON מלא מוצג רק בחלון השליחה.\n3. ניתן לעיין בדוח שמור ולשלוח אותו באישור מפורש.\n4. הגרסה היציבה ופעולות התיקון לא שונו.");
 
     internal static bool SelfTest() => FormatWhatsNew(
         "## What's new\n1. Alpha\n2. Beta\n## Limitations\n- Private") ==
