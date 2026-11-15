@@ -56,10 +56,29 @@ internal sealed class OfficeVolumeLicenseForm : Form
         AutoSize = true,
         Checked = false
     };
-    private readonly Button refresh = UiTheme.CreateActionButton(
-        UpdateUiText.T("Refresh products", "Обновить список", "רענן מוצרים"));
-    private readonly Button discover = UiTheme.CreateActionButton(
-        UpdateUiText.T("Find KMS", "Найти KMS", "מצא KMS"));
+    private readonly LinkLabel refreshLink = new()
+    {
+        AutoSize = true, TabStop = true, LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(12, 12, 4, 5)
+    };
+    private readonly LinkLabel kmsLookupLink = new()
+    {
+        AutoSize = true, TabStop = true, LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(12, 6, 0, 5)
+    };
+    private readonly LinkLabel otherRecordsLink = new()
+    {
+        AutoSize = true, Visible = false, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(0, 5, 0, 7)
+    };
+    private readonly Label portCaption = UiTheme.Caption(string.Empty);
+    private readonly Label makCaption = UiTheme.Caption("MAK:");
+    private IReadOnlyList<OfficeVolumeProduct> displayedProducts = [];
+    private bool showTechnicalRows;
+    private bool populatingProducts;
+    private bool manualKmsHost;
+    private bool settingKmsHost;
     private readonly Button apply = UiTheme.CreateActionButton(
         UpdateUiText.T("Review & activate", "Проверить и активировать", "בדוק והפעל"), primary: true);
     private readonly Button close = UiTheme.CreateActionButton(
@@ -91,10 +110,10 @@ internal sealed class OfficeVolumeLicenseForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = UiTheme.BodyFont();
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
-        Size = new Size(900, 650);
-        MinimumSize = new Size(620, 490);
-        ResponsiveLayout.FitInitialWindow(this, new Size(900, 650),
-            new Size(1160, 850), widthFraction: 0.77, heightFraction: 0.76);
+        Size = new Size(900, 545);
+        MinimumSize = new Size(620, 425);
+        ResponsiveLayout.FitInitialWindow(this, new Size(900, 545),
+            new Size(1120, 720), widthFraction: 0.77, heightFraction: 0.61);
 
         var root = new TableLayoutPanel
         {
@@ -103,17 +122,17 @@ internal sealed class OfficeVolumeLicenseForm : Form
             Padding = new Padding(18)
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 9; i++)
+        // All rows are content-sized; no giant unused footer on tall screens.
+        for (int i = 0; i < 10; i++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         title.Text = UpdateUiText.T("Office LTSC 2024 / Visio / Project",
             "Office LTSC 2024 / Visio / Project",
             "Office LTSC 2024 / Visio / Project");
         info.Text = UpdateUiText.T(
-            "Read-only WMI inventory. Only a verified Volume 2024 license can be changed. Subscription, Retail and unknown 2026 Preview editions are protected. Removing a verified 2024 Preview key is an optional destructive step.",
-            "Инвентаризация WMI — без изменений. Менять ключ разрешено только у проверенной Volume-редакции 2024. Подписки, Retail и неизвестные Preview 2026 защищены. Удаление подтверждённого ключа Preview 2024 требует отдельного согласия.",
-            "בדיקת WMI בלבד. שינוי מפתחות רק למהדורת Volume 2024 מאומתת. מחיקת Preview מחייבת אישור.");
+            "Installed product first. Additional licensing records can be expanded below. Activated products are protected against unnecessary key changes.",
+            "Сначала установленный продукт. Дополнительные записи лицензирования можно раскрыть ниже. Активированные продукты защищены от ненужной замены ключей.",
+            "מוצרים מותקנים מוצגים ראשונים. ניתן לפתוח רשומות נוספות בהמשך. רישיון פעיל מוגן משינוי.");
         root.Controls.Add(title, 0, 0);
         root.Controls.Add(info, 0, 1);
 
@@ -124,8 +143,12 @@ internal sealed class OfficeVolumeLicenseForm : Form
         };
         productRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         productRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        refreshLink.Text = UpdateUiText.T("Refresh", "Обновить", "רענן");
+        refreshLink.AccessibleName = UpdateUiText.T(
+            "Refresh installed Office products", "Обновить список установленного Office",
+            "רענן מוצרי Office מותקנים");
         productRow.Controls.Add(productList, 0, 0);
-        productRow.Controls.Add(refresh, 1, 0);
+        productRow.Controls.Add(refreshLink, 1, 0);
         root.Controls.Add(productRow, 0, 2);
         root.Controls.Add(selectedStatus, 0, 3);
 
@@ -162,12 +185,18 @@ internal sealed class OfficeVolumeLicenseForm : Form
         };
         hostLabel.Text = UpdateUiText.T("KMS server (optional):", "KMS-сервер (необязательно):",
             "שרת KMS (לא חובה):");
+        portCaption.Text = UpdateUiText.T("Port:", "Порт:", "יציאה:");
+        kmsLookupLink.Text = UpdateUiText.T("Find again", "Найти снова", "חפש שוב");
+        kmsLookupLink.AccessibleName = UpdateUiText.T(
+            "Rediscover KMS host via Office and DNS",
+            "Повторить поиск KMS через Office и DNS",
+            "חיפוש KMS מחדש דרך Office ו-DNS");
         entry.Controls.Add(hostLabel);
         entry.Controls.Add(host);
-        entry.Controls.Add(UiTheme.Caption(UpdateUiText.T("Port:", "Порт:", "יציאה:")));
+        entry.Controls.Add(portCaption);
         entry.Controls.Add(port);
-        entry.Controls.Add(discover);
-        entry.Controls.Add(UiTheme.Caption("MAK:"));
+        entry.Controls.Add(kmsLookupLink);
+        entry.Controls.Add(makCaption);
         entry.Controls.Add(makKey);
         root.Controls.Add(entry, 0, 6);
 
@@ -175,23 +204,25 @@ internal sealed class OfficeVolumeLicenseForm : Form
             "I approve removing the identified Office 2024 Preview key BEFORE installation of the new key.",
             "Разрешаю удалить найденный ключ Office 2024 Preview ДО установки нового ключа.",
             "אני מאשר להסיר מפתח Preview 2024 לפני התקנת מפתח חדש.");
+        removePreview.Visible = false;
         root.Controls.Add(removePreview, 0, 7);
 
         var statusPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, AutoSize = true,
-            ColumnCount = 1, RowCount = 3,
+            ColumnCount = 1, RowCount = 4,
             Margin = new Padding(0, 6, 0, 6)
         };
         statusPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 4; i++)
             statusPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        statusPanel.Controls.Add(kmsStatus, 0, 0);
-        statusPanel.Controls.Add(outcome, 0, 1);
+        statusPanel.Controls.Add(otherRecordsLink, 0, 0);
+        statusPanel.Controls.Add(kmsStatus, 0, 1);
+        statusPanel.Controls.Add(outcome, 0, 2);
         docs.Text = UpdateUiText.T("Microsoft Learn — Official Office KMS keys",
             "Microsoft Learn — официальные KMS-ключи Office",
             "Microsoft Learn — מפתחות KMS רשמיים");
-        statusPanel.Controls.Add(docs, 0, 2);
+        statusPanel.Controls.Add(docs, 0, 3);
         root.Controls.Add(statusPanel, 0, 8);
 
         var buttons = new FlowLayoutPanel
@@ -205,8 +236,6 @@ internal sealed class OfficeVolumeLicenseForm : Form
         Controls.Add(ResponsiveLayout.Center(this, root, 1110));
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(apply, UiGlyph.Save, primary: true);
-        UiIcons.Assign(refresh, UiGlyph.Updates);
-        UiIcons.Assign(discover, UiGlyph.Search);
         UiIcons.TrackDpi(this);
         CancelButton = close;
 
@@ -218,12 +247,24 @@ internal sealed class OfficeVolumeLicenseForm : Form
                 removePreview.MaximumSize = max;
             gvlkHelp.MaximumSize = new Size(Math.Max(170, max.Width - 24), 0);
         };
-        productList.SelectedIndexChanged += (_, _) => SelectProduct();
+        productList.SelectedIndexChanged += (_, _) =>
+        {
+            if (!populatingProducts) SelectProduct();
+        };
         kms.CheckedChanged += (_, _) => UpdateControls();
         mak.CheckedChanged += (_, _) => UpdateControls();
         removePreview.CheckedChanged += (_, _) => UpdateControls();
-        refresh.Click += async (_, _) => await RefreshAsync();
-        discover.Click += async (_, _) => await DiscoverAsync();
+        refreshLink.LinkClicked += async (_, _) => await RefreshAsync();
+        kmsLookupLink.LinkClicked += async (_, _) => await DiscoverAsync();
+        otherRecordsLink.LinkClicked += (_, _) =>
+        {
+            showTechnicalRows = !showTechnicalRows;
+            PopulateProductList(selected?.ActivationId);
+        };
+        host.TextChanged += (_, _) =>
+        {
+            if (!settingKmsHost) manualKmsHost = true;
+        };
         apply.Click += async (_, _) => await ApplyAsync();
         close.Click += (_, _) => Close();
         docs.LinkClicked += (_, _) =>
