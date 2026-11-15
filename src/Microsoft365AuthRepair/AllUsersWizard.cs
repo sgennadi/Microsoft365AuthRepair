@@ -161,7 +161,10 @@ internal sealed class AllUsersWizard : Form
             "Только создать задания, не запускать их сейчас даже для вошедших пользователей. Задание выполнится при следующем входе каждого пользователя.",
             "צור משימות בלבד, בלי להפעיל כעת גם עבור משתמשים מחוברים. המשימה תפעל בכניסה הבאה של כל משתמש.")));
 
-        saveOnly.Text = UpdateUiText.T("Save settings only", "Только сохранить настройки", "שמור הגדרות בלבד");
+        saveOnly.Text = UpdateUiText.T(
+            "No action — keep choices for this session",
+            "Без действий — оставить выбор для этого сеанса",
+            "ללא פעולה — שמור בחירה להפעלה הנוכחית");
         repairWam.Text = UpdateUiText.T("Continue to Re-register WAM",
             "Перейти к восстановлению WAM", "המשך לרישום WAM מחדש");
         resetOffice.Text = UpdateUiText.T("Continue to Reset Office sign-in",
@@ -428,13 +431,43 @@ internal sealed class AllUsersWizard : Form
 
     private void RefreshSummary()
     {
+        var action = SelectedAction;
+        var actionEn = action switch
+        {
+            AllUsersWizardAction.RepairWam => "WAM registration",
+            AllUsersWizardAction.ResetOffice => "Office sign-in reset",
+            _ => "no action"
+        };
+        var actionRu = action switch
+        {
+            AllUsersWizardAction.RepairWam => "регистрация WAM",
+            AllUsersWizardAction.ResetOffice => "сброс входа Office",
+            _ => "без действий"
+        };
+        var actionHe = action switch
+        {
+            AllUsersWizardAction.RepairWam => "רישום WAM",
+            AllUsersWizardAction.ResetOffice => "איפוס כניסת Office",
+            _ => "ללא פעולה"
+        };
         summary.Text = UpdateUiText.T(
-            $"Selected: {(TaskMethod == ScheduledWorkerMode.Exe ? "EXE (WAM + full reset)" : "PowerShell (WAM only)")} · " +
-                (ScheduleOnly ? "next sign-in only" : "now for online users"),
-            $"Выбрано: {(TaskMethod == ScheduledWorkerMode.Exe ? "EXE (WAM и полный сброс)" : "PowerShell (только WAM)")} · " +
-                (ScheduleOnly ? "только следующий вход" : "сейчас для активных"),
-            $"נבחר: {(TaskMethod == ScheduledWorkerMode.Exe ? "EXE (WAM ואיפוס מלא)" : "PowerShell (WAM בלבד)")} · " +
-                (ScheduleOnly ? "רק בכניסה הבאה" : "כעת למשתמשים מחוברים"));
+            $"Method: {(TaskMethod == ScheduledWorkerMode.Exe ? "EXE" : "PowerShell")} · " +
+                (ScheduleOnly ? "next sign-in only" : "online now / others at sign-in") +
+                " · Action: " + actionEn,
+            $"Способ: {(TaskMethod == ScheduledWorkerMode.Exe ? "EXE" : "PowerShell")} · " +
+                (ScheduleOnly ? "при следующем входе" : "вошедшие сейчас / остальные при входе") +
+                " · Действие: " + actionRu,
+            $"שיטה: {(TaskMethod == ScheduledWorkerMode.Exe ? "EXE" : "PowerShell")} · " +
+                (ScheduleOnly ? "בכניסה הבאה" : "מחוברים כעת / האחרים בכניסה") +
+                " · פעולה: " + actionHe);
+        if (step == 2)
+        {
+            next.Text = action == AllUsersWizardAction.SaveOnly
+                ? UpdateUiText.T("Done", "Готово", "סיום")
+                : UpdateUiText.T("Review & continue", "Проверить и продолжить",
+                    "בדוק והמשך");
+            next.AccessibleName = next.Text;
+        }
     }
 
     private void UpdateStep()
