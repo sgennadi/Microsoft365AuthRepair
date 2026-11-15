@@ -8,7 +8,7 @@ namespace Microsoft365AuthRepair;
 internal enum UiGlyph
 {
     Repair, Reset, Search, Updates, Reports, Logs, Save, Folder,
-    Download, Link, Info, Success, Error, Working
+    Download, Link, Settings, Info, Success, Error, Working
 }
 
 // Vector drawing instead of font glyphs: WinForms buttons remain native,
@@ -261,6 +261,18 @@ internal static class UiIcons
                 g.DrawLines(p, [Q(12, 4), Q(20, 4), Q(20, 12)]);
                 g.DrawLine(p, 20, 4, 10, 14);
                 g.DrawLines(p, [Q(18, 15), Q(18, 20), Q(4, 20), Q(4, 6), Q(9, 6)]);
+                break;
+            case UiGlyph.Settings:
+                g.DrawEllipse(p, 7.5f, 7.5f, 9, 9);
+                g.DrawEllipse(p, 10, 10, 4, 4);
+                g.DrawLine(p, 12, 2, 12, 6);
+                g.DrawLine(p, 12, 18, 12, 22);
+                g.DrawLine(p, 2, 12, 6, 12);
+                g.DrawLine(p, 18, 12, 22, 12);
+                g.DrawLine(p, 5, 5, 7.5f, 7.5f);
+                g.DrawLine(p, 16.5f, 16.5f, 19, 19);
+                g.DrawLine(p, 19, 5, 16.5f, 7.5f);
+                g.DrawLine(p, 7.5f, 16.5f, 5, 19);
                 break;
             case UiGlyph.Info:
                 g.DrawEllipse(p, 3, 3, 18, 18);
