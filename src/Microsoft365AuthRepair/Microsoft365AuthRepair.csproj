@@ -29,6 +29,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Assets/Microsoft365AuthRepair.ico"
                       LogicalName="Microsoft365AuthRepair.BrandIcon" />
+    <EmbeddedResource Include="Assets/WamReregisterWorker.ps1"
+                      LogicalName="Microsoft365AuthRepair.WamReregisterWorker" />
     <ProjectReference Include="../../modules/UniversalUpdater/src/UniversalUpdater.Core/UniversalUpdater.Core.csproj" />
     <ProjectReference Include="../DiagnosticsEmbedded/DiagnosticsEmbedded.vbproj" />
   </ItemGroup>
