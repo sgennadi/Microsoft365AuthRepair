@@ -168,6 +168,7 @@ internal sealed class UpdateCenter : Form
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(check, UiGlyph.Updates, primary: true);
         UiIcons.Assign(download, UiGlyph.Download);
+        download.UseMnemonic = false; // display literal Download & verify
         UiIcons.Assign(page, UiGlyph.Link);
         UiIcons.Assign(folder, UiGlyph.Folder);
         UiIcons.Assign(cancel, UiGlyph.Reset);

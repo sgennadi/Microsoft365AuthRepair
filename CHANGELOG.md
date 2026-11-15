@@ -1,6 +1,6 @@
 ## 1.0.1-preview.2 — 2026-11-15
 
-1. Fixed Diagnostics & Reports button ampersand.
+1. Moved Diagnostics & Reports beside Repair and fixed literal button ampersands.
 2. Backward-compatible loading of original pending WAM report format.
 3. Improved handling of locally saved GitHub delivery receipts.
 

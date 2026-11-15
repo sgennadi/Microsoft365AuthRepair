@@ -94,10 +94,11 @@ internal sealed class MainForm : Form
         root.Controls.Add(target, 0, 3);
 
         var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
+        // Keep the reporting action visible beside the primary repair action.
         actions.Controls.Add(repair);
+        actions.Controls.Add(diagnostics);
         actions.Controls.Add(diagnose);
         actions.Controls.Add(updates);
-        actions.Controls.Add(diagnostics);
         actions.Controls.Add(logs);
         root.Controls.Add(actions, 0, 4);
 
@@ -125,6 +126,7 @@ internal sealed class MainForm : Form
         UiIcons.Assign(reset, UiGlyph.Reset, destructive: true);
         UiIcons.Assign(diagnose, UiGlyph.Search);
         UiIcons.Assign(diagnostics, UiGlyph.Reports);
+        diagnostics.UseMnemonic = false; // show literal & instead of treating it as accelerator
         UiIcons.Assign(updates, UiGlyph.Updates);
         UiIcons.Assign(logs, UiGlyph.Logs);
         UiIcons.TrackDpi(this);

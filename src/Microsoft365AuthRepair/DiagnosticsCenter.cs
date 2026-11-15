@@ -52,6 +52,7 @@ internal sealed class DiagnosticsCenter : Form
 
         var heading = UiTheme.Caption("Diagnostics & Reports", true);
         heading.Font = new Font("Segoe UI", 14f, FontStyle.Bold);
+        heading.UseMnemonic = false;
         root.Controls.Add(heading, 0, 0);
         root.Controls.Add(UiTheme.Caption(
             "Preview exactly what will be sent. Only typed WAM/Entra states; no usernames, tokens, logs or free text."), 0, 1);
