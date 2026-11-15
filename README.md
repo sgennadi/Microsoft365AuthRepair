@@ -1,3 +1,11 @@
+## Preview v1.0.1-preview.11 — readable diagnostic signals and adaptive dialogs
+
+1. **Check & Diagnose:** six localized Entra/WAM signal tiles show AAD BrokerPlugin, Entra join, AD domain, device authentication, Azure AD PRT, and WAM default account. Positive, attention, neutral, and unknown states are visually distinguished and explicitly labeled.
+2. **No misleading success:** an unjoined AD/Entra device is presented as neutral rather than automatically broken. Missing or unavailable signals are never interpreted as healthy. The summary does not claim to test real Office/Teams/OneDrive login.
+3. **Responsive dialogs:** Settings, Diagnostics & reports, and Send anonymously now use monitor-aware initial sizes. Translated descriptions and consent text wrap instead of clipping at higher DPI.
+4. Existing **Preview-first, then Stable** update checks and GitHub/SHA-256 verification remain unchanged. No modification to WAM repair/reset or Google Apps Script report transport. Stable v1.0.0 is untouched.
+5. Windows x64/ARM64 CI and x64 GUI smoke tests are required. Live 100/150/200% scaling, Hebrew RTL, and real Entra/WAM field validation still require testing. [Preview.11 notes](docs/releases/v1.0.1-preview.11.md).
+
 ## Preview v1.0.1-preview.10 — responsive local report capture and single review
 
 1. **Check & Diagnose** now displays an immediately visible diagnostic summary card in the main window: condition, key findings and clear next steps. Technical details are collapsed, not stretched into a giant empty textbox. The initial main-window height also adapts to the monitor.

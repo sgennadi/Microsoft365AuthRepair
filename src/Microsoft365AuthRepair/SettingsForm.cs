@@ -46,11 +46,11 @@ internal sealed class SettingsForm : Form
         StartPosition = FormStartPosition.CenterParent;
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = UiTheme.BodyFont();
-        Size = new Size(820, 580);
-        MinimumSize = new Size(630, 450);
+        Size = new Size(880, 590);
+        MinimumSize = new Size(640, 450);
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
-        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-        Size = new Size(Math.Min(Size.Width, area.Width), Math.Min(Size.Height, area.Height));
+        ResponsiveLayout.FitInitialWindow(this, new Size(880, 590),
+            new Size(1060, 770), widthFraction: 0.74, heightFraction: 0.68);
 
         var root = new TableLayoutPanel
         {
@@ -79,12 +79,12 @@ internal sealed class SettingsForm : Form
         tasksBody.Controls.Add(Paragraph(UpdateUiText.T(
             "Scheduled task method", "Способ выполнения задания", "שיטת הפעלת המשימה")));
         taskMethod.Items.AddRange([
-            UpdateUiText.T("EXE (recommended: re-register WAM or full reset)",
-                "EXE (рекомендуется: восстановление WAM и полный сброс)",
-                "EXE (מומלץ: רישום WAM ואיפוס מלא)"),
-            UpdateUiText.T("PowerShell (WAM re-registration only)",
-                "PowerShell (только восстановление регистрации WAM)",
-                "PowerShell (רישום WAM בלבד)")
+            UpdateUiText.T("EXE — WAM + full reset",
+                "EXE — WAM и полный сброс",
+                "EXE — רישום WAM ואיפוס מלא"),
+            UpdateUiText.T("PowerShell — WAM only",
+                "PowerShell — только WAM",
+                "PowerShell — WAM בלבד")
         ]);
         taskMethod.SelectedIndex = initialMethod == ScheduledWorkerMode.PowerShell ? 1 : 0;
         tasksBody.Controls.Add(taskMethod);
@@ -100,6 +100,15 @@ internal sealed class SettingsForm : Form
             "ללא האפשרות, משתמשים מחוברים יכולים לפעול מיד. PowerShell אינו תומך באיפוס כניסת Office.")));
 
         var cleanupBody = PageBody(cleanupPage);
+        void FitPageLabels(TabPage page, TableLayoutPanel body)
+        {
+            int width = Math.Max(190, page.ClientSize.Width - 64);
+            foreach (Control item in body.Controls)
+                if (item is Label or CheckBox)
+                    item.MaximumSize = new Size(width, 0);
+        }
+        tasksPage.SizeChanged += (_, _) => FitPageLabels(tasksPage, tasksBody);
+        cleanupPage.SizeChanged += (_, _) => FitPageLabels(cleanupPage, cleanupBody);
         cleanupBody.Controls.Add(Paragraph(UpdateUiText.T(
             "Optional cleanup of this user's portable program copy. Never deletes the protected all-users worker, installed applications, or another user's EXE.",
             "Необязательная очистка переносной копии программы текущего пользователя. Защищённый EXE для всех пользователей, установленная программа и чужие файлы не удаляются.",
@@ -139,7 +148,7 @@ internal sealed class SettingsForm : Form
         footer.Controls.Add(cancel);
         root.Controls.Add(tabs, 0, 1);
         root.Controls.Add(footer, 0, 2);
-        Controls.Add(ResponsiveLayout.Center(this, root, 870));
+        Controls.Add(ResponsiveLayout.Center(this, root, 1010));
         AcceptButton = save;
         CancelButton = cancel;
 

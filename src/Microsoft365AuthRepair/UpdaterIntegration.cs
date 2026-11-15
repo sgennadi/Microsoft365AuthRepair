@@ -102,9 +102,9 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. Update Center and main window open wider automatically.\n2. Preview installations check Preview first, then Stable.\n3. Report generation stays responsive and uses one Send review screen.\n4. Updates are offered only when newer by SemVer.",
-        "1. Основное окно и окно обновлений автоматически расширяются.\n2. Для установленной Preview сначала проверяется Preview, затем Stable.\n3. Сбор отчёта не блокирует интерфейс, JSON показывается только перед отправкой.\n4. Предлагается только действительно более новая версия.",
-        "1. חלונות התוכנה והעדכון נפתחים באופן רחב יותר.\n2. גרסאות Preview נבדקות תחילה ולאחר מכן Stable.\n3. יצירת דוח אינה מקפיאה את הממשק והנתונים נבדקים לפני שליחה.\n4. מוצע רק עדכון חדש יותר.");
+        "1. Check & Diagnose shows six readable Entra/WAM signal tiles.\n2. Unknown and neutral states are not reported as successful repairs.\n3. Settings, report generator and Send review now auto-fit the display.\n4. Repair, updater and private report handling are unchanged.",
+        "1. Check & Diagnose показывает шесть состояний Entra/WAM.\n2. Неизвестные и нейтральные состояния не считаются успешным восстановлением.\n3. Настройки и окна отчётов подстраиваются под экран.\n4. Восстановление, обновления и анонимная отправка не изменены.",
+        "1. האבחון מציג שישה אותות Entra/WAM.\n2. מצבים לא ידועים וניטרליים אינם נחשבים לתיקון מוצלח.\n3. חלונות ההגדרות והדוחות מותאמים לתצוגה.\n4. פעולות התיקון, העדכון והדיווח לא שונו.");
 
     internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
 

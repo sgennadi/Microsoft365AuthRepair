@@ -1,3 +1,10 @@
+## 1.0.1-preview.11 — 2026-11-15 — Preview
+
+1. Added six compact diagnostic signal tiles with localized status text, without revealing device or user identifiers.
+2. Represented absence of AD/Entra join as neutral (configuration-specific), and unavailable values as unknown rather than healthy.
+3. Auto-sized Settings, Diagnostics & Reports, and Send anonymously to the monitor work area; wrapped long RU/HE text and consent.
+4. Kept raw technical diagnostics behind Show technical details. No change to repair, reset, updater, Google receiver, or Stable v1.0.0.
+
 ## 1.0.1-preview.10 — 2026-11-15 — Preview
 
 1. Make local report capture asynchronous to avoid freezing the WinForms diagnostics screen during AppX or dsregcmd checks.
