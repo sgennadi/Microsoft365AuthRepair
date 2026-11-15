@@ -108,12 +108,19 @@ internal static class UpdateUiText
 
     internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
 
-    internal static bool SelfTest() => FormatWhatsNew(
-        "## What's new\n1. Alpha\n2. Beta\n## Limitations\n- Private") ==
-        $"1. Alpha{Environment.NewLine}2. Beta" &&
-        ForMultilineBox("1. Alpha\n2. Beta") ==
-        $"1. Alpha{Environment.NewLine}2. Beta" &&
-        ForMultilineBox(CurrentChangelog()).Split(Environment.NewLine).Length == 4;
+    internal static bool SelfTest()
+    {
+        var currentItems = ForMultilineBox(CurrentChangelog()).Split(
+            Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        return FormatWhatsNew(
+                "## What's new\n1. Alpha\n2. Beta\n## Limitations\n- Private") ==
+            $"1. Alpha{Environment.NewLine}2. Beta" &&
+            ForMultilineBox("1. Alpha\n2. Beta") ==
+            $"1. Alpha{Environment.NewLine}2. Beta" &&
+            currentItems.Length is >= 2 and <= 7 &&
+            currentItems.Select((text, index) =>
+                text.StartsWith($"{index + 1}. ", StringComparison.Ordinal)).All(valid => valid);
+    }
 }
 
 internal sealed class UpdateCenter : Form
