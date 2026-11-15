@@ -100,8 +100,11 @@ jobs:
       - name: Smoke-test x64 GUI initialization
         shell: pwsh
         run: |
-          & "publish/win-x64/Microsoft365AuthRepair.exe" --ui-self-test
-          if ($LASTEXITCODE -ne 0) { throw "x64 GUI self-test failed: $LASTEXITCODE" }
+          # PowerShell does not reliably wait for WinExe GUI programs or populate
+          # LASTEXITCODE when invoked directly. Wait on its process handle.
+          $selfTestExe = (Resolve-Path "publish/win-x64/Microsoft365AuthRepair.exe").Path
+          $selfTest = Start-Process -FilePath $selfTestExe -ArgumentList '--ui-self-test' -PassThru -Wait
+          if ($selfTest.ExitCode -ne 0) { throw "x64 GUI self-test failed: $($selfTest.ExitCode)" }
       - name: Upload both executables as preview artifacts
         uses: actions/upload-artifact@v4
         with:
