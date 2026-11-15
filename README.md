@@ -1,4 +1,12 @@
-## Preview 1.0.1-preview.1 (in development)
+## Preview 1.0.1-preview.2
+
+1. Fix the Diagnostics & Reports button text (& is no longer interpreted as a mnemonic).
+2. Accept the original 0.1.0-preview.1 pending UniversalDiagnostics JSON component label, while validating its original fingerprint and normalizing only the outgoing public metadata.
+3. Preserve confirmed GitHub receipt when updating the local queue fails.
+4. Continue to show version, update badge, download progress, cancel, and numbered What's New.
+5. Stable 1.0.0 is not modified; automatic EXE replacement remains disabled.
+
+## Preview 1.0.1-preview.2 (in development)
 
 - **Stable v1.0.0 is unchanged.** All new features are committed to the preview branch and require QA before promotion.
 - Main window title and Update Center title show the full installed application version.

@@ -200,7 +200,11 @@ internal sealed class DiagnosticsCenter : Form
             using var gateway = new GoogleDiagnosticsGateway();
             var issue = await gateway.SendAsync(agreed, sending.Token);
             if (sourceFile is not null)
-                M365DiagnosticPayload.MarkDelivered(sourceFile, agreed.Id, issue);
+            {
+                try { M365DiagnosticPayload.MarkDelivered(sourceFile, agreed.Id, issue); }
+                catch (IOException) { /* GitHub delivery is already confirmed. */ }
+                catch (UnauthorizedAccessException) { /* Preserve truthful receipt. */ }
+            }
             status.Text = "GitHub confirmed issue: " + issue.AbsoluteUri;
             DialogResult = DialogResult.OK;
             Close(); // Only confirmed success closes automatically.

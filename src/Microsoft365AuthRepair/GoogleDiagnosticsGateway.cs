@@ -91,13 +91,14 @@ internal static class M365DiagnosticPayload
         var schema = Field(e, "schema");
         var id = Field(e, "id");
         var project = Field(e, "project");
-        // v0.1.0 preview generated a legacy component with slashes. Accept
-        // its authenticated fingerprint locally, then normalize for the new
-        // strict transport. Never transmit arbitrary unvalidated component text.
-        var localComponent = Field(e, "component");
-        var component = localComponent == "Entra WAM / AAD BrokerPlugin"
-            ? "EntraWAMBroker"
-            : Match(localComponent, @"^[A-Za-z][A-Za-z0-9 _-]{0,55}$", "component");
+        var originalComponent = Field(e, "component");
+        // The first preview wrote the longer display label into local JSON.
+        // Verify the ORIGINAL fingerprint, then map to an allowlisted
+        // transport component for the shared gateway.
+        var component = Match(
+            originalComponent == "Entra WAM / AAD BrokerPlugin"
+                ? "EntraWAMBroker" : originalComponent,
+            @"^[A-Za-z][A-Za-z0-9 _-]{0,55}$", "component");
         var type = Match(Field(e, "error_type"), @"^[A-Za-z][A-Za-z0-9_]{0,63}$", "type");
         var code = Match(Field(e, "code"), @"^(?:0x[A-Fa-f0-9]{1,8}|[A-Za-z0-9_-]{1,32})$", "code");
         var version = Match(Field(e, "version"), @"^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$", "version");
@@ -118,7 +119,7 @@ internal static class M365DiagnosticPayload
             throw new InvalidDataException("Invalid diagnostic event metadata.");
 
         var expected = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
-            string.Join("|", new[] { project, localComponent, type, code }.Select(v => v.ToLowerInvariant())))));
+            string.Join("|", new[] { project, originalComponent, type, code }.Select(v => v.ToLowerInvariant())))));
         if (fp != expected) throw new InvalidDataException("Invalid diagnostic fingerprint.");
         var outgoingFingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
             string.Join("|", new[] { project, component, type, code }.Select(v => v.ToLowerInvariant())))));
@@ -213,7 +214,7 @@ internal sealed class GoogleDiagnosticsGateway : IDisposable
 
     internal static bool ApprovedIssueUrl(string url) =>
         Regex.IsMatch(url,
-            @"^https://github\.com/sgennadi/Microsoft365AuthRepair/issues/[1-9][0-9]*$",
+            @"\Ahttps://github\.com/sgennadi/Microsoft365AuthRepair/issues/[1-9][0-9]*\z",
             RegexOptions.CultureInvariant);
 
     private static bool ValidGoogleReceipt(Uri? url) =>

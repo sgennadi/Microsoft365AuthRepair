@@ -17,7 +17,7 @@ internal static class UiTheme
     {
         var button = new Button
         {
-            Text = title, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowOnly,
+            Text = title, UseMnemonic = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowOnly,
             MinimumSize = new Size(92, 34), Padding = new Padding(12, 5, 12, 5),
             Margin = new Padding(0, 4, 9, 4), FlatStyle = FlatStyle.Flat,
             Cursor = Cursors.Hand, UseVisualStyleBackColor = false
