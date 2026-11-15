@@ -34,6 +34,7 @@ internal sealed class MainForm : Form
     private bool technicalWasOpen;
     private bool suppressScopeWizard;
     private bool allUsersWizardOpen;
+    private readonly AllUsersWizardAction pendingAction;
     private string? lastRawDiagnostic;
     private FlowLayoutPanel? statusBanner;
     private readonly Label repairExplanation = UiTheme.Caption(string.Empty);
@@ -49,6 +50,12 @@ internal sealed class MainForm : Form
     private readonly Button repair = UiTheme.CreateActionButton(string.Empty, primary: true);
     private readonly Button reset = UiTheme.CreateActionButton(string.Empty, destructive: true);
     private readonly Button diagnose = UiTheme.CreateActionButton(string.Empty);
+    private readonly LinkLabel signInErrors = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(7, 15, 6, 8)
+    };
     private readonly Button updates = UiTheme.CreateActionButton(string.Empty);
     private readonly Button diagnostics = UiTheme.CreateActionButton(string.Empty);
     private readonly Button logs = UiTheme.CreateActionButton(string.Empty);
@@ -68,8 +75,10 @@ internal sealed class MainForm : Form
     private UniversalUpdater.UpdateRelease? availableUpdate;
 
     internal MainForm(bool preferAllUsers = false,
-        bool usePowerShellTasks = false, bool scheduleOnlyAtLogon = false)
+        bool usePowerShellTasks = false, bool scheduleOnlyAtLogon = false,
+        AllUsersWizardAction pendingAction = AllUsersWizardAction.SaveOnly)
     {
+        this.pendingAction = pendingAction;
         allUsersTaskMethod = usePowerShellTasks ? ScheduledWorkerMode.PowerShell : ScheduledWorkerMode.Exe;
         allUsersScheduleOnly = scheduleOnlyAtLogon;
         Text = $"Microsoft 365 Auth Repair v{Repair.Version}";
@@ -139,6 +148,7 @@ internal sealed class MainForm : Form
         var safeActions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
         safeActions.Controls.Add(diagnose);
         safeActions.Controls.Add(repair);
+        safeActions.Controls.Add(signInErrors);
         actions.Controls.Add(safeActions, 0, 1);
         actions.Controls.Add(resetExplanation, 0, 2);
         var resetActions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
@@ -204,6 +214,7 @@ internal sealed class MainForm : Form
         hints.SetToolTip(repair, "Re-register Microsoft.AAD.BrokerPlugin for the selected user. No credentials or sign-in caches are deleted; apps may briefly close.");
         hints.SetToolTip(reset, "Destructive: remove Office/WAM identity and sign-in caches for the selected users. Re-authentication required; explicit confirmation.");
         hints.SetToolTip(diagnose, "Read-only health check with plain-language findings and next steps. It does not prove Office sign-in works.");
+        hints.SetToolTip(signInErrors, "Offline Microsoft 365 error-code guide: no report is sent and no account is changed.");
         hints.SetToolTip(diagnostics, "Generate a sanitized report, review the exact JSON and explicitly choose whether to send.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
@@ -270,6 +281,11 @@ internal sealed class MainForm : Form
         repair.Click += async (_, _) => await RunRepairAsync(false);
         reset.Click += async (_, _) => await RunRepairAsync(true);
         diagnose.Click += async (_, _) => await RunDiagnoseAsync();
+        signInErrors.LinkClicked += (_, _) =>
+        {
+            using var errorGuide = new SignInErrorDialog();
+            errorGuide.ShowDialog(this);
+        };
         diagnostics.Click += (_, _) => new DiagnosticsCenter().ShowDialog(this);
         updates.Click += async (_, _) =>
         {
@@ -288,6 +304,14 @@ internal sealed class MainForm : Form
         Shown += async (_, _) =>
         {
             updateTimer.Start();
+            // UAC handoff can only request this explicit, independently
+            // confirmed action; no repair runs on wizard completion or UAC.
+            if (UserScopeSupport.SafePendingAction(pendingAction, elevated,
+                scope.SelectedIndex == 1))
+            {
+                await RunRepairAsync(pendingAction == AllUsersWizardAction.ResetOffice);
+                if (IsDisposed || Disposing) return;
+            }
             await CheckForUpdatesAsync();
         };
         ApplyText();
@@ -301,6 +325,7 @@ internal sealed class MainForm : Form
         title.Text = UiStrings.T("title");
         subtitle.Text = $"{UiStrings.T("subtitle")}  ·  v{Repair.Version}";
         UpdateTechnicalLink();
+        UpdateDiagnosticsToggle();
         account.Text = UpdateUiText.T(
             $"Desktop user: {desktopUser.Name}  |  Session {Identity.SessionId()}  |  {(elevated ? "Administrator" : "Standard")}",
             $"Пользователь сеанса: {desktopUser.Name}  |  Сеанс {Identity.SessionId()}  |  {(elevated ? "Администратор" : "Обычный доступ")}",
@@ -329,6 +354,9 @@ internal sealed class MainForm : Form
             "Крайняя мера: Reset Office sign-in удаляет кеш авторизации и потребует повторного входа.",
             "מוצא אחרון: איפוס Office מוחק מטמוני זהות ומחייב כניסה מחדש.");
         diagnose.Text = UpdateUiText.T("Check & Diagnose", "Проверить и объяснить", "בדוק ואבחן");
+        signInErrors.Text = UpdateUiText.T("Explain sign-in error",
+            "Объяснить ошибку входа", "הסבר שגיאת התחברות");
+        signInErrors.AccessibleName = signInErrors.Text;
         diagnostics.Text = UiStrings.T("debug");
         updates.Text = availableUpdate is null ? UiStrings.T("updater") :
             $"{UiStrings.T("updater")}  •  v{availableUpdate.Version}";
@@ -517,7 +545,9 @@ internal sealed class MainForm : Form
                     MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
                 return;
             if (UserScopeSupport.TryElevateForAll(
-                selectedMode == ScheduledWorkerMode.PowerShell, onlySchedule, out var reason))
+                selectedMode == ScheduledWorkerMode.PowerShell, onlySchedule,
+                full ? AllUsersWizardAction.ResetOffice : AllUsersWizardAction.RepairWam,
+                out var reason))
             {
                 Close(); // Only after Windows confirms the new process started.
             }
