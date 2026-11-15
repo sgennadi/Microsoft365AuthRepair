@@ -11,7 +11,11 @@ internal sealed record TrackedTaskRun(
 
 internal sealed record TaskStatusRow(
     string User, string Action, string Mode, DateTimeOffset? SubmittedUtc,
-    string State, string Evidence);
+    string State, string Evidence)
+{
+    internal string? UserSid { get; init; }
+    internal string? TaskName { get; init; }
+}
 
 internal static class TaskRunHistory
 {
