@@ -12,57 +12,46 @@ internal sealed class DiagnosticsCenter : Form
     private readonly TextBox preview = new()
     {
         Dock = DockStyle.Fill, ReadOnly = true, Multiline = true,
-        ScrollBars = ScrollBars.Vertical, WordWrap = false,
+        ScrollBars = ScrollBars.Both, WordWrap = false,
         Font = new Font("Consolas", 9f), BackColor = SystemColors.Window
     };
-    private readonly TextBox status = new()
-    {
-        Multiline = true, ReadOnly = true, BorderStyle = BorderStyle.None,
-        Dock = DockStyle.Fill, Height = 70, MinimumSize = new Size(0, 58),
-        BackColor = SystemColors.Control, ForeColor = SystemColors.ControlText,
-        ScrollBars = ScrollBars.Vertical, TabStop = true
-    };
-    private readonly CheckBox consent = new()
-    {
-        AutoSize = true, Text = "I approve sending these reviewed fields to a PUBLIC GitHub Issue.",
-        Margin = new Padding(0, 8, 0, 4)
-    };
-    private readonly Button generate = UiTheme.CreateActionButton("Generate report", true);
-    private readonly Button load = UiTheme.CreateActionButton("Load pending JSON");
-    private readonly Button open = UiTheme.CreateActionButton("Open local queue");
-    private readonly Button checkServer = UiTheme.CreateActionButton("Check receiver");
-    private readonly Button send = UiTheme.CreateActionButton("Send anonymously", true);
-    private readonly Button close = UiTheme.CreateActionButton("Close");
-
-    private PreparedDiagnostic? prepared;
-    private string? sourceFile;
-    private CancellationTokenSource? sending;
-    private bool busy;
+    private readonly Label status = UiTheme.Caption(string.Empty);
+    private readonly Button generate = UiTheme.CreateActionButton(
+        UpdateUiText.T("Generate report", "Создать отчёт", "צור דוח"), true);
+    private readonly Button load = UiTheme.CreateActionButton(
+        UpdateUiText.T("Load pending JSON", "Открыть ожидающий JSON", "טען דוח ממתין"));
+    private readonly Button open = UiTheme.CreateActionButton(
+        UpdateUiText.T("Open local queue", "Открыть очередь", "פתח תור מקומי"));
+    private readonly Button close = UiTheme.CreateActionButton(
+        UpdateUiText.T("Close", "Закрыть", "סגור"));
 
     internal DiagnosticsCenter(bool uiSelfTest = false)
     {
-        Text = $"Microsoft 365 Auth Repair v{Repair.Version} - Diagnostics & Reports";
+        Text = $"Microsoft 365 Auth Repair v{Repair.Version} - " +
+            UpdateUiText.T("Diagnostics & reports", "Диагностика и отчёты", "אבחון ודוחות");
         Font = UiTheme.BodyFont();
         AutoScaleMode = AutoScaleMode.Dpi;
-        Size = new Size(900, 660);
-        MinimumSize = new Size(700, 510);
+        Size = new Size(860, 610);
+        MinimumSize = new Size(660, 460);
         StartPosition = FormStartPosition.CenterParent;
-
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(18),
-            AutoScroll = true, ColumnCount = 1, RowCount = 7
+            AutoScroll = true, ColumnCount = 1, RowCount = 5
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 6; i++) root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        for (int i = 0; i < 4; i++)
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var heading = UiTheme.Caption("Diagnostics & Reports", true);
-        heading.Font = new Font("Segoe UI", 14f, FontStyle.Bold);
-        heading.UseMnemonic = false;
-        root.Controls.Add(heading, 0, 0);
-        root.Controls.Add(UiTheme.Caption(
-            "Preview exactly what will be sent. Only typed WAM/Entra states; no usernames, tokens, logs or free text."), 0, 1);
+        root.Controls.Add(UiTheme.Caption(UpdateUiText.T(
+            "Diagnostics & reports", "Диагностика и отчёты", "אבחון ודוחות"), heading: true), 0, 0);
+        var description = UiTheme.Caption(UpdateUiText.T(
+            "Generate a local report and immediately review it in the Send anonymously dialog. No data is uploaded until you press Send.",
+            "Создайте локальный отчёт — затем сразу откроется окно просмотра и отправки. Без нажатия «Отправить» данные не передаются.",
+            "יצירת דוח מקומי תפתח חלון לבדיקת הדוח ושליחתו. אין שליחה ללא לחיצה על שלח."));
+        description.MaximumSize = new Size(780, 0);
+        root.Controls.Add(description, 0, 1);
 
         var actions = new FlowLayoutPanel
         {
@@ -72,114 +61,75 @@ internal sealed class DiagnosticsCenter : Form
         actions.Controls.Add(generate);
         actions.Controls.Add(load);
         actions.Controls.Add(open);
-        actions.Controls.Add(checkServer);
+        actions.Controls.Add(close);
         root.Controls.Add(actions, 0, 2);
-
-        root.Controls.Add(consent, 0, 3);
-        var footer = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill, AutoSize = true, WrapContents = true
-        };
-        footer.Controls.Add(send);
-        footer.Controls.Add(close);
-        root.Controls.Add(footer, 0, 4);
-        status.Text = "Nothing has been submitted. Generate or load a report to review.";
-        root.Controls.Add(status, 0, 5);
-        root.Controls.Add(preview, 0, 6);
+        status.Text = UpdateUiText.T(
+            "Nothing has been submitted. Reports stay in the local queue until GitHub confirms delivery.",
+            "Ничего не отправлено. Отчёты остаются в локальной очереди до подтверждения GitHub.",
+            "לא נשלח דבר. דוחות נשמרים מקומית עד לאישור GitHub.");
+        status.MaximumSize = new Size(780, 0);
+        root.Controls.Add(status, 0, 3);
+        root.Controls.Add(preview, 0, 4);
         Controls.Add(root);
 
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(generate, UiGlyph.Reports, primary: true);
         UiIcons.Assign(load, UiGlyph.Folder);
         UiIcons.Assign(open, UiGlyph.Logs);
-        UiIcons.Assign(checkServer, UiGlyph.Search);
-        UiIcons.Assign(send, UiGlyph.Link, primary: true);
         UiIcons.Assign(close, UiGlyph.Reset);
         UiIcons.TrackDpi(this);
 
-        consent.CheckedChanged += (_, _) => UpdateSendState();
         generate.Click += (_, _) => Generate();
         load.Click += (_, _) => LoadPending();
-        checkServer.Click += async (_, _) => await CheckReceiverAsync();
         open.Click += (_, _) =>
         {
-            var folder = UniversalDiagnosticsEmbedded.QueueDirectory(Project);
-            Directory.CreateDirectory(folder);
-            Process.Start(new ProcessStartInfo("explorer.exe", folder) { UseShellExecute = true });
+            try
+            {
+                var folder = UniversalDiagnosticsEmbedded.QueueDirectory(Project);
+                Directory.CreateDirectory(folder);
+                Process.Start(new ProcessStartInfo("explorer.exe", folder) { UseShellExecute = true });
+            }
+            catch (Exception ex) { status.Text = "Open queue: " + ex.GetType().Name; }
         };
-        send.Click += async (_, _) => await SendAsync();
         close.Click += (_, _) => Close();
-        FormClosing += (_, _) => sending?.Cancel();
 
         preview.Text = uiSelfTest
-            ? "UI-only diagnostics self-test. No diagnostic data collected or sent."
-            : "Click Generate report to collect read-only WAM/Entra status; then inspect the exact outgoing JSON.";
-        consent.Checked = false;
-        UpdateSendState();
+            ? "UI-only diagnostics self-test; no data collected or sent."
+            : UpdateUiText.T(
+                "Click Generate report or Load pending JSON. The outgoing allowlisted JSON will be shown here and in the review dialog.",
+                "Нажмите «Создать отчёт» или «Открыть ожидающий JSON». JSON для отправки появится здесь и в окне подтверждения.",
+                "לחץ על צור דוח או טען דוח ממתין. הדוח יופיע כאן ובחלון האישור.");
+        RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
+        RightToLeftLayout = UiStrings.Language == "he";
     }
 
-    private void UpdateSendState()
+    private void Review(PreparedDiagnostic payload, string? path)
     {
-        send.Enabled = !busy && consent.Checked && prepared is not null;
-        generate.Enabled = load.Enabled = open.Enabled = checkServer.Enabled = !busy;
-        close.Enabled = !busy;
-    }
-
-    private void SetPrepared(PreparedDiagnostic item, string? path)
-    {
-        prepared = item;
-        sourceFile = path;
-        preview.Text = item.Json;
-        consent.Checked = false;
-        status.Text = "Ready for review. Nothing has been sent.";
-        UpdateSendState();
-    }
-
-    private async Task CheckReceiverAsync()
-    {
-        if (busy) return;
-        busy = true;
-        UpdateSendState();
-        status.Text = "Checking the currently deployed receiver (read-only; no report or token sent)...";
-        sending = new CancellationTokenSource(TimeSpan.FromSeconds(18));
-        try
+        preview.Text = payload.Json;
+        status.Text = UpdateUiText.T("Review report in the confirmation dialog.",
+            "Проверьте отчёт в окне подтверждения.", "בדוק דוח בחלון האישור.");
+        using var confirmation = new ReportSendDialog(payload, path);
+        if (confirmation.ShowDialog(this) == DialogResult.OK && confirmation.ConfirmedIssue is not null)
         {
-            using var gateway = new GoogleDiagnosticsGateway();
-            var result = await gateway.CheckReceiverAsync(sending.Token);
-            status.Text = result.Code switch
-            {
-                "GATEWAY_V3_ONLINE" =>
-                    "Receiver schema v3 is active. This check cannot verify the GitHub token; only a consented report submission can confirm delivery. The report remains local.",
-                "DEPLOY_GATEWAY_V3" =>
-                    "Old receiver deployment. Update the shared Code.gs and deploy a NEW VERSION of the EXISTING Apps Script web app. Retain the same /exec URL.",
-                "GATEWAY_SCHEMA_UNAVAILABLE" =>
-                    "The live receiver does not advertise schema v3. Deploy the updated shared Code.gs.",
-                _ => "Receiver unavailable (" + result.Code + "). No report was sent."
-            };
+            status.Text = "GitHub confirmed: " + confirmation.ConfirmedIssue.AbsoluteUri;
+            DialogResult = DialogResult.OK;
+            Close();
         }
-        catch (OperationCanceledException)
+        else
         {
-            status.Text = "Receiver check timed out. No report was sent.";
-        }
-        catch (Exception ex)
-        {
-            status.Text = "Receiver check failed (" + ex.GetType().Name + "). No report was sent.";
-        }
-        finally
-        {
-            sending.Dispose();
-            sending = null;
-            busy = false;
-            UpdateSendState();
+            status.Text = UpdateUiText.T(
+                "Report kept locally. Delivery is not confirmed. Check GitHub Issues before retrying.",
+                "Отчёт сохранён локально. Доставка не подтверждена. Перед повтором проверьте GitHub Issues.",
+                "הדוח נשמר מקומית. השליחה לא אומתה. בדוק את GitHub לפני ניסיון נוסף.");
         }
     }
 
     private void Generate()
     {
-        if (busy) return;
+        generate.Enabled = false;
         try
         {
-            // Local-only read-only device status; account details are discarded.
+            // Read-only Windows diagnostics. The raw report is never uploaded.
             var summary = M365DiagnosticPayload.SafeSummary(Repair.DiagnoseReport());
             var capture = JsonSerializer.Serialize(new
             {
@@ -189,24 +139,24 @@ internal sealed class DiagnosticsCenter : Form
                 level = "info", version = Repair.Version, summary
             });
             var receipt = UniversalDiagnosticsEmbedded.Capture(capture);
-            var item = M365DiagnosticPayload.Prepare(File.ReadAllText(receipt.Path));
-            SetPrepared(item, receipt.Path);
+            Review(M365DiagnosticPayload.Prepare(File.ReadAllText(receipt.Path)), receipt.Path);
         }
         catch (Exception ex)
         {
             status.Text = "Diagnostic capture failed: " + ex.GetType().Name;
         }
+        finally { if (!IsDisposed) generate.Enabled = true; }
     }
 
     private void LoadPending()
     {
-        if (busy) return;
         var folder = UniversalDiagnosticsEmbedded.QueueDirectory(Project);
         Directory.CreateDirectory(folder);
         using var picker = new OpenFileDialog
         {
             InitialDirectory = folder,
-            Title = "Open reviewed UniversalDiagnostics JSON",
+            Title = UpdateUiText.T("Open pending diagnostic JSON",
+                "Открыть ожидающий отчёт JSON", "פתח דוח JSON ממתין"),
             Filter = "Diagnostic JSON (*.json)|*.json",
             CheckFileExists = true,
             Multiselect = false
@@ -217,82 +167,22 @@ internal sealed class DiagnosticsCenter : Form
             var json = File.ReadAllText(picker.FileName);
             using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty("delivery", out var delivery) &&
+                delivery.ValueKind == JsonValueKind.Object &&
                 delivery.TryGetProperty("status", out var result) &&
+                result.ValueKind == JsonValueKind.String &&
                 result.GetString() == "submitted")
             {
-                status.Text = "This report is already marked submitted. Choose another pending report.";
+                status.Text = UpdateUiText.T(
+                    "Already marked submitted. Choose another pending report.",
+                    "Уже отмечен как отправленный. Выберите другой отчёт.",
+                    "הדוח כבר סומן כנשלח.");
                 return;
             }
-            SetPrepared(M365DiagnosticPayload.Prepare(json), picker.FileName);
+            Review(M365DiagnosticPayload.Prepare(json), picker.FileName);
         }
         catch (Exception ex)
         {
             status.Text = "Cannot open report: " + ex.GetType().Name;
-        }
-    }
-
-    private async Task SendAsync()
-    {
-        if (busy || !consent.Checked || prepared is null) return;
-        // Freeze the exact reviewed bytes; do not recapture/alter after consent.
-        var agreed = prepared;
-        if (!string.Equals(preview.Text, agreed.Json, StringComparison.Ordinal))
-        {
-            status.Text = "Report changed after review; no data sent.";
-            return;
-        }
-        busy = true;
-        UpdateSendState();
-        status.Text = "Sending reviewed metadata through the shared Google gateway...";
-        sending = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-        try
-        {
-            using var gateway = new GoogleDiagnosticsGateway();
-            var issue = await gateway.SendAsync(agreed, sending.Token);
-            if (sourceFile is not null)
-            {
-                try { M365DiagnosticPayload.MarkDelivered(sourceFile, agreed.Id, issue); }
-                catch (IOException) { /* GitHub delivery is already confirmed. */ }
-                catch (UnauthorizedAccessException) { /* Preserve truthful receipt. */ }
-            }
-            status.Text = "GitHub confirmed issue: " + issue.AbsoluteUri;
-            DialogResult = DialogResult.OK;
-            Close(); // Only confirmed success closes automatically.
-        }
-        catch (OperationCanceledException)
-        {
-            status.Text = "Send cancelled or timed out; check GitHub Issues before retrying.";
-        }
-        catch (InvalidOperationException ex) when
-            (ex.Message.Contains("GATEWAY_not_configured", StringComparison.Ordinal))
-        {
-            status.Text = "NOT DELIVERED. Google Apps Script is missing GITHUB_M365_ISSUES_TOKEN. " +
-                "Open the EXISTING Apps Script > Project Settings > Script Properties; " +
-                "add that key with a fine-grained GitHub PAT granting Issues read/write to " +
-                "sgennadi/Microsoft365AuthRepair. Keep the Termsrv token unchanged. " +
-                "Save the property in the SAME Google Apps Script project behind the /exec URL. " +
-                "If Check receiver already reports v3, you do not need to redeploy just to change script properties. " +
-                "Your report remains in the local queue. Never put the token in this EXE or chat.";
-        }
-        catch (InvalidOperationException ex) when
-            (ex.Message.Contains("GATEWAY_invalid_evidence", StringComparison.Ordinal))
-        {
-            status.Text = "NOT DELIVERED. The receiver did not recognize the Microsoft 365 schema. " +
-                "Redeploy the updated common Code.gs as Web App > New version. " +
-                "Do not change the existing Termsrv token. Your report remains pending.";
-        }
-        catch (Exception ex)
-        {
-            status.Text = "NOT DELIVERED (" + ex.GetType().Name +
-                "). Check the receiver and GitHub Issues before trying again. " +
-                "The report remains in the local queue.";
-        }
-        finally
-        {
-            sending.Dispose();
-            sending = null;
-            busy = false;
-            UpdateSendState();
         }
     }
 }
