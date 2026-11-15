@@ -22,6 +22,9 @@ internal sealed record OfficeVolumeProduct(
 }
 
 internal sealed record OfficeKmsEndpoint(string Host, int Port, string Source);
+// GVLKs are PUBLIC keys published by Microsoft, not private KMS host or MAK keys.
+// A suggestion is purely local and does not install or activate anything.
+internal sealed record OfficeGvlkSuggestion(string Sku, string ProductName, string Key, string SourceUrl);
 internal sealed record OfficeVolumeInventory(IReadOnlyList<OfficeVolumeProduct> Products,
     IReadOnlyList<string> ProductReleaseIds, string? Warning);
 internal sealed record OfficeLicenseChangeResult(bool Success, string Stage, string Status,
@@ -225,6 +228,35 @@ internal static class OfficeVolumeLicensing
         DetectSku(product.Name + " " + product.Description) is { } key &&
         Gvlk.TryGetValue(key, out var gvlk) ? gvlk : null;
 
+    // The selected edition AND the installed C2R product release must match
+    // one of the official 2024 Volume product IDs. A license row carrying an
+    // unverified 2026 label, a Retail/subscription edition or a mismatched
+    // ProductId must never receive a suggested 2024 key.
+    internal static OfficeGvlkSuggestion? SuggestGvlk(
+        OfficeVolumeProduct product, OfficeVolumeInventory inventory)
+    {
+        if (!CanApply(product, inventory) ||
+            IsUnverified2026(product.Name + " " + product.Description))
+            return null;
+        var sku = DetectSku(product.Name + " " + product.Description);
+        if (sku is null || !ProductReleaseMatches(sku, inventory.ProductReleaseIds) ||
+            !string.Equals(product.ProductId, sku, StringComparison.OrdinalIgnoreCase) ||
+            !Gvlk.TryGetValue(sku, out var key))
+            return null;
+
+        var name = sku switch
+        {
+            "ProPlus2024Volume" => "Office LTSC Professional Plus 2024",
+            "Standard2024Volume" => "Office LTSC Standard 2024",
+            "ProjectPro2024Volume" => "Project Professional 2024",
+            "ProjectStd2024Volume" => "Project Standard 2024",
+            "VisioPro2024Volume" => "Visio LTSC Professional 2024",
+            "VisioStd2024Volume" => "Visio LTSC Standard 2024",
+            _ => sku
+        };
+        return new OfficeGvlkSuggestion(sku, name, key, GvlkSource);
+    }
+
     internal static string? ValidateHost(string candidate)
     {
         var host = candidate.Trim().TrimEnd('.');
@@ -346,7 +378,8 @@ internal static class OfficeVolumeLicensing
         if (!CanApply(product, oldInventory))
             return new(false, "Validation", "Unknown, subscription, 2026 or unsupported Preview products cannot be changed.", false, false);
 
-        string? key = mak ? inputKey?.Trim().ToUpperInvariant() : GvlkFor(product);
+        string? key = mak ? inputKey?.Trim().ToUpperInvariant() :
+            SuggestGvlk(product, oldInventory)?.Key;
         if (key is null || !Regex.IsMatch(key, @"^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$",
                 RegexOptions.CultureInvariant))
             return new(false, "Validation", "Invalid or missing key format. No changes made.", false, false);
@@ -498,6 +531,17 @@ internal static class OfficeVolumeLicensing
             !ShouldRemoveOldKey(invalid, inv) &&
             CanApply(valid, safe) && !CanApply(invalid, inv) &&
             GvlkFor(valid) == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
+            SuggestGvlk(valid, safe)?.Key == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
+            SuggestGvlk(preview, inv)?.Key == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
+            SuggestGvlk(invalid, inv) is null &&
+            SuggestGvlk(valid with { ProductId = "ProjectPro2024Volume" }, safe) is null &&
+            SuggestGvlk(valid, new OfficeVolumeInventory([valid], ["O365ProPlusRetail"], null)) is null &&
+            Gvlk.All(x => SuggestGvlk(
+                new OfficeVolumeProduct(Guid.NewGuid().ToString("D"),
+                    "Office24" + x.Key.Replace("Volume", "") + "VL_KMS_Client",
+                    "", x.Key, "ABCDE", "Unlicensed", false, true,
+                    null, null, null, null),
+                new OfficeVolumeInventory(Array.Empty<OfficeVolumeProduct>(), [x.Key], null))?.Key == x.Value) &&
             ValidateHost("kms.example.com") == "kms.example.com" &&
             ValidateHost("192.0.2.8") == "192.0.2.8" &&
             ValidateHost("https://bad.example.org") is null &&
