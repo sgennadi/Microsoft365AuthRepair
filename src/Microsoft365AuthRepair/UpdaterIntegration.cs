@@ -102,9 +102,9 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. Check & Diagnose shows six readable Entra/WAM signal tiles.\n2. Unknown and neutral states are not reported as successful repairs.\n3. Settings, report generator and Send review now auto-fit the display.\n4. Repair, updater and private report handling are unchanged.",
-        "1. Check & Diagnose показывает шесть состояний Entra/WAM.\n2. Неизвестные и нейтральные состояния не считаются успешным восстановлением.\n3. Настройки и окна отчётов подстраиваются под экран.\n4. Восстановление, обновления и анонимная отправка не изменены.",
-        "1. האבחון מציג שישה אותות Entra/WAM.\n2. מצבים לא ידועים וניטרליים אינם נחשבים לתיקון מוצלח.\n3. חלונות ההגדרות והדוחות מותאמים לתצוגה.\n4. פעולות התיקון, העדכון והדיווח לא שונו.");
+        "1. All users opens a 3-step mini wizard for method, timing and action.\n2. After UAC, repair still requires explicit confirmation.\n3. Check & Diagnose results can be collapsed and expanded.\n4. Offline sign-in code guide covers WAM, Entra, MFA and access policies.",
+        "1. Выбор All users открывает мини-мастер: способ, время и действие.\n2. После UAC восстановление требует отдельного подтверждения.\n3. Результат Check & Diagnose можно свернуть и развернуть.\n4. Справочник ошибок входа работает локально: WAM, Entra, MFA и политики.",
+        "1. בחירת כל המשתמשים פותחת אשף קצר לשלושה שלבים.\n2. לאחר הרשאת מנהל נדרש אישור נפרד לכל תיקון.\n3. אפשר לצמצם ולהרחיב תוצאות אבחון.\n4. מדריך קודי שגיאה מקומי ל-WAM, Entra, MFA ומדיניות.");
 
     internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
 
