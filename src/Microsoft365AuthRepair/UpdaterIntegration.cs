@@ -23,17 +23,46 @@ internal static class UpdaterIntegration
         ]
     };
 
+    // Preview builds check Preview first and Stable second by default.
+    // A user can still explicitly select Stable-only in Update Center.
+    internal static bool InstalledIsPreview => SemanticVersion.Parse(Repair.Version).IsPrerelease;
+
+    internal static UpdateChannel[] CheckOrder(bool withPreview, bool previewInstalled) =>
+        !withPreview ? [UpdateChannel.Stable] :
+        previewInstalled ? [UpdateChannel.Prerelease, UpdateChannel.Stable] :
+                           [UpdateChannel.Stable, UpdateChannel.Prerelease];
+
     internal static async Task<UpdateRelease?> FindAsync(bool withPreview, CancellationToken token = default)
     {
         using var client = new GitHubReleaseClient();
-        var stable = await client.CheckAsync(Options(UpdateChannel.Stable), token);
-        if (!withPreview) return stable;
-        var preview = await client.CheckAsync(Options(UpdateChannel.Prerelease), token);
-        return preview is not null && (stable is null || preview.Version > stable.Version) ? preview : stable;
+        UpdateRelease? best = null;
+        foreach (var channel in CheckOrder(withPreview, InstalledIsPreview))
+        {
+            var candidate = await client.CheckAsync(Options(channel), token);
+            // Never offer an older Stable just because it is a final release.
+            // SemVer sorts 1.0.1 above 1.0.1-preview.10 automatically.
+            if (candidate is not null && (best is null || candidate.Version > best.Version))
+                best = candidate;
+        }
+        return best;
     }
 
     internal static UpdateChannel ChannelFor(UpdateRelease release) =>
         release.Version.IsPrerelease ? UpdateChannel.Prerelease : UpdateChannel.Stable;
+
+    internal static bool SelfTest()
+    {
+        var previewOrder = CheckOrder(withPreview: true, previewInstalled: true);
+        var stableOrder = CheckOrder(withPreview: true, previewInstalled: false);
+        var stableOnly = CheckOrder(withPreview: false, previewInstalled: true);
+        return InstalledIsPreview &&
+            previewOrder.SequenceEqual([UpdateChannel.Prerelease, UpdateChannel.Stable]) &&
+            stableOrder.SequenceEqual([UpdateChannel.Stable, UpdateChannel.Prerelease]) &&
+            stableOnly.SequenceEqual([UpdateChannel.Stable]) &&
+            SemanticVersion.Parse("1.0.1") > SemanticVersion.Parse("1.0.1-preview.10") &&
+            SemanticVersion.Parse("1.0.0") < SemanticVersion.Parse("1.0.1-preview.10") &&
+            SemanticVersion.Parse("1.0.2-preview.1") > SemanticVersion.Parse("1.0.1");
+    }
 }
 
 internal static class UpdateUiText
@@ -170,7 +199,7 @@ internal sealed class UpdateCenter : Form
             UpdateUiText.T("Stable", "Стабильная", "יציבה"),
             "Preview + Stable"
         ]);
-        channel.SelectedIndex = includePreviews ? 1 : 0;
+        channel.SelectedIndex = includePreviews || UpdaterIntegration.InstalledIsPreview ? 1 : 0;
         top.Controls.Add(channel);
         root.Controls.Add(top, 0, 1);
 
@@ -217,7 +246,7 @@ internal sealed class UpdateCenter : Form
         UiIcons.TrackDpi(this);
         var tips = new ToolTip { AutoPopDelay = 12000, InitialDelay = 500, ReshowDelay = 200 };
         tips.SetToolTip(download, "One click: download, SHA-256 and architecture verification, safe install, health check and rollback.");
-        tips.SetToolTip(channel, "Preview + Stable chooses the highest newer compatible version from both channels.");
+        tips.SetToolTip(channel, "Preview installations check Preview then Stable; the highest newer version wins. Stable-only can be selected manually.");
         download.Enabled = page.Enabled = folder.Enabled = cancel.Enabled = false;
         refresh.LinkClicked += async (_, _) => await CheckAsync();
         download.Click += async (_, _) => await UpdateAsync();
@@ -289,9 +318,13 @@ internal sealed class UpdateCenter : Form
             }
             else
             {
-                available.Text = UpdateUiText.T($"New: v{release.Version} ({release.Rule.Architecture})",
-                    $"Доступна: v{release.Version} ({release.Rule.Architecture})",
-                    $"זמין: v{release.Version} ({release.Rule.Architecture})");
+                var releaseChannel = release.Version.IsPrerelease
+                    ? UpdateUiText.T("Preview", "Предварительная", "תצוגה מקדימה")
+                    : UpdateUiText.T("Stable", "Стабильная", "יציבה");
+                available.Text = UpdateUiText.T(
+                    $"New: v{release.Version} ({releaseChannel}, {release.Rule.Architecture})",
+                    $"Доступна: v{release.Version} ({releaseChannel}, {release.Rule.Architecture})",
+                    $"זמין: v{release.Version} ({releaseChannel}, {release.Rule.Architecture})");
                 changes.Text = UpdateUiText.FormatWhatsNew(release.ReleaseNotes);
                 download.Focus(); // Keyboard users can update directly after release discovery.
                 status.Text = UpdateUiText.T("Update available.", "Есть обновление.", "עדכון זמין.");
