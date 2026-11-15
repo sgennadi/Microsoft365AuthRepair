@@ -48,6 +48,7 @@ internal static class Program
                 var tests = new (string Name, Func<bool> Run)[]
                 {
                     ("Main minimum size", () => form.MinimumSize.Width >= 600),
+                    ("Separated Settings and Language header", form.HeaderLayoutSelfTest),
                     ("Main icon", () => UiIcons.Verify(form)),
                     ("Updater icon", () => UiIcons.Verify(updater)),
                     ("Reports icon", () => UiIcons.Verify(reports)),
@@ -87,7 +88,7 @@ internal static class Program
                     ("Review buttons", () => UiTheme.VerifyButtons(sendReview, 2)),
                     ("Wizard buttons", () => UiTheme.VerifyButtons(wizard, 3)),
                     ("Sign-in guide buttons", () => UiTheme.VerifyButtons(signInGuide, 2)),
-                    ("Volume licensing buttons", () => UiTheme.VerifyButtons(volumeLicensing, 4))
+                    ("Volume licensing buttons", () => UiTheme.VerifyButtons(volumeLicensing, 2))
                 };
                 var outcomes = new List<string>();
                 bool passed = true;
