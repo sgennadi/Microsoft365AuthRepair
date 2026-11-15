@@ -445,7 +445,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
     {
         using var form = new OfficeVolumeLicenseForm();
         return form.ReadOnlyUntilConfirmed && form.MakHidden &&
-            form.IsUnsupportedPreviewBlocked &&
+            !form.HasSelectedSupportedProduct &&
             !form.apply.Enabled && !form.removePreview.Checked &&
             UiTheme.VerifyButtons(form, 4);
     }
