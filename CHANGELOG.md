@@ -1,3 +1,11 @@
+## 1.0.1-preview.12 — 2026-11-15 — Preview
+
+1. Added a three-step All users setup wizard opened on scope selection, with EXE vs PowerShell, task timing, and a safe optional follow-on action for existing Windows profiles.
+2. Continued the chosen action through UAC as a non-executing review intent, requiring the existing separate confirmation.
+3. Added Collapse results / Expand results for the main Check & Diagnose panel without losing the last result or technical details.
+4. Added an EN/RU/HE offline sign-in error-code explainer for WAM, PRT, MFA, Conditional Access, account, and TPM cases.
+5. Preserved established repair, scheduling, updater and reporting paths and Stable 1.0.0.
+
 ## 1.0.1-preview.11 — 2026-11-15 — Preview
 
 1. Added six compact diagnostic signal tiles with localized status text, without revealing device or user identifiers.
