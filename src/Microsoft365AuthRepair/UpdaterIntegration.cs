@@ -102,9 +102,9 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. Sign-in error explanations update as you type, without a large Explain button.\n2. Office Preview license entries are always reported; the GVLK fits on its own row.\n3. Settings replaced by scope-aware Setup; portable EXE cleanup moved into its wizard.\n4. Optional all-users maintenance safely cleans completed tasks and orphaned worker files.",
-        "1. Ошибки входа объясняются по мере набора без большой кнопки.\n2. Preview-записи Office показываются отдельно; весь GVLK виден.\n3. Settings заменены на мастер Setup с очисткой переносного EXE.\n4. В мастере All users можно безопасно очистить завершённые задания и ненужные worker-файлы.",
-        "1. קודי שגיאה מוסברים תוך כדי הקלדה, ללא כפתור גדול.\n2. רשומות Preview מוצגות והמפתח המלא גלוי בשורה נפרדת.\n3. Setup מחליף Settings וכולל ניקוי EXE נייד.\n4. ניקוי ידני מאובטח של משימות שהושלמו וקובצי worker מיותרים.");
+        "1. Current user works directly: no duplicate wizard or portable EXE deletion.\n2. All users setup exclusively manages protected per-user tasks and cleanup.\n3. Preview shows exact existing-profile counts before bulk scheduling.\n4. Successful direct repairs automatically recheck WAM.\n5. Repair logs moved to Diagnostics & reports; wizard actions clearly say what will run.",
+        "1. Current user работает напрямую, без лишнего мастера и самоудаления EXE.\n2. Мастер All users управляет заданиями и очисткой worker-файлов.\n3. До массового запуска показано количество существующих профилей.\n4. После успешного ремонта WAM проверяется автоматически.\n5. Журналы перенесены в Diagnostics & reports, действия мастера стали понятнее.",
+        "1. המשתמש הנוכחי פועל ישירות, ללא אשף כפול או מחיקת EXE.\n2. אשף כל המשתמשים מנהל משימות וניקוי worker.\n3. מספר הפרופילים מוצג לפני פעולה כוללת.\n4. בדיקת WAM מתבצעת אוטומטית לאחר תיקון מוצלח.\n5. יומני תיקון הועברו לחלון הדוחות.");
 
     internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
 
