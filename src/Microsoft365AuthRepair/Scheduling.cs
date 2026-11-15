@@ -105,6 +105,10 @@ internal static class Scheduling
         var result = ExternalCommand.Run(icacls,
             [SharedRoot, "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-32-545:(OI)(CI)RX", "/T"], 60);
         if (result.ExitCode != 0) throw new IOException("Could not lock down worker folder ACL: " + result.StdErr.Trim() + " " + result.StdOut.Trim());
+        // The worker EXE/PS1 needs Users:RX, but its separate per-user
+        // status history contains identity metadata and remains admin-only.
+        // ProtectDirectory uses /T: re-apply the history exception every time.
+        TaskRunHistory.ProtectRootIfPresent();
     }
 
     internal static string QueueForSid(WindowsProfile profile, bool userOnline, string repairAction,
