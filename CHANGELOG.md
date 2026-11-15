@@ -1,3 +1,13 @@
+## 1.0.1-preview.16 — 2026-11-15 — Preview
+
+1. Removed unused Current user wizard, portable EXE self-deletion and cleanup helper command line; current-user repair stays direct.
+2. Hid duplicate repair buttons in All users mode; its setup wizard remains the single bulk-operation entry point.
+3. Added existing-profile counts and estimated immediate/next-logon task totals to the bulk-action confirmation, using the reviewed profile list for scheduling.
+4. Automatically repeat read-only WAM/Office health checks after a successful direct current-user repair, never for queued all-user tasks.
+5. Moved Open local logs into compact Diagnostics & reports links, removed one oversized main-screen button.
+6. Renamed the wizard's passive choice to accurately describe session-only preferences, and included intended action in the summary.
+7. Stable v1.0.0 unchanged. GUI/CI success is not proof of real Office sign-in or Task Scheduler completion.
+
 ## 1.0.1-preview.15 — 2026-11-15 — Preview
 
 1. Live, offline error-code and problem-name search removes the oversized Explain button.

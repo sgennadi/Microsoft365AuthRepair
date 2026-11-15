@@ -14,8 +14,22 @@ internal sealed class DiagnosticsCenter : Form
         UpdateUiText.T("Generate report", "Создать отчёт", "צור דוח"), true);
     private readonly Button load = UiTheme.CreateActionButton(
         UpdateUiText.T("Send saved report", "Отправить сохранённый отчёт", "שלח דוח שמור"));
-    private readonly Button open = UiTheme.CreateActionButton(
-        UpdateUiText.T("Open local queue", "Открыть очередь", "פתח תור מקומי"));
+    private readonly LinkLabel open = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Text = UpdateUiText.T("Open report queue", "Открыть очередь отчётов",
+            "פתח תור דוחות"),
+        Margin = new Padding(0, 7, 18, 5)
+    };
+    private readonly LinkLabel repairLogs = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Text = UpdateUiText.T("Open local repair logs", "Открыть журналы восстановления",
+            "פתח יומני תיקון"),
+        Margin = new Padding(0, 7, 6, 5)
+    };
     private readonly Button close = UiTheme.CreateActionButton(
         UpdateUiText.T("Close", "Закрыть", "סגור"));
     private bool collecting;
@@ -35,10 +49,10 @@ internal sealed class DiagnosticsCenter : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(18),
-            AutoScroll = true, ColumnCount = 1, RowCount = 4
+            AutoScroll = true, ColumnCount = 1, RowCount = 5
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 5; i++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         root.Controls.Add(UiTheme.Caption(UpdateUiText.T(
@@ -57,15 +71,22 @@ internal sealed class DiagnosticsCenter : Form
         };
         actions.Controls.Add(generate);
         actions.Controls.Add(load);
-        actions.Controls.Add(open);
         actions.Controls.Add(close);
         root.Controls.Add(actions, 0, 2);
+        var links = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true, WrapContents = true,
+            Margin = new Padding(0, 0, 0, 10)
+        };
+        links.Controls.Add(open);
+        links.Controls.Add(repairLogs);
+        root.Controls.Add(links, 0, 3);
         status.Text = UpdateUiText.T(
             "Nothing has been submitted. Reports stay in the local queue until GitHub confirms delivery.",
             "Ничего не отправлено. Отчёты остаются в локальной очереди до подтверждения GitHub.",
             "לא נשלח דבר. דוחות נשמרים מקומית עד לאישור GitHub.");
         status.MaximumSize = new Size(780, 0);
-        root.Controls.Add(status, 0, 3);
+        root.Controls.Add(status, 0, 4);
         root.SizeChanged += (_, _) =>
         {
             int width = Math.Max(180, root.ClientSize.Width - root.Padding.Horizontal - 15);
@@ -77,13 +98,12 @@ internal sealed class DiagnosticsCenter : Form
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(generate, UiGlyph.Reports, primary: true);
         UiIcons.Assign(load, UiGlyph.Folder);
-        UiIcons.Assign(open, UiGlyph.Logs);
         UiIcons.Assign(close, UiGlyph.Reset);
         UiIcons.TrackDpi(this);
 
         generate.Click += async (_, _) => await GenerateAsync();
         load.Click += (_, _) => LoadPending();
-        open.Click += (_, _) =>
+        open.LinkClicked += (_, _) =>
         {
             try
             {
@@ -93,6 +113,18 @@ internal sealed class DiagnosticsCenter : Form
             }
             catch (Exception ex) { status.Text = "Open queue: " + ex.GetType().Name; }
         };
+        repairLogs.LinkClicked += (_, _) =>
+        {
+            try
+            {
+                var folder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Microsoft365AuthRepair", "Logs");
+                Directory.CreateDirectory(folder);
+                Process.Start(new ProcessStartInfo("explorer.exe", folder) { UseShellExecute = true });
+            }
+            catch (Exception ex) { status.Text = "Open repair logs: " + ex.GetType().Name; }
+        };
         close.Click += (_, _) => Close();
 
         if (uiSelfTest)
@@ -100,6 +132,12 @@ internal sealed class DiagnosticsCenter : Form
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
     }
+
+    internal bool HasLocalUtilities =>
+        open.Parent is FlowLayoutPanel &&
+        repairLogs.Parent == open.Parent &&
+        !string.IsNullOrWhiteSpace(open.Text) &&
+        !string.IsNullOrWhiteSpace(repairLogs.Text);
 
     private void Review(PreparedDiagnostic payload, string? path)
     {
@@ -126,7 +164,7 @@ internal sealed class DiagnosticsCenter : Form
     {
         if (collecting || IsDisposed) return;
         collecting = true;
-        generate.Enabled = load.Enabled = open.Enabled = false;
+        generate.Enabled = load.Enabled = open.Enabled = repairLogs.Enabled = false;
         status.Text = UpdateUiText.T(
             "Collecting local Entra/WAM diagnostics... No data is being uploaded.",
             "Собираю локальную диагностику Entra/WAM... Данные не отправляются.",
@@ -157,7 +195,7 @@ internal sealed class DiagnosticsCenter : Form
         {
             collecting = false;
             if (!IsDisposed && !Disposing)
-                generate.Enabled = load.Enabled = open.Enabled = true;
+                generate.Enabled = load.Enabled = open.Enabled = repairLogs.Enabled = true;
         }
     }
 

@@ -1,3 +1,14 @@
+## Preview v1.0.1-preview.16 — simplify Current user and make All users predictable
+
+1. **Current user needs no setup or cleanup:** Removed the duplicate Current user wizard and the entire portable EXE self-deletion helper/CLI. For the signed-in user, Check & Diagnose, Re-register WAM, and Reset Office sign-in are direct, separately confirmed main-screen actions; the app EXE remains in place.
+2. **All users is wizard-only:** Selecting All users opens the existing three-step wizard. A small All users setup link allows revisiting method, timing and action choices. The duplicate Re-register/Reset buttons are hidden while All users is selected; normal current-user buttons return when the scope is changed back.
+3. **Explicit targeting:** Before confirming a bulk action, the dialog shows counts of existing Windows profiles, online users that would run immediately, and profiles waiting for next sign-in. The reviewed profile list is frozen so profiles added during confirmation are not silently included. No account without an existing profile is enrolled.
+4. **Less work after repair:** A successful **direct non-elevated Current user** operation automatically triggers a read-only WAM/Entra/Office prerequisite recheck. This remains a prerequisite check, **not** proof of an actual Word/Outlook/Teams/OneDrive login. Scheduled bulk/elevated tasks are never prematurely marked completed.
+5. **Cleaner navigation:** Removed the main-screen Open local logs button. The Diagnostics & reports dialog has compact **Open report queue** and **Open local repair logs** links. All users wizard now labels its passive choice “No action — keep choices for this session”, and its summary includes the exact selected action; it does not promise to save settings across restarts.
+6. **Safety retained:** Separate consent, UAC for all-users, pending-task safeguards, no secret reports, supported 2024 Office volume licensing and Stable 1.0.0 remain unchanged. Windows CI validates the UI and binary; live per-user scheduling, logon, and high-DPI validation still require pilot testing.
+
+[Preview.16 release notes](docs/releases/v1.0.1-preview.16.md)
+
 ## Preview v1.0.1-preview.15 — guided repair and safe worker cleanup
 
 1. **One Setup entry:** Removed the redundant Settings dialog. The compact **Setup** link opens the All users three-step wizard for scheduled execution, or the Current user wizard for action selection and optional portable EXE cleanup. Nothing runs on Finish alone; independent repair/UAC confirmations remain.

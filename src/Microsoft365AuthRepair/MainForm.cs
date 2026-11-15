@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -54,7 +53,6 @@ internal sealed class MainForm : Form
     // receive only the two existing, validated command-line flags.
     private ScheduledWorkerMode allUsersTaskMethod = ScheduledWorkerMode.Exe;
     private bool allUsersScheduleOnly;
-    private bool cleanupAfterCurrentRepair;
     private readonly ComboBox language = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList, Width = 138,
@@ -75,8 +73,7 @@ internal sealed class MainForm : Form
     };
     private readonly Button updates = UiTheme.CreateActionButton(string.Empty);
     private readonly Button diagnostics = UiTheme.CreateActionButton(string.Empty);
-    private readonly Button logs = UiTheme.CreateActionButton(string.Empty);
-    // Small Setup link replaces the redundant full Settings window.
+    // Scope-specific Setup is for All users only; Current user has direct actions.
     private readonly LinkLabel settings = new()
     {
         AutoSize = true, TabStop = true,
@@ -229,7 +226,6 @@ internal sealed class MainForm : Form
         var tools = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
         tools.Controls.Add(diagnostics);
         tools.Controls.Add(updates);
-        tools.Controls.Add(logs);
         actions.Controls.Add(tools, 0, 4);
         root.Controls.Add(actions, 0, 4);
 
@@ -271,7 +267,6 @@ internal sealed class MainForm : Form
         UiIcons.Assign(diagnostics, UiGlyph.Reports);
         diagnostics.UseMnemonic = false; // show literal & instead of treating it as accelerator
         UiIcons.Assign(updates, UiGlyph.Updates);
-        UiIcons.Assign(logs, UiGlyph.Logs);
         UiIcons.TrackDpi(this);
         technicalToggle.LinkClicked += (_, _) =>
         {
@@ -299,9 +294,8 @@ internal sealed class MainForm : Form
         hints.SetToolTip(signInErrors, "Offline Microsoft 365 error-code guide: no report is sent and no account is changed.");
         hints.SetToolTip(diagnostics, "Generate a sanitized report, review the exact JSON and explicitly choose whether to send.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
-        hints.SetToolTip(logs, "Open local repair logs without sending any data.");
         hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
-        hints.SetToolTip(settings, "Setup guide for the selected user scope. Includes safe cleanup options.");
+        hints.SetToolTip(settings, "Configure all-users repair tasks and review old scheduled workers.");
 
         scope.SelectedIndexChanged += async (_, _) =>
         {
@@ -325,18 +319,8 @@ internal sealed class MainForm : Form
         };
         settings.LinkClicked += async (_, _) =>
         {
-            if (busy) return;
-            if (scope.SelectedIndex == 1)
-            {
-                await ShowAllUsersWizardAsync();
-                return;
-            }
-            using var wizard = new CurrentUserWizard(
-                cleanupAfterCurrentRepair, PortableSelfCleanup.IsEligible(), elevated);
-            if (wizard.ShowDialog(this) != DialogResult.OK) return;
-            cleanupAfterCurrentRepair = wizard.CleanupAfterRepair;
-            if (wizard.SelectedAction != AllUsersWizardAction.SaveOnly)
-                await RunRepairAsync(wizard.SelectedAction == AllUsersWizardAction.ResetOffice);
+            if (busy || scope.SelectedIndex != 1) return;
+            await ShowAllUsersWizardAsync();
         };
         repair.Click += async (_, _) => await RunRepairAsync(false);
         reset.Click += async (_, _) => await RunRepairAsync(true);
@@ -353,7 +337,6 @@ internal sealed class MainForm : Form
             window.ShowDialog(this);
             await CheckForUpdatesAsync();
         };
-        logs.Click += (_, _) => OpenLogs();
         language.SelectedIndexChanged += (_, _) =>
         {
             var index = language.SelectedIndex;
@@ -407,6 +390,40 @@ internal sealed class MainForm : Form
         return true;
     }
 
+    // UI-only scope transition. Suppress the modal All users wizard for the
+    // Windows smoke test, then restore the default Current user selection.
+    internal bool ScopeWorkflowSelfTest()
+    {
+        if (scope.SelectedIndex != 0 || scope.Items.Count != 2 ||
+            allUsersWizardOpen || repair.Parent is null || reset.Parent is null)
+            return false;
+        bool previousSuppression = suppressScopeWizard;
+        suppressScopeWizard = true;
+        try
+        {
+            scope.SelectedIndex = 1;
+            UpdateScopeExplanation();
+            bool bulk = scope.SelectedIndex == 1 &&
+                allUsersSettingsSummary.Text.Length > 10 &&
+                settings.Text.Length > 3;
+            scope.SelectedIndex = 0;
+            UpdateScopeExplanation();
+            return bulk && scope.SelectedIndex == 0 &&
+                repair.Parent is not null && reset.Parent is not null;
+        }
+        finally
+        {
+            suppressScopeWizard = previousSuppression;
+            if (scope.SelectedIndex != 0)
+            {
+                suppressScopeWizard = true;
+                scope.SelectedIndex = 0;
+                UpdateScopeExplanation();
+                suppressScopeWizard = previousSuppression;
+            }
+        }
+    }
+
     internal bool HeaderLayoutSelfTest()
     {
         if (headerRow is null || subtitleRow is null) return false;
@@ -442,11 +459,12 @@ internal sealed class MainForm : Form
             scope.SelectedIndex = Math.Min(previous, scope.Items.Count - 1);
         }
         finally { suppressScopeWizard = false; }
-        settings.Text = UpdateUiText.T("Setup", "Мастер", "הגדרה");
+        settings.Text = UpdateUiText.T("All users setup", "Мастер: все пользователи",
+            "הגדרות כל המשתמשים");
         settings.AccessibleDescription = UpdateUiText.T(
-            "Open setup for the selected user scope, including optional cleanup",
-            "Настройка выбранного режима пользователей и необязательная очистка",
-            "פתח הגדרה וניקוי אופציונלי עבור המשתמשים שנבחרו");
+            "Open the all-users task wizard and review protected worker cleanup",
+            "Открыть мастер заданий всех пользователей и очистку worker-файлов",
+            "פתח אשף משימות לכל המשתמשים וניקוי קובצי worker");
         languageLabel.Text = UpdateUiText.T("Language", "Язык", "שפה");
         languageLabel.AccessibleName = languageLabel.Text;
         language.AccessibleDescription = UpdateUiText.T(
@@ -484,8 +502,7 @@ internal sealed class MainForm : Form
                 ? Color.White : Color.FromArgb(221, 245, 230);
             modern.Invalidate();
         }
-        logs.Text = UiStrings.T("logs");
-        foreach (Control button in new Control[] { repair, reset, diagnose, diagnostics, updates, logs, settings })
+        foreach (Control button in new Control[] { repair, reset, diagnose, diagnostics, updates, settings })
             button.AccessibleName = button.Text;
         UpdateScopeExplanation();
         if (string.IsNullOrWhiteSpace(status.Text)) ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
@@ -602,22 +619,26 @@ internal sealed class MainForm : Form
     {
         if (scope.SelectedIndex < 0) return;
         bool everyone = scope.SelectedIndex == 1;
-        repair.Text = everyone && allUsersScheduleOnly
-            ? UpdateUiText.T("Schedule WAM re-registration", "Назначить регистрацию WAM", "תזמן רישום WAM מחדש")
-            : UiStrings.T("repair");
-        reset.Text = everyone && allUsersScheduleOnly
-            ? UpdateUiText.T("Schedule full reset", "Назначить полный сброс", "תזמן איפוס מלא")
-            : UiStrings.T("full");
+        // All users uses the scope-specific wizard, not a second set of
+        // repair buttons. Current user always acts directly on this screen.
+        settings.Visible = everyone;
+        repair.Visible = !everyone;
+        reset.Visible = !everyone;
+        if (reset.Parent is not null) reset.Parent.Visible = !everyone;
+        repairExplanation.Visible = !everyone;
+        resetExplanation.Visible = !everyone;
+        repair.Text = UiStrings.T("repair");
+        reset.Text = UiStrings.T("full");
         repair.AccessibleName = repair.Text;
         reset.AccessibleName = reset.Text;
         allUsersSettingsSummary.Visible = everyone;
         allUsersSettingsSummary.Text = UpdateUiText.T(
             $"All users: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell (WAM only)" : "EXE")} · " +
-                (allUsersScheduleOnly ? "at next sign-in" : "now for online users") + " · Adjust in Setup",
+                (allUsersScheduleOnly ? "at next sign-in" : "now for online users") + " · Run or adjust in All users setup",
             $"Все пользователи: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell (только WAM)" : "EXE")} · " +
-                (allUsersScheduleOnly ? "при следующем входе" : "сейчас для активных") + " · Изменить в мастере",
+                (allUsersScheduleOnly ? "при следующем входе" : "сейчас для активных") + " · Запустить или изменить в мастере",
             $"כל המשתמשים: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell" : "EXE")} · " +
-                (allUsersScheduleOnly ? "בכניסה הבאה" : "כעת למשתמשים מחוברים") + " · שינוי באשף");
+                (allUsersScheduleOnly ? "בכניסה הבאה" : "כעת למשתמשים מחוברים") + " · הפעל או עדכן באשף");
         var admin = everyone
             ? elevated
                 ? UpdateUiText.T("Administrator enabled; each user runs under their own account.",
@@ -644,12 +665,22 @@ internal sealed class MainForm : Form
         repair.AccessibleDescription = $"Re-register WAM, target: {target}. {admin}";
     }
 
+    private static bool ShouldRecheckAfterRepair(bool failed, bool everyone, bool elevated) =>
+        !failed && !everyone && !elevated;
+
+    internal static bool PostRepairSelfTest() =>
+        ShouldRecheckAfterRepair(false, false, false) &&
+        !ShouldRecheckAfterRepair(true, false, false) &&
+        !ShouldRecheckAfterRepair(false, true, false) &&
+        !ShouldRecheckAfterRepair(false, false, true);
+
     private async Task RunRepairAsync(bool full)
     {
         if (busy) return;
         var everyone = scope.SelectedIndex == 1;
         var selectedMode = everyone ? allUsersTaskMethod : ScheduledWorkerMode.Exe;
         var onlySchedule = everyone && allUsersScheduleOnly;
+        bool verifyCurrentUserAfterSuccess = false;
 
         if (everyone && full && selectedMode == ScheduledWorkerMode.PowerShell)
         {
@@ -702,6 +733,40 @@ internal sealed class MainForm : Form
             return;
         }
 
+        // Preflight the exact list before confirmation. These are existing
+        // profile registry entries, not every possible future account.
+        // Freeze the reviewed profile list so new profiles cannot silently
+        // become targets between confirmation and scheduling.
+        List<WindowsProfile>? reviewedProfiles = null;
+        int onlineAtReview = 0;
+        if (everyone)
+        {
+            try
+            {
+                reviewedProfiles = UserProfiles.Enumerate();
+                var onlineSids = Native.FindExplorerSessions().Values
+                    .SelectMany(x => x).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                onlineAtReview = reviewedProfiles.Count(x => onlineSids.Contains(x.Sid));
+                if (reviewedProfiles.Count == 0)
+                {
+                    ShowStatus(UpdateUiText.T(
+                        "No existing Windows profiles found. No tasks were created.",
+                        "Существующие профили Windows не найдены. Задания не создавались.",
+                        "לא נמצאו פרופילים קיימים. לא נוצרו משימות."),
+                        UiGlyph.Info);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowStatus(UpdateUiText.T(
+                    "Unable to enumerate existing user profiles: ",
+                    "Не удалось получить список существующих профилей: ",
+                    "לא ניתן לקבל רשימת פרופילים: ") + ex.GetType().Name, UiGlyph.Error);
+                return;
+            }
+        }
+
         // Even the non-destructive current-user action makes changes to AppX
         // registration and may interrupt Microsoft apps. Require a clear consent.
         if (!everyone && !full)
@@ -729,11 +794,20 @@ internal sealed class MainForm : Form
                     "להריץ תיקון WAM לכל המשתמשים? ייתכן שיישומי Office ייסגרו.")
                 : target;
             if (everyone)
+            {
                 prompt += Environment.NewLine + UpdateUiText.T(
                     $"Method: {selectedMode}; " + (onlySchedule ? "next sign-in only" : "run now where online, otherwise next sign-in"),
                     $"Способ: {(selectedMode == ScheduledWorkerMode.PowerShell ? "PowerShell" : "EXE")}; " +
                         (onlySchedule ? "только при следующем входе" : "сразу у активных, у остальных при входе"),
                     $"שיטה: {selectedMode}; " + (onlySchedule ? "רק בכניסה הבאה" : "כעת למשתמשים פעילים"));
+                int count = reviewedProfiles!.Count;
+                int immediate = onlySchedule ? 0 : onlineAtReview;
+                int later = count - immediate;
+                prompt += Environment.NewLine + UpdateUiText.T(
+                    $"Existing profiles: {count}; start now: {immediate}; at next sign-in: {later}. No new-user profiles are enrolled.",
+                    $"Существующих профилей: {count}; запуск сейчас: {immediate}; при следующем входе: {later}. Новые профили не добавляются.",
+                    $"פרופילים קיימים: {count}; כעת: {immediate}; בכניסה הבאה: {later}. פרופילים חדשים לא נכללים.");
+            }
             if (!everyone)
                 prompt += Environment.NewLine + UpdateUiText.T(
                     "Selected desktop user: ", "Выбранный пользователь: ", "המשתמש שנבחר: ") + desktopUser.Name;
@@ -764,24 +838,23 @@ internal sealed class MainForm : Form
             {
                 if (!elevated) return full ? Repair.Run(quiet: true) == 0 ? "SUCCESS" : "FAILED" :
                     Repair.ReRegister(quiet: true) == 0 ? "SUCCESS" : "FAILED";
-                return ScheduleAdminRepair(everyone, full, selectedMode, onlySchedule);
+                return ScheduleAdminRepair(everyone, full, selectedMode, onlySchedule, reviewedProfiles);
             });
             detail.Text = result;
             detail.Visible = false;
             technicalToggle.Visible = true;
             UpdateTechnicalLink();
             var failed = result.Contains("FAILED", StringComparison.Ordinal);
+            // The local user has already finished repair synchronously.
+            // A scheduled all-users / elevated worker has NOT necessarily
+            // finished: never auto-claim a queued task as a successful repair.
+            verifyCurrentUserAfterSuccess = ShouldRecheckAfterRepair(failed, everyone, elevated);
             ShowStatus(failed ? UiStrings.T("failed") : elevated
                 ? UpdateUiText.T("Per-user tasks queued; check user logs for completion.",
                     "Задачи пользователей назначены. Проверяйте результат в их журналах.",
                     "המשימות תוזמנו. בדוק את יומני המשתמשים.")
                 : UiStrings.T("done"), failed ? UiGlyph.Error : UiGlyph.Success);
-            if (!failed && !everyone && !elevated && cleanupAfterCurrentRepair &&
-                PortableSelfCleanup.IsEligible())
-            {
-                PortableSelfCleanup.Queue();
-                Close(); // Cleaner waits for this process to exit before deleting EXE.
-            }
+
         }
         catch (Exception ex)
         {
@@ -792,12 +865,19 @@ internal sealed class MainForm : Form
             UpdateTechnicalLink();
         }
         finally { SetBusy(false); }
+
+        // No second Check button is needed after a successful direct repair.
+        // Read-only post-check still cannot prove Word/Teams/OneDrive login.
+        // Do not run it for queued per-user jobs.
+        if (verifyCurrentUserAfterSuccess && !IsDisposed && !Disposing)
+            await RunDiagnoseAsync();
     }
 
     private static string ScheduleAdminRepair(bool everyone, bool full,
-        ScheduledWorkerMode mode, bool onlySchedule)
+        ScheduledWorkerMode mode, bool onlySchedule,
+        List<WindowsProfile>? reviewedProfiles = null)
     {
-        var profiles = UserProfiles.Enumerate();
+        var profiles = reviewedProfiles ?? UserProfiles.Enumerate();
         var sessions = Native.FindExplorerSessions();
         var selected = profiles;
         if (!everyone)
@@ -925,10 +1005,4 @@ internal sealed class MainForm : Form
         }
     }
 
-    private static void OpenLogs()
-    {
-        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft365AuthRepair", "Logs");
-        Directory.CreateDirectory(path);
-        Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
-    }
 }
