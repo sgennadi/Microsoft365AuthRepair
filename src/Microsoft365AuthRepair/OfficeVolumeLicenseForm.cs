@@ -23,20 +23,38 @@ internal sealed class OfficeVolumeLicenseForm : Form
     private readonly RadioButton mak = new() { AutoSize = true };
     // Public Microsoft GVLK, not an organization's confidential MAK.
     // Selected automatically by exact Office 2024 Volume SKU, copyable with Ctrl+C.
-    private readonly FlowLayoutPanel gvlkRow = new()
+    // Label, complete 29-character key, then description on separate rows:
+    // never place the help text beside the key where it can clip at 200% DPI.
+    private readonly TableLayoutPanel gvlkRow = new()
     {
         AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
-        Dock = DockStyle.Fill, WrapContents = true,
-        Margin = new Padding(0, 2, 0, 8)
+        Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3,
+        Margin = new Padding(0, 5, 0, 9)
     };
     private readonly Label gvlkCaption = UiTheme.Caption(string.Empty);
     private readonly TextBox gvlkValue = new()
     {
-        Width = 295, ReadOnly = true, TabStop = true, ShortcutsEnabled = true,
-        Margin = new Padding(8, 3, 6, 5),
+        Dock = DockStyle.Fill, MinimumSize = new Size(320, 0),
+        ReadOnly = true, TabStop = true, ShortcutsEnabled = true,
+        Font = new Font("Consolas", 10.2f),
+        Margin = new Padding(0, 5, 0, 5),
         AccessibleName = "Microsoft published KMS client setup key for selected Office product"
     };
     private readonly Label gvlkHelp = UiTheme.Caption(string.Empty);
+    private readonly TableLayoutPanel previewPanel = new()
+    {
+        AutoSize = true, Dock = DockStyle.Fill, Visible = false,
+        ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 6, 0, 9)
+    };
+    private readonly Label previewInfo = UiTheme.Caption(string.Empty);
+    private readonly LinkLabel previewAction = new()
+    {
+        AutoSize = true, Visible = false, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(0, 5, 0, 6)
+    };
+    private OfficeVolumeProduct? selectedPreviewForAction;
+    private bool canRemoveLegacyPreview;
     private readonly Label hostLabel = UiTheme.Caption(string.Empty);
     private readonly TextBox host = new()
     {
@@ -118,12 +136,12 @@ internal sealed class OfficeVolumeLicenseForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, AutoScroll = true,
-            ColumnCount = 1, RowCount = 10,
+            ColumnCount = 1, RowCount = 11,
             Padding = new Padding(18)
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         // All rows are content-sized; no giant unused footer on tall screens.
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 11; i++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         title.Text = UpdateUiText.T("Office LTSC 2024 / Visio / Project",
@@ -151,6 +169,12 @@ internal sealed class OfficeVolumeLicenseForm : Form
         productRow.Controls.Add(refreshLink, 1, 0);
         root.Controls.Add(productRow, 0, 2);
         root.Controls.Add(selectedStatus, 0, 3);
+        previewPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        previewPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        previewPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        previewPanel.Controls.Add(previewInfo, 0, 0);
+        previewPanel.Controls.Add(previewAction, 0, 1);
+        root.Controls.Add(previewPanel, 0, 4);
 
         var options = new FlowLayoutPanel
         {
@@ -161,7 +185,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
         mak.Text = UpdateUiText.T("MAK (organization key)", "MAK (ключ организации)", "MAK (מפתח ארגוני)");
         options.Controls.Add(kms);
         options.Controls.Add(mak);
-        root.Controls.Add(options, 0, 4);
+        root.Controls.Add(options, 0, 5);
 
         gvlkCaption.Text = UpdateUiText.T(
             "Suggested KMS client key (GVLK):",
@@ -172,11 +196,14 @@ internal sealed class OfficeVolumeLicenseForm : Form
             "Официальный ключ Microsoft. Подставится автоматически при активации. Ctrl+C — копировать. Не заменяет KMS-сервер.",
             "מפתח רשמי של Microsoft. יוזן אוטומטית בהפעלה. להעתקה Ctrl+C. לא מחליף שרת KMS.");
         gvlkValue.AccessibleDescription = gvlkHelp.Text;
-        gvlkRow.Controls.Add(gvlkCaption);
-        gvlkRow.Controls.Add(gvlkValue);
-        gvlkRow.Controls.Add(gvlkHelp);
+        gvlkRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < 3; i++)
+            gvlkRow.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        gvlkRow.Controls.Add(gvlkCaption, 0, 0);
+        gvlkRow.Controls.Add(gvlkValue, 0, 1);
+        gvlkRow.Controls.Add(gvlkHelp, 0, 2);
         gvlkRow.Visible = false;
-        root.Controls.Add(gvlkRow, 0, 5);
+        root.Controls.Add(gvlkRow, 0, 6);
 
         var entry = new FlowLayoutPanel
         {
@@ -198,14 +225,14 @@ internal sealed class OfficeVolumeLicenseForm : Form
         entry.Controls.Add(kmsLookupLink);
         entry.Controls.Add(makCaption);
         entry.Controls.Add(makKey);
-        root.Controls.Add(entry, 0, 6);
+        root.Controls.Add(entry, 0, 7);
 
         removePreview.Text = UpdateUiText.T(
             "I approve removing the identified Office 2024 Preview key BEFORE installation of the new key.",
             "Разрешаю удалить найденный ключ Office 2024 Preview ДО установки нового ключа.",
             "אני מאשר להסיר מפתח Preview 2024 לפני התקנת מפתח חדש.");
         removePreview.Visible = false;
-        root.Controls.Add(removePreview, 0, 7);
+        root.Controls.Add(removePreview, 0, 8);
 
         var statusPanel = new TableLayoutPanel
         {
@@ -223,7 +250,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
             "Microsoft Learn — официальные KMS-ключи Office",
             "Microsoft Learn — מפתחות KMS רשמיים");
         statusPanel.Controls.Add(docs, 0, 3);
-        root.Controls.Add(statusPanel, 0, 8);
+        root.Controls.Add(statusPanel, 0, 9);
 
         var buttons = new FlowLayoutPanel
         {
@@ -232,7 +259,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
         };
         buttons.Controls.Add(close);
         buttons.Controls.Add(apply);
-        root.Controls.Add(buttons, 0, 9);
+        root.Controls.Add(buttons, 0, 10);
         Controls.Add(ResponsiveLayout.Center(this, root, 1110));
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(apply, UiGlyph.Save, primary: true);
@@ -245,7 +272,8 @@ internal sealed class OfficeVolumeLicenseForm : Form
             info.MaximumSize = selectedStatus.MaximumSize =
                 kmsStatus.MaximumSize = outcome.MaximumSize =
                 removePreview.MaximumSize = max;
-            gvlkHelp.MaximumSize = new Size(Math.Max(170, max.Width - 24), 0);
+            gvlkHelp.MaximumSize = previewInfo.MaximumSize =
+                new Size(Math.Max(170, max.Width - 24), 0);
         };
         productList.SelectedIndexChanged += (_, _) =>
         {
@@ -261,6 +289,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
             showTechnicalRows = !showTechnicalRows;
             PopulateProductList(selected?.ActivationId);
         };
+        previewAction.LinkClicked += async (_, _) => await HandlePreviewActionAsync();
         host.TextChanged += (_, _) =>
         {
             if (!settingKmsHost) manualKmsHost = true;
@@ -425,6 +454,155 @@ internal sealed class OfficeVolumeLicenseForm : Form
         SelectProduct();
     }
 
+    private void UpdatePreviewPanel()
+    {
+        selectedPreviewForAction = null;
+        canRemoveLegacyPreview = false;
+        if (inventory is null)
+        {
+            previewInfo.Text = "";
+            previewAction.Text = "";
+            previewAction.Visible = previewPanel.Visible = false;
+            return;
+        }
+
+        // Preview WMI entries must remain visible in the summary even if the
+        // main selector correctly prioritizes an activated production Office.
+        var found = inventory.Products.Where(x => x.IsPreview).ToArray();
+        if (found.Length == 0)
+        {
+            previewInfo.Text = "";
+            previewAction.Text = "";
+            previewAction.Visible = previewPanel.Visible = false;
+            return;
+        }
+
+        previewPanel.Visible = true;
+        var keyed = OfficeVolumeLicensing.PreviewKeyRecords(inventory);
+        if (keyed.Count == 0)
+        {
+            previewInfo.Text = UpdateUiText.T(
+                $"Preview licensing entries detected: {found.Length}. No Preview key is installed in those entries; nothing needs removing.",
+                $"Найдено записей лицензирования Preview: {found.Length}. В них нет установленного Preview-ключа — удалять нечего.",
+                $"נמצאו {found.Length} רשומות Preview ללא מפתח מותקן; אין מה להסיר.");
+        }
+        else
+        {
+            previewInfo.Text = UpdateUiText.T(
+                $"Preview entries: {found.Length}, with a partial key: {keyed.Count}. Only verified 2024 keys can be removed.",
+                $"Записей Preview: {found.Length}, с установленным ключом: {keyed.Count}. Удалять можно только подтверждённые ключи 2024.",
+                $"רשומות Preview: {found.Length}; עם מפתח: {keyed.Count}. ניתן להסיר רק מפתחות 2024 מאומתים.");
+            var obsolete = keyed.FirstOrDefault(x =>
+                OfficeVolumeLicensing.CanRemoveLegacyPreview(x, inventory));
+            if (obsolete is not null)
+            {
+                selectedPreviewForAction = obsolete;
+                canRemoveLegacyPreview = true;
+                previewAction.Text = UpdateUiText.T(
+                    "Review removal of verified obsolete Preview key…",
+                    "Проверить удаление подтверждённого старого Preview-ключа…",
+                    "בדוק הסרת מפתח Preview ישן ומאומת…");
+                previewInfo.Text += Environment.NewLine + UpdateUiText.T(
+                    "A separate active production Office license was verified.",
+                    "Отдельная действующая лицензия Office подтверждена.",
+                    "זוהה רישיון Office פעיל ונפרד.");
+            }
+            else
+            {
+                selectedPreviewForAction = keyed.FirstOrDefault(x =>
+                    OfficeVolumeLicensing.CanApply(x, inventory));
+                if (selectedPreviewForAction is not null)
+                {
+                    previewAction.Text = UpdateUiText.T(
+                        "Review Preview-to-KMS/MAK replacement…",
+                        "Проверить замену Preview на KMS/MAK…",
+                        "בדוק החלפת Preview ב-KMS/MAK…");
+                    previewInfo.Text += Environment.NewLine + UpdateUiText.T(
+                        "No separate active production license. Replacement requires a new key and two confirmations.",
+                        "Нет отдельной действующей лицензии. Для замены нужны новый ключ и два подтверждения.",
+                        "אין רישיון פעיל נפרד; להחלפה נדרשים מפתח ואישורים.");
+                }
+                else
+                {
+                    previewInfo.Text += Environment.NewLine + UpdateUiText.T(
+                        "No safe automatic action for these Preview keys. Ask IT to verify the edition and license.",
+                        "Для этих Preview-ключей нет безопасного автоматического действия. Требуется проверка IT.",
+                        "אין פעולה אוטומטית בטוחה; נדרשת בדיקת IT.");
+                    previewAction.Text = "";
+                }
+            }
+        }
+        previewAction.Visible = selectedPreviewForAction is not null;
+        previewAction.AccessibleName = previewAction.Text;
+    }
+
+    private async Task HandlePreviewActionAsync()
+    {
+        var preview = selectedPreviewForAction;
+        var original = inventory;
+        if (busy || preview is null || original is null) return;
+
+        if (!canRemoveLegacyPreview)
+        {
+            // Select the exact Preview record for the normal explicit
+            // Preview-to-Volume workflow. This selection does NOT remove it.
+            showTechnicalRows = true;
+            PopulateProductList(preview.ActivationId);
+            outcome.Text = UpdateUiText.T(
+                "Review the selected Preview license, choose KMS/MAK, approve old-key removal, then confirm activation. No changes made.",
+                "Проверьте выбранный Preview-ключ, выберите KMS/MAK, разрешите удаление и подтвердите активацию. Пока ничего не изменено.",
+                "בדוק רישיון Preview, בחר KMS/MAK ואשר את הפעולה. לא בוצע שינוי.");
+            return;
+        }
+
+        if (!Identity.IsElevated())
+        {
+            outcome.Text = UpdateUiText.T(
+                "To remove an obsolete Preview key, run the app as administrator. Nothing changed.",
+                "Для удаления старого Preview-ключа запустите программу от администратора. Изменений нет.",
+                "להסרת Preview נדרשות הרשאות מנהל. לא בוצע שינוי.");
+            return;
+        }
+        var warning = UpdateUiText.T(
+            $"Remove ONLY old Preview key *****-{preview.PartialKey} from {OfficeVolumeLicensing.FriendlyName(preview.ProductId)}? " +
+            "A separate activated non-Preview license exists. The program will recheck both licenses before deletion. This cannot be undone using only the last five characters. Continue?",
+            $"Удалить ТОЛЬКО старый Preview-ключ *****-{preview.PartialKey} из {OfficeVolumeLicensing.FriendlyName(preview.ProductId)}? " +
+            "Найдена отдельная действующая лицензия без Preview. Перед удалением обе лицензии будут проверены повторно. По последним пяти символам восстановить ключ нельзя. Продолжить?",
+            $"להסיר רק מפתח Preview *****-{preview.PartialKey}? " +
+            "קיים רישיון פעיל נפרד. שתי הרשומות ייבדקו שוב לפני ההסרה. להמשיך?");
+        if (MessageBox.Show(this, warning,
+                UpdateUiText.T("Confirm old Preview key cleanup",
+                    "Подтвердите удаление старого Preview-ключа",
+                    "אישור הסרת מפתח Preview"),
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
+
+        SetBusy(true);
+        try
+        {
+            var result = await Task.Run(() =>
+                OfficeVolumeLicensing.RemoveLegacyPreviewKey(preview, original));
+            if (IsDisposed || Disposing) return;
+            outcome.Text = result.Stage + ": " + result.Status;
+            // Refresh only via the read-only inventory path, even after an
+            // unsuccessful delete; never retry a partial operation silently.
+            SetBusy(false);
+            await RefreshAsync();
+            if (!IsDisposed && !Disposing)
+                outcome.Text = result.Stage + ": " + result.Status;
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                outcome.Text = "Preview cleanup: " + ex.GetType().Name;
+        }
+        finally
+        {
+            if (!IsDisposed && !Disposing) SetBusy(false);
+        }
+    }
+
     private async Task RefreshAsync()
     {
         if (busy) return;
@@ -439,6 +617,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
             var previousId = selected?.ActivationId;
             inventory = result;
             PopulateProductList(previousId);
+            UpdatePreviewPanel();
             var unverified = result.ProductReleaseIds
                 .Where(OfficeVolumeLicensing.IsUnverified2026).ToArray();
             outcome.Text = result.Warning ??
@@ -658,7 +837,28 @@ internal sealed class OfficeVolumeLicenseForm : Form
         form.PopulateProductList(null);
         var allRecords = form.displayedProducts.Count == 2 &&
             form.selected?.ActivationId == activated.ActivationId;
+        var preview = visio with
+        {
+            ActivationId = Guid.NewGuid().ToString("D"),
+            Name = "Office24VisioPro2024PreviewVL_KMS_Client_AE",
+            PartialKey = "WXGKQ", IsPreview = true, IsSupported2024Volume = false,
+            Status = "Unlicensed"
+        };
+        form.inventory = new OfficeVolumeInventory([visio, activated, preview],
+            ["VisioPro2024Volume"], null) { InstalledProductsVerified = true };
+        form.UpdatePreviewPanel();
+        bool oldPreview = form.canRemoveLegacyPreview &&
+            form.selectedPreviewForAction?.ActivationId == preview.ActivationId &&
+            form.previewAction.Text.Contains("Preview", StringComparison.Ordinal);
+        form.inventory = new OfficeVolumeInventory([visio, activated,
+            preview with { PartialKey = "" }], ["VisioPro2024Volume"], null)
+            { InstalledProductsVerified = true };
+        form.UpdatePreviewPanel();
+        bool emptyPreview = !form.canRemoveLegacyPreview &&
+            form.selectedPreviewForAction is null &&
+            form.previewInfo.Text.Length > 15;
         return initial && automatic && makMode && wrongEdition &&
-            activeFirst && allRecords && UiTheme.VerifyButtons(form, 2);
+            activeFirst && allRecords && oldPreview && emptyPreview &&
+            UiTheme.VerifyButtons(form, 2);
     }
 }

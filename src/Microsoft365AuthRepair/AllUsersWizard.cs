@@ -53,6 +53,22 @@ internal sealed class AllUsersWizard : Form
     private readonly Label introduction = UiTheme.Caption(string.Empty);
     private readonly Label summary = UiTheme.Caption(string.Empty);
     private readonly Label safety = UiTheme.Caption(string.Empty);
+    private readonly LinkLabel maintenanceLink = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(0, 12, 0, 8)
+    };
+    private readonly Label maintenanceStatus = UiTheme.Caption(string.Empty);
+    private readonly CheckBox removeUnusedWorkers = new()
+    {
+        AutoSize = true, Checked = false, Visible = false,
+        Margin = new Padding(0, 8, 0, 6)
+    };
+    private readonly Button cleanCompletedTasks = UiTheme.CreateActionButton(
+        UpdateUiText.T("Clean old tasks", "Очистить старые задания", "נקה משימות ישנות"));
+    private ScheduledWorkerSnapshot? maintenanceSnapshot;
+    private bool maintenanceBusy;
     private readonly Button back = UiTheme.CreateActionButton(
         UpdateUiText.T("Back", "Назад", "הקודם"));
     private readonly Button next = UiTheme.CreateActionButton(
@@ -166,6 +182,32 @@ internal sealed class AllUsersWizard : Form
             "Крайняя мера: удаляет кеши входа Office/WAM, требует повторного входа, только EXE. Перед запуском появится предупреждение.",
             "מוצא אחרון: מחיקת מטמון Office/WAM וכניסה מחדש; EXE בלבד. נדרשת אזהרה נוספת.")));
 
+        // Administrator-only, explicitly requested housekeeping. No cleanup
+        // occurs when "Finish" is clicked. Pending or running tasks remain.
+        maintenanceLink.Text = UpdateUiText.T(
+            "Review scheduled tasks & worker cleanup",
+            "Проверить очистку заданий и worker-файлов",
+            "בדוק ניקוי משימות וקבצי worker");
+        maintenanceLink.AccessibleName = maintenanceLink.Text;
+        Add(actionPage, maintenanceLink);
+        maintenanceStatus.Text = elevated
+            ? UpdateUiText.T(
+                "Optional: inspect completed/expired tasks without stopping pending users.",
+                "Дополнительно: проверить завершённые и просроченные задания, не прерывая ожидающих пользователей.",
+                "בדיקה אופציונלית של משימות שהושלמו או שפג תוקפן.")
+            : UpdateUiText.T(
+                "Administrator rights are needed for all-users maintenance. No cleanup will run.",
+                "Для обслуживания заданий всех пользователей нужны права администратора. Очистка не запустится.",
+                "נדרשות הרשאות מנהל עבור ניקוי משימות.");
+        Add(actionPage, maintenanceStatus);
+        removeUnusedWorkers.Text = UpdateUiText.T(
+            "Also remove shared PS1/EXE ONLY if no tasks remain",
+            "Также удалить общий PS1/EXE, ТОЛЬКО если заданий больше нет",
+            "מחק גם PS1/EXE משותפים רק אם לא נשארו משימות");
+        Add(actionPage, removeUnusedWorkers);
+        cleanCompletedTasks.Visible = false;
+        Add(actionPage, cleanCompletedTasks);
+
         exe.Checked = initialMethod != ScheduledWorkerMode.PowerShell;
         powershell.Checked = !exe.Checked;
         runNow.Checked = !initialScheduleOnly;
@@ -227,6 +269,8 @@ internal sealed class AllUsersWizard : Form
         saveOnly.CheckedChanged += (_, _) => RefreshSummary();
         repairWam.CheckedChanged += (_, _) => RefreshSummary();
         resetOffice.CheckedChanged += (_, _) => RefreshSummary();
+        maintenanceLink.LinkClicked += async (_, _) => await InspectMaintenanceAsync();
+        cleanCompletedTasks.Click += async (_, _) => await CleanMaintenanceAsync();
         viewport.SizeChanged += (_, _) => WrapDescriptions();
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(next, UiGlyph.Save, primary: true);
@@ -272,6 +316,106 @@ internal sealed class AllUsersWizard : Form
         introduction.MaximumSize = new Size(width, 0);
         summary.MaximumSize = new Size(width, 0);
         safety.MaximumSize = new Size(width, 0);
+    }
+
+    private async Task InspectMaintenanceAsync()
+    {
+        if (maintenanceBusy || !elevated || !Identity.IsElevated()) return;
+        maintenanceBusy = true;
+        maintenanceLink.Enabled = false;
+        cleanCompletedTasks.Enabled = false;
+        maintenanceStatus.Text = UpdateUiText.T(
+            "Checking our scheduled tasks and protected workers…",
+            "Проверяю задания и защищённые worker-файлы…",
+            "בודק משימות וקבצי worker…");
+        try
+        {
+            var result = await Task.Run(ScheduledWorkerMaintenance.Inspect);
+            if (IsDisposed || Disposing) return;
+            maintenanceSnapshot = result;
+            maintenanceStatus.Text = UpdateUiText.T(
+                $"Tasks: {result.Total}; pending: {result.Pending}; running: {result.Running}; completed: {result.Completed}; expired: {result.Expired}; unrelated: {result.Foreign}.",
+                $"Заданий: {result.Total}; ожидают: {result.Pending}; выполняются: {result.Running}; завершены: {result.Completed}; просрочены: {result.Expired}; другие: {result.Foreign}.",
+                $"משימות: {result.Total}; ממתינות: {result.Pending}; פעילות: {result.Running}; הושלמו: {result.Completed}; פגו: {result.Expired}; אחרות: {result.Foreign}.");
+            removeUnusedWorkers.Visible = result.PowerShellWorkerExists || result.ExeWorkerExists;
+            removeUnusedWorkers.Checked = false;
+            removeUnusedWorkers.Enabled = result.Total == 0;
+            cleanCompletedTasks.Visible = result.Removable > 0 ||
+                (result.Total == 0 && removeUnusedWorkers.Visible);
+            cleanCompletedTasks.Enabled = cleanCompletedTasks.Visible;
+            if (result.Total > 0 && removeUnusedWorkers.Visible)
+                maintenanceStatus.Text += Environment.NewLine + UpdateUiText.T(
+                    "Protected PS1/EXE are retained while ANY task exists.",
+                    "Защищённые PS1/EXE сохраняются, пока существует ЛЮБОЕ задание.",
+                    "קובצי PS1/EXE נשמרים כל עוד קיימת משימה.");
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                maintenanceStatus.Text = UpdateUiText.T(
+                    "Could not inspect scheduled tasks: ",
+                    "Не удалось проверить задания: ",
+                    "לא ניתן לבדוק משימות: ") + ex.GetType().Name;
+        }
+        finally
+        {
+            maintenanceBusy = false;
+            if (!IsDisposed && !Disposing) maintenanceLink.Enabled = true;
+        }
+        WrapDescriptions();
+    }
+
+    private async Task CleanMaintenanceAsync()
+    {
+        if (maintenanceBusy || maintenanceSnapshot is null ||
+            !elevated || !Identity.IsElevated()) return;
+        bool removeStale = maintenanceSnapshot.Removable > 0;
+        bool removeFiles = removeUnusedWorkers.Enabled && removeUnusedWorkers.Checked;
+        if (!removeStale && !removeFiles) return;
+        var message = UpdateUiText.T(
+            $"Delete {maintenanceSnapshot.Removable} completed/expired tasks?" +
+            (removeFiles ? " Also delete shared workers ONLY if no tasks remain." : "") +
+            " Waiting and running tasks are never removed. Continue?",
+            $"Удалить {maintenanceSnapshot.Removable} завершённых/просроченных заданий?" +
+            (removeFiles ? " Также удалить общие worker-файлы, если заданий не останется." : "") +
+            " Ожидающие и работающие задания не удаляются. Продолжить?",
+            $"למחוק {maintenanceSnapshot.Removable} משימות שהושלמו או שפגו?" +
+            (removeFiles ? " למחוק גם קבצי worker כשלא נשארות משימות." : "") +
+            " משימות ממתינות ופעילות לא יימחקו. להמשיך?");
+        if (MessageBox.Show(this, message,
+                UpdateUiText.T("Confirm worker cleanup", "Подтвердите очистку worker",
+                    "אשר ניקוי worker"),
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
+        maintenanceBusy = true;
+        cleanCompletedTasks.Enabled = false;
+        maintenanceLink.Enabled = false;
+        try
+        {
+            var result = await Task.Run(() =>
+                ScheduledWorkerMaintenance.Clean(removeStale, removeFiles));
+            if (IsDisposed || Disposing) return;
+            maintenanceStatus.Text = result;
+            maintenanceSnapshot = null; // Must recheck before a second cleanup.
+            removeUnusedWorkers.Checked = false;
+            removeUnusedWorkers.Visible = false;
+            cleanCompletedTasks.Visible = false;
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                maintenanceStatus.Text = UpdateUiText.T(
+                    "Cleanup failed; refresh inventory: ",
+                    "Ошибка очистки, обновите список: ",
+                    "ניקוי נכשל: ") + ex.GetType().Name;
+        }
+        finally
+        {
+            maintenanceBusy = false;
+            if (!IsDisposed && !Disposing) maintenanceLink.Enabled = true;
+        }
+        WrapDescriptions();
     }
 
     private void SyncMethodAndAction()
@@ -355,6 +499,8 @@ internal sealed class AllUsersWizard : Form
         wizard.repairWam.Checked = true;
         return wizard.TaskMethod == ScheduledWorkerMode.PowerShell &&
             wizard.ScheduleOnly && wizard.SelectedAction == AllUsersWizardAction.RepairWam &&
+            !wizard.cleanCompletedTasks.Visible &&
+            !wizard.removeUnusedWorkers.Checked &&
             wizard.summary.Text.Contains("PowerShell", StringComparison.Ordinal) &&
             UiTheme.VerifyButtons(wizard, 3);
     }

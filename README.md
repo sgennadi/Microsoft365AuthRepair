@@ -1,3 +1,14 @@
+## Preview v1.0.1-preview.15 — guided repair and safe worker cleanup
+
+1. **One Setup entry:** Removed the redundant Settings dialog. The compact **Setup** link opens the All users three-step wizard for scheduled execution, or the Current user wizard for action selection and optional portable EXE cleanup. Nothing runs on Finish alone; independent repair/UAC confirmations remain.
+2. **Current-user cleanup:** Only the standard user's own portable Microsoft365AuthRepair.exe is eligible for one-time removal after successful repair and application exit. Installed, network, shared and elevated worker copies are protected.
+3. **All-users worker maintenance:** The last wizard step includes on-demand read-only inspection of our Task Scheduler folder. After a separate confirmation, an administrator can delete only completed or expired tasks whose principal and action match the protected app. Pending/running/unknown tasks are retained. ProgramData PS1/EXE are removable only when **no tasks of any kind** remain in our folder. PS1 is launched from the protected `C:\ProgramData\Microsoft365AuthRepair\WamReregisterWorker.ps1` using Task Scheduler under the affected user's interactive token; its own worker attempts to remove its task after execution.
+4. **Instant sign-in help:** Removed the large Explain code button. Typing AADSTS, 1001 or an Office sign-in problem immediately provides local matching error explanations and documentation; no report is sent.
+5. **Complete KMS key & Preview status:** The full public GVLK occupies a separate responsive line. Hidden WMI Preview records are summarized even when a valid Office 2024 license is already active. Known obsolete Preview keys can be reviewed for independent cleanup **only after** a distinct active production license is verified. Keyless Preview entries are labeled as requiring no removal. No ambiguous or unverified keys are automatically deleted.
+6. **Preview-only:** Stable v1.0.0 is untouched. Windows CI checks compile and launch; real KMS/MAK operations, worker removal on a domain workstation and 100–200% DPI EN/RU/HE must still be tested before Stable.
+
+[Preview.15 release notes](docs/releases/v1.0.1-preview.15.md)
+
 ## Preview v1.0.1-preview.14 — automatic Office 2024 KMS key recommendations
 
 1. **No manual GVLK lookup:** selecting a verified Office LTSC 2024 Professional Plus or Standard, Visio LTSC 2024 Professional or Standard, or Project 2024 Professional or Standard Volume edition displays the matching Microsoft-published KMS Client Setup Key in a copyable read-only field.

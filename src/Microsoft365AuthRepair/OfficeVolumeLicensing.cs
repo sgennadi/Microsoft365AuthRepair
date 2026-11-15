@@ -112,13 +112,17 @@ internal static class OfficeVolumeLicensing
                 return key;
             // WMI formats: Office24ProPlus2024VL_KMS_Client, etc.
             var baseSku = key.Replace("Volume", "", StringComparison.Ordinal);
-            if (text.Contains(baseSku + "VL", StringComparison.OrdinalIgnoreCase))
+            if (text.Contains(baseSku + "VL", StringComparison.OrdinalIgnoreCase) ||
+                // Actual historical WMI names contain 'PreviewVL', for
+                // example Office24ProPlus2024PreviewVL_KMS_Client_AE.
+                text.Contains(baseSku + "PreviewVL", StringComparison.OrdinalIgnoreCase))
                 return key;
         }
         return null;
     }
 
     internal static bool IsPreviewLabel(string label) =>
+        label.Contains("2024PreviewVL", StringComparison.OrdinalIgnoreCase) ||
         Regex.IsMatch(label, @"(?i)(?<![a-z])(?:preview|insider|evaluation|eval)(?![a-z])",
             RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
@@ -232,6 +236,34 @@ internal static class OfficeVolumeLicensing
             x.ProductId.Equals(product.ProductId, StringComparison.OrdinalIgnoreCase) &&
             IsActive(x));
 
+    // A distinct, fully activated non-Preview license for the same installed
+    // SKU is required before offering removal of an obsolete Preview key.
+    // A mere empty WMI KMS/MAK template is never enough.
+    private static OfficeVolumeProduct? ActiveFinalSibling(
+        OfficeVolumeProduct product, OfficeVolumeInventory inventory) =>
+        inventory.Products.FirstOrDefault(x =>
+            x.ActivationId != product.ActivationId &&
+            x.ProductId.Equals(product.ProductId, StringComparison.OrdinalIgnoreCase) &&
+            IsActive(x) && !x.IsPreview &&
+            !IsKnownPreviewKey(x.ProductId, x.PartialKey));
+
+    internal static IReadOnlyList<OfficeVolumeProduct> PreviewKeyRecords(
+        OfficeVolumeInventory inventory) =>
+        inventory.Products.Where(x => x.IsPreview && x.HasKey)
+            .OrderByDescending(x => IsKnownPreviewKey(x.ProductId, x.PartialKey))
+            .ThenBy(x => x.ProductId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    internal static bool CanRemoveLegacyPreview(
+        OfficeVolumeProduct product, OfficeVolumeInventory inventory) =>
+        inventory.InstalledProductsVerified &&
+        product.IsPreview && product.HasKey &&
+        !IsUnverified2026(product.Name + " " + product.Description) &&
+        MatchesInstalledProduct(product, inventory) &&
+        IsKnownPreviewKey(product.ProductId, product.PartialKey) &&
+        DetectSku(product.Name + " " + product.Description) == product.ProductId &&
+        ActiveFinalSibling(product, inventory) is not null;
+
     // Show one canonical record per installed SKU by default. WMI can include
     // many empty MAK/KMS template rows in addition to one activated product.
     // Other rows remain accessible through "Show other license records".
@@ -265,7 +297,10 @@ internal static class OfficeVolumeLicensing
     {
         if (!inventory.InstalledProductsVerified ||
             !MatchesInstalledProduct(product, inventory) ||
-            IsActive(product) || ActiveSibling(product, inventory) ||
+            // A Preview license can itself report Licensed. That is not a
+            // production 2024 license, so it may still be replaced; however
+            // never replace it when a separate active final license exists.
+            ActiveSibling(product, inventory) ||
             !product.IsPreview || !product.HasKey ||
             IsUnverified2026(product.Name + " " + product.Description))
             return false;
@@ -283,7 +318,8 @@ internal static class OfficeVolumeLicensing
     internal static bool CanApply(OfficeVolumeProduct product, OfficeVolumeInventory inventory)
     {
         var sku = DetectSku(product.Name + " " + product.Description);
-        if (!inventory.InstalledProductsVerified || IsActive(product) ||
+        if (!inventory.InstalledProductsVerified ||
+            (IsActive(product) && !product.IsPreview) ||
             ActiveSibling(product, inventory) ||
             !MatchesInstalledProduct(product, inventory) ||
             sku is null || !sku.Equals(product.ProductId, StringComparison.OrdinalIgnoreCase) ||
@@ -295,6 +331,61 @@ internal static class OfficeVolumeLicensing
         // It can receive the official GVLK without first removing anything.
         return (product.IsSupported2024Volume && !product.IsPreview) ||
             CanReplacePreview(product, inventory);
+    }
+
+    // When a final 2024 license is already active, don't install another
+    // product key: offer ONLY separate, confirmable removal of a known Preview
+    // key on a different Office WMI activation record.
+    internal static OfficeLicenseChangeResult RemoveLegacyPreviewKey(
+        OfficeVolumeProduct preview, OfficeVolumeInventory oldInventory)
+    {
+        if (!Identity.IsElevated())
+            return new(false, "Privileges", "Administrator rights are required.", false, false);
+        if (!CanRemoveLegacyPreview(preview, oldInventory))
+            return new(false, "Validation", "Preview key or active replacement license could not be verified.", false, false);
+
+        // Re-read immediately before mutation. No stale UI key may be removed.
+        var fresh = Read();
+        var current = fresh.Products.FirstOrDefault(x => x.ActivationId == preview.ActivationId);
+        if (current is null || current.PartialKey != preview.PartialKey ||
+            !CanRemoveLegacyPreview(current, fresh))
+            return new(false, "Recheck", "Licensing changed. Refresh the list before retrying.", false, false);
+
+        var protectedLicense = ActiveFinalSibling(current, fresh);
+        if (protectedLicense is null)
+            return new(false, "Recheck", "Active production license is missing. Nothing removed.", false, false);
+
+        try
+        {
+            using var old = LoadOfficeProduct(current.ActivationId);
+            if (!Str(old, "ApplicationID").Equals(OfficeApplicationId, StringComparison.OrdinalIgnoreCase) ||
+                !Str(old, "PartialProductKey").Equals(current.PartialKey, StringComparison.OrdinalIgnoreCase) ||
+                DetectSku(Str(old, "Name") + " " + Str(old, "Description")) != current.ProductId ||
+                !IsKnownPreviewKey(current.ProductId, current.PartialKey))
+                return new(false, "Recheck", "Preview record did not pass final identity checks.", false, false);
+            Invoke(old, "UninstallProductKey", null, null);
+            var updated = Read();
+            var left = updated.Products.FirstOrDefault(x => x.ActivationId == current.ActivationId);
+            var preserved = updated.Products.Any(x =>
+                x.ActivationId == protectedLicense.ActivationId &&
+                x.PartialKey == protectedLicense.PartialKey && IsActive(x));
+            var removed = left is null || !left.PartialKey.Equals(current.PartialKey, StringComparison.OrdinalIgnoreCase);
+            return new(removed && preserved, removed ? "Preview cleanup" : "Recheck",
+                !removed
+                    ? "Preview key still appears installed. Verify status before retrying."
+                    : preserved
+                        ? "Obsolete 2024 Preview key removed. The separate activated Office license remains licensed."
+                        : "Preview key removed, but active Office status could not be verified. Check Office activation.",
+                removed, preserved);
+        }
+        catch (Exception ex) when (ex is ManagementException or UnauthorizedAccessException or
+            System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
+            return new(false, "Preview cleanup",
+                "Preview cleanup could not be completed: " + ex.GetType().Name +
+                ". Refresh licensing inventory; the current activation state needs verification.",
+                false, false);
+        }
     }
 
     // Preflight must be conservative: we will not remove the target product's
