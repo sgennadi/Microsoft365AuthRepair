@@ -1,3 +1,11 @@
+## Preview v1.0.1-preview.10 — responsive local report capture and single review
+
+1. **Generate report** performs the read-only Entra/WAM collection outside the UI thread, keeping the report window responsive even when AppX or dsregcmd are slow.
+2. The redundant raw JSON text panel is removed from **Diagnostics & reports**. The exact allowlisted JSON appears only in the separate **Send anonymously** confirmation dialog.
+3. **Send saved report** opens a previously saved report for review. Report creation still never sends anything automatically. The approval checkbox remains initially checked, but explicit **Send anonymously** is required.
+4. The compact report window preserves its local queue and status messaging. EN/RU/HE, responsive layout, x64/ARM64 build checks, and the same Google gateway remain in place.
+5. Does **not** alter WAM repair/reset behavior, GitHub issue schema, updater installation, or **Stable v1.0.0**. [Preview.10 notes](docs/releases/v1.0.1-preview.10.md).
+
 ## Preview v1.0.1-preview.9 — Settings, guided WAM diagnosis and one-step report review
 
 1. Replaces the almost-empty **Advanced** checkbox with a compact **Settings** dialog. All-users scheduling options (EXE / PowerShell, run now / next logon) and optional portable EXE deletion have clear descriptions; destructive reset stays visible on the main window.
