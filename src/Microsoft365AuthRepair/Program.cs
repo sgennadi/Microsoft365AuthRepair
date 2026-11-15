@@ -15,9 +15,19 @@ internal static class Program
             if (args.Length == 1 && args[0] == "--ui-self-test")
             {
                 Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
                 using var form = new MainForm();
+                using var updater = new UpdateCenter();
+                using var reports = new DiagnosticsCenter(uiSelfTest: true);
                 form.CreateControl();
-                return form.MinimumSize.Width >= 600 && form.Controls.Count > 0 ? 0 : 2;
+                updater.CreateControl();
+                reports.CreateControl();
+                return form.MinimumSize.Width >= 600
+                    && UiIcons.Verify(form)
+                    && UiIcons.Verify(updater)
+                    && UiIcons.Verify(reports)
+                    ? 0 : 2;
             }
             if (args.Length > 0) return 2;
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);

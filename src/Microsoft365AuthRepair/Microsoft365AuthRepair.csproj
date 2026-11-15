@@ -8,11 +8,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Microsoft365AuthRepair</AssemblyName>
     <RootNamespace>Microsoft365AuthRepair</RootNamespace>
-    <Version>0.1.0-preview.1</Version>
+    <Version>0.1.0-preview.2</Version>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
-    <FileVersion>0.1.0.0</FileVersion>
-    <InformationalVersion>0.1.0-preview.1</InformationalVersion>
+    <FileVersion>0.1.0.2</FileVersion>
+    <InformationalVersion>0.1.0-preview.2</InformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/Microsoft365AuthRepair.ico</ApplicationIcon>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <PublishSingleFile>true</PublishSingleFile>
@@ -26,6 +27,8 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Assets/Microsoft365AuthRepair.ico"
+                      LogicalName="Microsoft365AuthRepair.BrandIcon" />
     <ProjectReference Include="../../modules/UniversalUpdater/src/UniversalUpdater.Core/UniversalUpdater.Core.csproj" />
     <ProjectReference Include="../DiagnosticsEmbedded/DiagnosticsEmbedded.vbproj" />
   </ItemGroup>

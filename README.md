@@ -1,6 +1,6 @@
 # Microsoft 365 Auth Repair
 
-A Windows .NET 10 WinForms desktop repair utility for Microsoft Entra WAM / `Microsoft.AAD.BrokerPlugin`, Office sign-in caches and Microsoft 365 authentication. Version `0.1.0-preview.1` **SOURCE PREVIEW — NOT RELEASED OR TESTED ON WINDOWS**.
+A Windows .NET 10 WinForms desktop repair utility for Microsoft Entra WAM / `Microsoft.AAD.BrokerPlugin`, Office sign-in caches and Microsoft 365 authentication. Version `0.1.0-preview.2` **PREVIEW — NOT YET TESTED FOR REAL WAM REPAIR**.
 
 ## Features
 
@@ -10,6 +10,7 @@ A Windows .NET 10 WinForms desktop repair utility for Microsoft Entra WAM / `Mic
 - Read-only `dsregcmd /status` diagnostics including `AzureAdJoined`, `DomainJoined`, `DeviceAuthStatus`, `AzureAdPrt`, and `WamDefaultSet`. AADSTS50155 warns that cloud device registration is outside WAM cache repair.
 - Local-only log files in `%LOCALAPPDATA%\Microsoft365AuthRepair\Logs`, plus current-user per-task completion markers.
 - Modern compact WinForms GUI with PerMonitorV2 DPI, Windows High Contrast, EN / RU / HE interface (technical diagnostics remain English), and Advanced mode.
+- Multi-size 16/32/48/64/256 px Windows EXE icon (custom shield/check branding), embedded window/taskbar icons, DPI-redrawn vector action and status glyphs throughout main window, Update Center and Diagnostics, with tooltips and accessibility descriptions. Icon presence is checked in CI UI smoke test.
 - **UniversalUpdater** from `sgennadi/UniversalUpdater` (pinned official core) handles GitHub Releases checks, stable/preview SemVer, SHA256 release metadata, download and staging validation, archive safety and PE architecture. In this preview **install is deliberately not wired** until safe close-and-replace helper + rollback are tested; `Download and verify` does not replace a running EXE.
 - **UniversalDiagnostics** from `sgennadi/UniversalDiagnocticsModule` (pinned canonical VB embedded adapter) writes redacted schema v1 local reports only after a review and explicit click. No automatic HTTP sending; no GitHub tokens in the binary. A shared verified HTTPS gateway will be connected separately after deployment/security testing.
 

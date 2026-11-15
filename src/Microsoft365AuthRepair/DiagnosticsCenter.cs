@@ -18,7 +18,7 @@ internal sealed class DiagnosticsCenter : Form
     private readonly Button save = UiTheme.CreateActionButton("Save reviewed report locally", true);
     private readonly Button open = UiTheme.CreateActionButton("Open report queue");
 
-    internal DiagnosticsCenter()
+    internal DiagnosticsCenter(bool uiSelfTest = false)
     {
         Text = "Microsoft 365 Auth Repair - UniversalDiagnostics";
         Font = UiTheme.BodyFont();
@@ -40,7 +40,14 @@ internal sealed class DiagnosticsCenter : Form
         root.Controls.Add(buttons, 0, 2);
         root.Controls.Add(status, 0, 3);
         Controls.Add(root);
-        preview.Text = BuildPreview();
+        UiIcons.SetWindowIcon(this);
+        UiIcons.Assign(save, UiGlyph.Save, primary: true);
+        UiIcons.Assign(open, UiGlyph.Folder);
+        UiIcons.TrackDpi(this);
+        // CI must not run dsregcmd or inspect users just to validate GUI icons.
+        preview.Text = uiSelfTest
+            ? "UI-only icon self-test. No diagnostic data is collected."
+            : BuildPreview();
         save.Click += (_, _) => SaveReviewedReport();
         open.Click += (_, _) =>
         {

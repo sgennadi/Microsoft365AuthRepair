@@ -13,6 +13,7 @@ internal sealed class MainForm : Form
     private readonly Label privilege = UiTheme.Caption(string.Empty);
     private readonly Label scopeLabel = UiTheme.Caption(string.Empty);
     private readonly Label status = UiTheme.Caption(string.Empty);
+    private readonly PictureBox statusGlyph = UiIcons.CreateStatus();
     private readonly Label advancedExplanation = UiTheme.Caption(string.Empty);
     private readonly ComboBox scope = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320, Margin = new Padding(0, 4, 0, 8) };
     private readonly ComboBox language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 115, Margin = new Padding(10, 2, 0, 0) };
@@ -60,13 +61,16 @@ internal sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var top = new TableLayoutPanel { ColumnCount = 2, Dock = DockStyle.Fill, AutoSize = true };
+        var top = new TableLayoutPanel { ColumnCount = 3, Dock = DockStyle.Fill, AutoSize = true };
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        top.Controls.Add(title, 0, 0);
+        top.Controls.Add(UiIcons.CreateBrand(), 0, 0);
+        title.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        top.Controls.Add(title, 1, 0);
         language.Items.AddRange(["English", "Русский", "עברית"]);
         language.SelectedIndex = UiStrings.Language switch { "ru" => 1, "he" => 2, _ => 0 };
-        top.Controls.Add(language, 1, 0);
+        top.Controls.Add(language, 2, 0);
         root.Controls.Add(top, 0, 0);
         root.Controls.Add(subtitle, 0, 1);
         root.Controls.Add(account, 0, 2);
@@ -105,14 +109,31 @@ internal sealed class MainForm : Form
         advanced.Controls.Add(advancedPanel, 0, 1);
         root.Controls.Add(advanced, 0, 5);
 
-        var banner = new Panel { AutoSize = true, Dock = DockStyle.Fill, Padding = new Padding(10, 8, 10, 8) };
+        var banner = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true, Padding = new Padding(10, 8, 10, 8) };
         if (!SystemInformation.HighContrast) banner.BackColor = Color.FromArgb(231, 239, 248);
+        banner.Controls.Add(statusGlyph);
         banner.Controls.Add(status);
         root.Controls.Add(banner, 0, 6);
         root.Controls.Add(detail, 0, 7);
         Controls.Add(root);
         Controls.Add(progress);
         progress.BringToFront();
+
+        UiIcons.SetWindowIcon(this);
+        UiIcons.Assign(repair, UiGlyph.Repair, primary: true);
+        UiIcons.Assign(reset, UiGlyph.Reset, destructive: true);
+        UiIcons.Assign(diagnose, UiGlyph.Search);
+        UiIcons.Assign(diagnostics, UiGlyph.Reports);
+        UiIcons.Assign(updates, UiGlyph.Updates);
+        UiIcons.Assign(logs, UiGlyph.Logs);
+        UiIcons.TrackDpi(this);
+        var hints = new ToolTip { AutoPopDelay = 12000, InitialDelay = 500, ReshowDelay = 200 };
+        hints.SetToolTip(repair, "Re-register WAM / AAD Broker Plugin without clearing user tokens.");
+        hints.SetToolTip(reset, "Advanced: remove Office and WAM identity caches for the selected user scope.");
+        hints.SetToolTip(diagnose, "Check Hybrid Join, device authentication, PRT and WAM status.");
+        hints.SetToolTip(diagnostics, "Review a sanitized diagnostic report before saving it locally.");
+        hints.SetToolTip(updates, "Check Stable / Preview releases and verify downloaded packages.");
+        hints.SetToolTip(logs, "Open local repair logs without sending any data.");
 
         showAdvanced.CheckedChanged += (_, _) => advancedPanel.Visible = showAdvanced.Checked;
         repair.Click += async (_, _) => await RunRepairAsync(false);
@@ -155,9 +176,15 @@ internal sealed class MainForm : Form
         updates.Text = UiStrings.T("updater");
         logs.Text = UiStrings.T("logs");
         advancedExplanation.Text = UiStrings.T("advanced");
-        if (string.IsNullOrWhiteSpace(status.Text)) status.Text = UiStrings.T("statusReady");
+        if (string.IsNullOrWhiteSpace(status.Text)) ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
+    }
+
+    private void ShowStatus(string message, UiGlyph glyph)
+    {
+        status.Text = message;
+        UiIcons.SetStatus(statusGlyph, glyph, message);
     }
 
     private void SetBusy(bool isBusy)
@@ -179,7 +206,7 @@ internal sealed class MainForm : Form
                     MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         }
         SetBusy(true);
-        status.Text = UiStrings.T("running");
+        ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
         {
             var result = await Task.Run(() =>
@@ -189,11 +216,14 @@ internal sealed class MainForm : Form
                 return ScheduleAdminRepair(everyone, full);
             });
             detail.AppendText(result + Environment.NewLine);
-            status.Text = result.Contains("FAILED", StringComparison.Ordinal) ? UiStrings.T("failed") : elevated ? "Scheduled. Per-user completion must be checked in each user log." : UiStrings.T("done");
+            var failed = result.Contains("FAILED", StringComparison.Ordinal);
+            ShowStatus(failed ? UiStrings.T("failed") : elevated
+                ? "Scheduled. Per-user completion must be checked in each user log."
+                : UiStrings.T("done"), failed ? UiGlyph.Error : UiGlyph.Success);
         }
         catch (Exception ex)
         {
-            status.Text = UiStrings.T("failed");
+            ShowStatus(UiStrings.T("failed"), UiGlyph.Error);
             detail.AppendText(ex.GetType().Name + ": " + ex.Message + Environment.NewLine);
         }
         finally { SetBusy(false); }
@@ -227,15 +257,15 @@ internal sealed class MainForm : Form
     {
         if (busy) return;
         SetBusy(true);
-        status.Text = UiStrings.T("running");
+        ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
         {
             detail.Text = await Task.Run(Repair.DiagnoseReport);
-            status.Text = UiStrings.T("statusReady");
+            ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
         }
         catch (Exception ex)
         {
-            status.Text = UiStrings.T("failed");
+            ShowStatus(UiStrings.T("failed"), UiGlyph.Error);
             detail.Text = ex.GetType().Name;
         }
         finally { SetBusy(false); }

@@ -60,6 +60,11 @@ internal sealed class UpdateCenter : Form
         root.Controls.Add(UiTheme.Caption("Release notes / What's new:"), 0, 2);
         root.Controls.Add(releaseNotes, 0, 3);
         Controls.Add(root);
+        UiIcons.SetWindowIcon(this);
+        UiIcons.Assign(check, UiGlyph.Updates, primary: true);
+        UiIcons.Assign(stage, UiGlyph.Download);
+        UiIcons.Assign(open, UiGlyph.Link);
+        UiIcons.TrackDpi(this);
         stage.Enabled = open.Enabled = false;
         check.Click += async (_, _) => await CheckAsync();
         stage.Click += async (_, _) => await StageAsync();
