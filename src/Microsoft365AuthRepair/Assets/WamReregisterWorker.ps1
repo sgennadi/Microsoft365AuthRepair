@@ -85,6 +85,11 @@ try {
             $line = if ($rc -eq 0) { 'WAM_REPAIR_OK' } else { 'WAM_REPAIR_FAILED' }
             $path = Join-Path $logs ('repair_ps_' + [DateTime]::UtcNow.ToString('yyyyMMdd_HHmmss') + '.log')
             [IO.File]::WriteAllText($path, $line)
+            if ($rc -ne 0) {
+                # A minimal local result receipt, never a copy of credentials.
+                [IO.File]::WriteAllText((Join-Path $markers ($RunId + '.failed')),
+                    [DateTimeOffset]::UtcNow.ToString('O'))
+            }
         } catch { }
     }
     # A non-elevated task may lack permission to remove an admin-created task.
