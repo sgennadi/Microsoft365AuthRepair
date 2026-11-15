@@ -203,7 +203,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj | head -1)"
-          test "$version" = "1.0.1-preview.12"
+          test "$version" = "1.0.1-preview.13"
           tag="v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag already exists; refusing to overwrite a published preview."
@@ -215,5 +215,5 @@ jobs:
             release-assets/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Microsoft 365 Auth Repair $version (Preview)" \
-            --notes-file docs/releases/v1.0.1-preview.12.md \
+            --notes-file docs/releases/v1.0.1-preview.13.md \
             --prerelease
