@@ -52,12 +52,12 @@ internal sealed class MainForm : Form
         Text = $"Microsoft 365 Auth Repair v{Repair.Version}";
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
-        MinimumSize = new Size(785, 520);
-        Size = new Size(1030, 715);
+        MinimumSize = new Size(820, 540);
+        Size = new Size(1120, 800);
         Font = UiTheme.BodyFont();
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
-        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-        Size = new Size(Math.Min(Size.Width, area.Width), Math.Min(Size.Height, area.Height));
+        ResponsiveLayout.FitInitialWindow(this, new Size(1120, 800),
+            new Size(1460, 1060), widthFraction: 0.90, heightFraction: 0.92);
 
         var root = new TableLayoutPanel
         {
@@ -141,7 +141,7 @@ internal sealed class MainForm : Form
         banner.Controls.Add(status);
         root.Controls.Add(banner, 0, 6);
         root.Controls.Add(detail, 0, 7);
-        Controls.Add(ResponsiveLayout.Center(this, root, 1080));
+        Controls.Add(ResponsiveLayout.Center(this, root, 1340));
         Controls.Add(progress);
         progress.BringToFront();
 
@@ -547,7 +547,8 @@ internal sealed class MainForm : Form
         try
         {
             // Stable by default; preview remains opt-in inside Update Center.
-            availableUpdate = await UpdaterIntegration.FindAsync(withPreview: false);
+            availableUpdate = await UpdaterIntegration.FindAsync(
+                withPreview: UpdaterIntegration.InstalledIsPreview);
             if (IsDisposed || Disposing) return;
             ApplyText();
         }
