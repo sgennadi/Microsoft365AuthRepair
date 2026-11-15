@@ -316,7 +316,7 @@ internal static class OfficeVolumeLicensing
     internal static bool MatchesInstalledProduct(OfficeVolumeProduct product,
         OfficeVolumeInventory inventory) =>
         !string.IsNullOrEmpty(product.ProductId) &&
-        inventory.ProductReleaseIds.Contains(product.ProductId, StringComparer.OrdinalIgnoreCase);
+        ProductReleaseMatches(product.ProductId, inventory.ProductReleaseIds);
 
     internal static string? GvlkFor(OfficeVolumeProduct product) =>
         DetectSku(product.Name + " " + product.Description) is { } key &&
@@ -620,7 +620,8 @@ internal static class OfficeVolumeLicensing
         var noKey = valid with { PartialKey = "" };
         var noKeyInventory = new OfficeVolumeInventory([noKey], ["VisioPro2024Volume"], null)
             { InstalledProductsVerified = true };
-        var activated = valid with { Status = "Licensed", PartialKey = "YY89G" };
+        var activated = valid with { ActivationId = Guid.NewGuid().ToString("D"),
+            Status = "Licensed", PartialKey = "YY89G" };
         var duplicated = new OfficeVolumeInventory([noKey, noKey, activated],
             ["VisioPro2024Volume"], null) { InstalledProductsVerified = true };
         var nonverified = new OfficeVolumeInventory([valid], ["VisioPro2024Volume"], null);
