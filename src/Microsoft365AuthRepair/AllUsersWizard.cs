@@ -3,9 +3,10 @@ using System.Windows.Forms;
 
 namespace Microsoft365AuthRepair;
 
-// A two-step, non-destructive guide shown when All users is selected.
-// Only returns settings to MainForm. It never elevates, registers tasks,
-// runs WAM/Office repair, changes a user profile or sends any data.
+// Three short steps: how, when, and what to do after finishing.
+// The wizard only returns options. MainForm owns UAC and explicit confirmation.
+internal enum AllUsersWizardAction { SaveOnly, RepairWam, ResetOffice }
+
 internal sealed class AllUsersWizard : Form
 {
     private readonly RadioButton exe = new()
@@ -33,6 +34,21 @@ internal sealed class AllUsersWizard : Form
         Margin = new Padding(0, 10, 0, 3)
     };
 
+    private readonly RadioButton saveOnly = new()
+    {
+        AutoSize = true, AccessibleName = "Save settings without action",
+        Margin = new Padding(0, 8, 0, 3)
+    };
+    private readonly RadioButton repairWam = new()
+    {
+        AutoSize = true, AccessibleName = "Continue to WAM repair confirmation",
+        Margin = new Padding(0, 10, 0, 3)
+    };
+    private readonly RadioButton resetOffice = new()
+    {
+        AutoSize = true, AccessibleName = "Continue to Office sign-in reset confirmation",
+        Margin = new Padding(0, 10, 0, 3)
+    };
     private readonly Label heading = UiTheme.Caption(string.Empty, heading: true);
     private readonly Label introduction = UiTheme.Caption(string.Empty);
     private readonly Label summary = UiTheme.Caption(string.Empty);
@@ -45,6 +61,7 @@ internal sealed class AllUsersWizard : Form
         UpdateUiText.T("Cancel", "Отмена", "ביטול"));
     private readonly TableLayoutPanel methodPage = NewPage();
     private readonly TableLayoutPanel timingPage = NewPage();
+    private readonly TableLayoutPanel actionPage = NewPage();
     private readonly Panel viewport = new()
     {
         Dock = DockStyle.Fill, AutoScroll = true,
@@ -60,6 +77,9 @@ internal sealed class AllUsersWizard : Form
     internal ScheduledWorkerMode TaskMethod =>
         powershell.Checked ? ScheduledWorkerMode.PowerShell : ScheduledWorkerMode.Exe;
     internal bool ScheduleOnly => nextSignIn.Checked;
+    internal AllUsersWizardAction SelectedAction =>
+        resetOffice.Enabled && resetOffice.Checked ? AllUsersWizardAction.ResetOffice :
+        repairWam.Checked ? AllUsersWizardAction.RepairWam : AllUsersWizardAction.SaveOnly;
     internal int CurrentStep => step;
     internal bool IsReadOnlyUntilConfirmed => true;
 
@@ -125,13 +145,38 @@ internal sealed class AllUsersWizard : Form
             "Только создать задания, не запускать их сейчас даже для вошедших пользователей. Задание выполнится при следующем входе каждого пользователя.",
             "צור משימות בלבד, בלי להפעיל כעת גם עבור משתמשים מחוברים. המשימה תפעל בכניסה הבאה של כל משתמש.")));
 
+        saveOnly.Text = UpdateUiText.T("Save settings only", "Только сохранить настройки", "שמור הגדרות בלבד");
+        repairWam.Text = UpdateUiText.T("Continue to Re-register WAM",
+            "Перейти к восстановлению WAM", "המשך לרישום WAM מחדש");
+        resetOffice.Text = UpdateUiText.T("Continue to Reset Office sign-in",
+            "Перейти к сбросу входа Office", "המשך לאיפוס כניסת Office");
+        Add(actionPage, saveOnly);
+        Add(actionPage, Caption(UpdateUiText.T(
+            "Return to the main window without creating any tasks.",
+            "Вернуться в главное окно без создания заданий.",
+            "חזור לחלון הראשי בלי ליצור משימות.")));
+        Add(actionPage, repairWam);
+        Add(actionPage, Caption(UpdateUiText.T(
+            "For existing profiles. Restores AAD BrokerPlugin registration without clearing Office sign-in caches; requires another confirmation.",
+            "Для существующих профилей. Восстанавливает регистрацию AAD BrokerPlugin без удаления кеша входа Office; потребуется подтверждение.",
+            "לפרופילים קיימים. רישום AAD BrokerPlugin ללא מחיקת מטמון Office; נדרש אישור נוסף.")));
+        Add(actionPage, resetOffice);
+        Add(actionPage, Caption(UpdateUiText.T(
+            "Last resort: deletes Office/WAM sign-in caches, requires signing in again, EXE only. Another warning appears before proceeding.",
+            "Крайняя мера: удаляет кеши входа Office/WAM, требует повторного входа, только EXE. Перед запуском появится предупреждение.",
+            "מוצא אחרון: מחיקת מטמון Office/WAM וכניסה מחדש; EXE בלבד. נדרשת אזהרה נוספת.")));
+
         exe.Checked = initialMethod != ScheduledWorkerMode.PowerShell;
         powershell.Checked = !exe.Checked;
         runNow.Checked = !initialScheduleOnly;
         nextSignIn.Checked = initialScheduleOnly;
+        saveOnly.Checked = true; // Destructive choices must never be preselected.
+        resetOffice.Enabled = exe.Checked;
         viewport.Controls.Add(methodPage);
         viewport.Controls.Add(timingPage);
+        viewport.Controls.Add(actionPage);
         timingPage.Visible = false;
+        actionPage.Visible = false;
         layout.Controls.Add(viewport, 0, 2);
 
         summary.Margin = new Padding(0, 5, 0, 2);
@@ -139,13 +184,13 @@ internal sealed class AllUsersWizard : Form
         safety.ForeColor = SystemInformation.HighContrast ? SystemColors.WindowText : UiTheme.Navy;
         safety.Text = elevated
             ? UpdateUiText.T(
-                "Finish only saves options. Nothing runs until you choose Re-register WAM or Reset Office sign-in on the main window and confirm.",
-                "«Готово» только сохранит параметры. Ничего не запустится, пока вы не выберете действие на главном экране и не подтвердите его.",
-                "סיום שומר הגדרות בלבד. שום פעולה לא תתחיל עד שתבחר ותאשר פעולה בחלון הראשי.")
+                "Finish never starts a task by itself. If you select a repair, a separate confirmation is required.",
+                "«Готово» само ничего не запускает. Если выбрано восстановление, потребуется отдельное подтверждение.",
+                "סיום לא מתחיל משימה. תיקון שנבחר דורש אישור נוסף.")
             : UpdateUiText.T(
-                "Finish only saves options. A later repair requires UAC and another confirmation; nothing runs automatically after elevation.",
-                "«Готово» только сохранит параметры. Для выполнения позже потребуется UAC и повторное подтверждение. После повышения прав ничего не запускается автоматически.",
-                "סיום שומר הגדרות בלבד. כדי לבצע פעולה תידרש הרשאת מנהל ואישור נוסף. דבר לא יתחיל אוטומטית.");
+                "Starting a repair also requires UAC. The elevated application will not automatically execute an action.",
+                "Для запуска восстановления также потребуется UAC. Программа после повышения прав не выполнит действие автоматически.",
+                "נדרשת גם הרשאת מנהל. האפליקציה לא תפעיל פעולה אוטומטית לאחר הרשאת מנהל.");
         var notes = new TableLayoutPanel
         {
             AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2,
@@ -174,11 +219,14 @@ internal sealed class AllUsersWizard : Form
         CancelButton = cancel;
         cancel.DialogResult = DialogResult.Cancel;
         next.Click += (_, _) => Advance();
-        back.Click += (_, _) => { if (step == 1) { step = 0; UpdateStep(); } };
-        exe.CheckedChanged += (_, _) => RefreshSummary();
-        powershell.CheckedChanged += (_, _) => RefreshSummary();
+        back.Click += (_, _) => { if (step > 0) { step--; UpdateStep(); } };
+        exe.CheckedChanged += (_, _) => SyncMethodAndAction();
+        powershell.CheckedChanged += (_, _) => SyncMethodAndAction();
         runNow.CheckedChanged += (_, _) => RefreshSummary();
         nextSignIn.CheckedChanged += (_, _) => RefreshSummary();
+        saveOnly.CheckedChanged += (_, _) => RefreshSummary();
+        repairWam.CheckedChanged += (_, _) => RefreshSummary();
+        resetOffice.CheckedChanged += (_, _) => RefreshSummary();
         viewport.SizeChanged += (_, _) => WrapDescriptions();
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(next, UiGlyph.Save, primary: true);
@@ -226,6 +274,14 @@ internal sealed class AllUsersWizard : Form
         safety.MaximumSize = new Size(width, 0);
     }
 
+    private void SyncMethodAndAction()
+    {
+        resetOffice.Enabled = exe.Checked;
+        if (!exe.Checked && resetOffice.Checked)
+            saveOnly.Checked = true;
+        RefreshSummary();
+    }
+
     private void RefreshSummary()
     {
         summary.Text = UpdateUiText.T(
@@ -241,30 +297,38 @@ internal sealed class AllUsersWizard : Form
     {
         methodPage.Visible = step == 0;
         timingPage.Visible = step == 1;
-        heading.Text = step == 0
-            ? UpdateUiText.T("All users · 1 of 2 — How to run",
-                "Все пользователи · 1 из 2 — Способ выполнения",
-                "כל המשתמשים · 1 מתוך 2 — אופן הפעלה")
-            : UpdateUiText.T("All users · 2 of 2 — When to run",
-                "Все пользователи · 2 из 2 — Когда выполнять",
-                "כל המשתמשים · 2 מתוך 2 — מועד הפעלה");
-        next.Text = step == 0
-            ? UpdateUiText.T("Next", "Далее", "הבא")
-            : UpdateUiText.T("Finish", "Готово", "סיום");
+        actionPage.Visible = step == 2;
+        heading.Text = step switch
+        {
+            0 => UpdateUiText.T("All users · 1 of 3 — How to run",
+                "Все пользователи · 1 из 3 — Способ выполнения",
+                "כל המשתמשים · 1 מתוך 3 — אופן הפעלה"),
+            1 => UpdateUiText.T("All users · 2 of 3 — When to run",
+                "Все пользователи · 2 из 3 — Когда выполнять",
+                "כל המשתמשים · 2 מתוך 3 — מועד ההפעלה"),
+            _ => UpdateUiText.T("All users · 3 of 3 — Choose action",
+                "Все пользователи · 3 из 3 — Выбор действия",
+                "כל המשתמשים · 3 מתוך 3 — בחירת פעולה")
+        };
+        next.Text = step == 2
+            ? UpdateUiText.T("Finish", "Готово", "סיום")
+            : UpdateUiText.T("Next", "Далее", "הבא");
         next.AccessibleName = next.Text;
-        back.Visible = step == 1;
+        back.Visible = step > 0;
         RefreshSummary();
         WrapDescriptions();
     }
 
     private void Advance()
     {
-        if (step == 0)
+        if (step < 2)
         {
-            step = 1;
+            step++;
             UpdateStep();
             return;
         }
+        if (SelectedAction == AllUsersWizardAction.ResetOffice && TaskMethod != ScheduledWorkerMode.Exe)
+            return;
         DialogResult = DialogResult.OK;
         Close();
     }
@@ -274,15 +338,24 @@ internal sealed class AllUsersWizard : Form
         using var wizard = new AllUsersWizard(ScheduledWorkerMode.Exe,
             initialScheduleOnly: false, elevated: false);
         if (!wizard.IsReadOnlyUntilConfirmed || wizard.TaskMethod != ScheduledWorkerMode.Exe ||
-            wizard.ScheduleOnly || wizard.CurrentStep != 0 || wizard.next.Text.Length == 0)
+            wizard.ScheduleOnly || wizard.CurrentStep != 0 ||
+            wizard.SelectedAction != AllUsersWizardAction.SaveOnly)
             return false;
         wizard.Advance();
-        if (wizard.CurrentStep != 1 || !wizard.back.Visible || wizard.next.Text.Length == 0)
+        wizard.Advance();
+        if (wizard.CurrentStep != 2 || wizard.next.Text.Length == 0)
+            return false;
+        wizard.resetOffice.Checked = true;
+        if (wizard.SelectedAction != AllUsersWizardAction.ResetOffice)
             return false;
         wizard.powershell.Checked = true;
         wizard.nextSignIn.Checked = true;
+        if (wizard.resetOffice.Enabled || wizard.SelectedAction != AllUsersWizardAction.SaveOnly)
+            return false;
+        wizard.repairWam.Checked = true;
         return wizard.TaskMethod == ScheduledWorkerMode.PowerShell &&
-            wizard.ScheduleOnly && wizard.summary.Text.Contains("PowerShell", StringComparison.Ordinal) &&
+            wizard.ScheduleOnly && wizard.SelectedAction == AllUsersWizardAction.RepairWam &&
+            wizard.summary.Text.Contains("PowerShell", StringComparison.Ordinal) &&
             UiTheme.VerifyButtons(wizard, 3);
     }
 }
