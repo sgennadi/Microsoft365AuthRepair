@@ -48,6 +48,12 @@ internal sealed class MainForm : Form
     private readonly Label repairExplanation = UiTheme.Caption(string.Empty);
     private readonly Label resetExplanation = UiTheme.Caption(string.Empty);
     private readonly Label allUsersSettingsSummary = UiTheme.Caption(string.Empty);
+    private readonly LinkLabel taskStatusLink = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(0, 6, 0, 7)
+    };
     private readonly ComboBox scope = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 420, Margin = new Padding(0, 4, 0, 8) };
     // All-users options are configured in its mini wizard; UAC continues to
     // receive only the two existing, validated command-line flags.
@@ -231,8 +237,18 @@ internal sealed class MainForm : Form
 
         // All-users task choices are summarized here; all controls now live
         // in the scope-specific Setup wizard.
-        allUsersSettingsSummary.MaximumSize = new Size(850, 0);
-        root.Controls.Add(allUsersSettingsSummary, 0, 5);
+        allUsersSettingsSummary.MaximumSize = new Size(1100, 0);
+        var allUsersOverview = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true,
+            ColumnCount = 1, RowCount = 2, Margin = Padding.Empty
+        };
+        allUsersOverview.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        allUsersOverview.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        allUsersOverview.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        allUsersOverview.Controls.Add(allUsersSettingsSummary, 0, 0);
+        allUsersOverview.Controls.Add(taskStatusLink, 0, 1);
+        root.Controls.Add(allUsersOverview, 0, 5);
 
         var banner = new FlowLayoutPanel
         {
@@ -290,7 +306,7 @@ internal sealed class MainForm : Form
         var hints = new ToolTip { AutoPopDelay = 12000, InitialDelay = 500, ReshowDelay = 200 };
         hints.SetToolTip(repair, "Re-register Microsoft.AAD.BrokerPlugin for the selected user. No credentials or sign-in caches are deleted; apps may briefly close.");
         hints.SetToolTip(reset, "Destructive: remove Office/WAM identity and sign-in caches for the selected users. Re-authentication required; explicit confirmation.");
-        hints.SetToolTip(diagnose, "Read-only health check with plain-language findings and next steps. It does not prove Office sign-in works.");
+        hints.SetToolTip(diagnose, "Read-only check of this application's Windows account and session, NOT every profile. It does not prove Office app sign-in works.");
         hints.SetToolTip(signInErrors, "Offline Microsoft 365 error-code guide: no report is sent and no account is changed.");
         hints.SetToolTip(diagnostics, "Generate a sanitized report, review the exact JSON and explicitly choose whether to send.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
@@ -321,6 +337,12 @@ internal sealed class MainForm : Form
         {
             if (busy || scope.SelectedIndex != 1) return;
             await ShowAllUsersWizardAsync();
+        };
+        taskStatusLink.LinkClicked += (_, _) =>
+        {
+            if (busy || scope.SelectedIndex != 1 || !elevated) return;
+            using var viewer = new AllUsersTaskStatusForm();
+            viewer.ShowDialog(this);
         };
         repair.Click += async (_, _) => await RunRepairAsync(false);
         reset.Click += async (_, _) => await RunRepairAsync(true);
@@ -405,11 +427,16 @@ internal sealed class MainForm : Form
             UpdateScopeExplanation();
             bool bulk = scope.SelectedIndex == 1 &&
                 allUsersSettingsSummary.Text.Length > 10 &&
-                settings.Text.Length > 3;
+                settings.Text.Length > 3 &&
+                taskStatusLink.Parent is not null &&
+                diagnose.Text == UpdateUiText.T("Check this account only",
+                    "Проверить только этот аккаунт", "בדיקת חשבון זה בלבד");
             scope.SelectedIndex = 0;
             UpdateScopeExplanation();
             return bulk && scope.SelectedIndex == 0 &&
-                repair.Parent is not null && reset.Parent is not null;
+                repair.Parent is not null && reset.Parent is not null &&
+                diagnose.Text == UpdateUiText.T("Check & Diagnose",
+                    "Проверить и объяснить", "בדוק ואבחן");
         }
         finally
         {
@@ -461,6 +488,11 @@ internal sealed class MainForm : Form
         finally { suppressScopeWizard = false; }
         settings.Text = UpdateUiText.T("All users setup", "Мастер: все пользователи",
             "הגדרות כל המשתמשים");
+        taskStatusLink.Text = UpdateUiText.T(
+            "View task status (read-only)",
+            "Состояние заданий (только просмотр)",
+            "מצב המשימות (קריאה בלבד)");
+        taskStatusLink.AccessibleName = taskStatusLink.Text;
         settings.AccessibleDescription = UpdateUiText.T(
             "Open the all-users task wizard and review protected worker cleanup",
             "Открыть мастер заданий всех пользователей и очистку worker-файлов",
@@ -607,7 +639,8 @@ internal sealed class MainForm : Form
     private void SetBusy(bool isBusy)
     {
         busy = isBusy;
-        repair.Enabled = reset.Enabled = diagnose.Enabled = diagnostics.Enabled = updates.Enabled = settings.Enabled = !isBusy;
+        repair.Enabled = reset.Enabled = diagnose.Enabled = diagnostics.Enabled =
+            updates.Enabled = settings.Enabled = taskStatusLink.Enabled = !isBusy;
         scope.Enabled = !isBusy;
         progress.Visible = isBusy;
     }
@@ -622,6 +655,19 @@ internal sealed class MainForm : Form
         // All users uses the scope-specific wizard, not a second set of
         // repair buttons. Current user always acts directly on this screen.
         settings.Visible = everyone;
+        taskStatusLink.Visible = everyone && elevated;
+        // This diagnosis runs as the app's current Windows account only.
+        // An elevated All users view must not imply a scan of every profile.
+        diagnose.Text = everyone
+            ? UpdateUiText.T("Check this account only",
+                "Проверить только этот аккаунт", "בדיקת חשבון זה בלבד")
+            : UpdateUiText.T("Check & Diagnose",
+                "Проверить и объяснить", "בדוק ואבחן");
+        diagnose.AccessibleName = diagnose.Text;
+        diagnose.AccessibleDescription = UpdateUiText.T(
+            "Only the account running this application is diagnosed, not all users.",
+            "Диагностируется только учётная запись этой программы, а не все пользователи.",
+            "רק החשבון שמפעיל את התוכנה נבדק.");
         repair.Visible = !everyone;
         reset.Visible = !everyone;
         if (reset.Parent is not null) reset.Parent.Visible = !everyone;
@@ -634,11 +680,14 @@ internal sealed class MainForm : Form
         allUsersSettingsSummary.Visible = everyone;
         allUsersSettingsSummary.Text = UpdateUiText.T(
             $"All users: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell (WAM only)" : "EXE")} · " +
-                (allUsersScheduleOnly ? "at next sign-in" : "now for online users") + " · Run or adjust in All users setup",
+                (allUsersScheduleOnly ? "at next sign-in" : "now for online users") +
+                ". Configure in All users setup. Sign-in diagnostics below check this account only.",
             $"Все пользователи: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell (только WAM)" : "EXE")} · " +
-                (allUsersScheduleOnly ? "при следующем входе" : "сейчас для активных") + " · Запустить или изменить в мастере",
+                (allUsersScheduleOnly ? "при следующем входе" : "сейчас для активных") +
+                ". Настройка — в мастере. Диагностика ниже относится только к текущей учётной записи.",
             $"כל המשתמשים: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell" : "EXE")} · " +
-                (allUsersScheduleOnly ? "בכניסה הבאה" : "כעת למשתמשים מחוברים") + " · הפעל או עדכן באשף");
+                (allUsersScheduleOnly ? "בכניסה הבאה" : "כעת למשתמשים מחוברים") +
+                ". ההגדרה באשף; הבדיקה להלן מתייחסת לחשבון זה בלבד.");
         var admin = everyone
             ? elevated
                 ? UpdateUiText.T("Administrator enabled; each user runs under their own account.",
