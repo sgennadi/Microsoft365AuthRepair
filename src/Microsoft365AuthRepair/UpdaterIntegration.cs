@@ -102,9 +102,9 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. Automatically suggest the official KMS client key for each verified Office/Project/Visio 2024 Volume edition.\n2. Show the suggested GVLK as copyable read-only text; no extra selection button.\n3. Use the matching key automatically for KMS activation after confirmation.\n4. Unsupported Preview, Retail and subscription editions remain protected.",
-        "1. При выборе Office/Project/Visio 2024 Volume автоматически предлагается официальный KMS-ключ.\n2. GVLK виден в поле для копирования, без лишней кнопки выбора.\n3. При подтверждённой KMS-активации ключ подставляется автоматически.\n4. Preview неизвестной редакции, Retail и подписочные версии защищены.",
-        "1. מפתח KMS רשמי מוצע אוטומטית עבור Office/Project/Visio 2024 Volume.\n2. המפתח מוצג בשדה לקריאה ולהעתקה, בלי כפתור נוסף.\n3. בעת הפעלת KMS באישור, המפתח המתאים נבחר אוטומטית.\n4. גרסאות Preview לא מזוהות, Retail ומנוי מוגנות.");
+        "1. Sign-in error explanations update as you type, without a large Explain button.\n2. Office Preview license entries are always reported; the GVLK fits on its own row.\n3. Settings replaced by scope-aware Setup; portable EXE cleanup moved into its wizard.\n4. Optional all-users maintenance safely cleans completed tasks and orphaned worker files.",
+        "1. Ошибки входа объясняются по мере набора без большой кнопки.\n2. Preview-записи Office показываются отдельно; весь GVLK виден.\n3. Settings заменены на мастер Setup с очисткой переносного EXE.\n4. В мастере All users можно безопасно очистить завершённые задания и ненужные worker-файлы.",
+        "1. קודי שגיאה מוסברים תוך כדי הקלדה, ללא כפתור גדול.\n2. רשומות Preview מוצגות והמפתח המלא גלוי בשורה נפרדת.\n3. Setup מחליף Settings וכולל ניקוי EXE נייד.\n4. ניקוי ידני מאובטח של משימות שהושלמו וקובצי worker מיותרים.");
 
     internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
 
