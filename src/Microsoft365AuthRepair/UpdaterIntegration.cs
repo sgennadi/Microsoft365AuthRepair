@@ -102,9 +102,9 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. Current user works directly: no duplicate wizard or portable EXE deletion.\n2. All users setup exclusively manages protected per-user tasks and cleanup.\n3. Preview shows exact existing-profile counts before bulk scheduling.\n4. Successful direct repairs automatically recheck WAM.\n5. Repair logs moved to Diagnostics & reports; wizard actions clearly say what will run.",
-        "1. Current user работает напрямую, без лишнего мастера и самоудаления EXE.\n2. Мастер All users управляет заданиями и очисткой worker-файлов.\n3. До массового запуска показано количество существующих профилей.\n4. После успешного ремонта WAM проверяется автоматически.\n5. Журналы перенесены в Diagnostics & reports, действия мастера стали понятнее.",
-        "1. המשתמש הנוכחי פועל ישירות, ללא אשף כפול או מחיקת EXE.\n2. אשף כל המשתמשים מנהל משימות וניקוי worker.\n3. מספר הפרופילים מוצג לפני פעולה כוללת.\n4. בדיקת WAM מתבצעת אוטומטית לאחר תיקון מוצלח.\n5. יומני תיקון הועברו לחלון הדוחות.");
+        "1. Read-only All users task statuses with refresh and per-user history.\n2. Verified worker receipts are distinguished from queued, running and unknown outcomes.\n3. Errors are not treated as successfully completed tasks for cleanup.\n4. The main All users health check now says Check this account only.\n5. Localized status table wraps text at high DPI; Stable is unchanged.",
+        "1. Для All users добавлены просмотр статусов заданий и локальная история.\n2. Подтверждения worker отделены от ожидания, выполнения и неизвестных результатов.\n3. Ошибки не считаются успешными заданиями для очистки.\n4. Диагностика All users обозначена как проверка только текущего аккаунта.\n5. Статусы переведены, таблица адаптирована к HiDPI; Stable не изменён.",
+        "1. נוספה תצוגת מצב משימות לקריאה בלבד עם היסטוריה מקומית.\n2. אישור הצלחה של worker מופרד ממשימות ממתינות ומתוצאות לא ידועות.\n3. משימות שנכשלו אינן נחשבות להצלחה לצורך ניקוי.\n4. בדיקת הבריאות באפשרות כל המשתמשים בודקת חשבון זה בלבד.\n5. הטבלה מותאמת ל-DPI גבוה; הגרסה היציבה ללא שינוי.");
 
     internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
 
