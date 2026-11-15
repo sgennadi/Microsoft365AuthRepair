@@ -652,7 +652,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
         form.PopulateProductList(null);
         var activeFirst = form.selected?.ActivationId == activated.ActivationId &&
             form.displayedProducts.Count == 1 &&
-            form.otherRecordsLink.Visible && !form.apply.Enabled &&
+            !string.IsNullOrWhiteSpace(form.otherRecordsLink.Text) && !form.apply.Enabled &&
             form.selectedStatus.Text.Contains("Licensed", StringComparison.Ordinal);
         form.showTechnicalRows = true;
         form.PopulateProductList(null);
