@@ -59,15 +59,16 @@ internal sealed class ReportSendDialog : Form
         StartPosition = FormStartPosition.CenterParent;
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = UiTheme.BodyFont();
-        Size = new Size(850, 630);
+        Size = new Size(920, 650);
         MinimumSize = new Size(650, 490);
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
-        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-        Size = new Size(Math.Min(Size.Width, area.Width), Math.Min(Size.Height, area.Height));
+        ResponsiveLayout.FitInitialWindow(this, new Size(920, 650),
+            new Size(1180, 900), widthFraction: 0.84, heightFraction: 0.79);
 
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
+            AutoScroll = true,
             Padding = new Padding(16),
             ColumnCount = 1,
             RowCount = 6
@@ -88,6 +89,13 @@ internal sealed class ReportSendDialog : Form
             "רק ה-JSON המוצג יישלח. תיווצר בעיה ציבורית ב-GitHub, ללא שמות משתמשים, מחשבים, אסימונים או יומנים."));
         warning.MaximumSize = new Size(720, 0);
         root.Controls.Add(warning, 0, 1);
+        root.SizeChanged += (_, _) =>
+        {
+            int width = Math.Max(180, root.ClientSize.Width - root.Padding.Horizontal - 20);
+            warning.MaximumSize = new Size(width, 0);
+            consent.MaximumSize = new Size(width, 0);
+        };
+        preview.MinimumSize = new Size(0, 180);
         preview.Text = payload.Json;
         root.Controls.Add(preview, 0, 2);
         consent.Text = UpdateUiText.T(
@@ -114,7 +122,7 @@ internal sealed class ReportSendDialog : Form
         actions.Controls.Add(send);
         actions.Controls.Add(keepLocal);
         root.Controls.Add(actions, 0, 5);
-        Controls.Add(ResponsiveLayout.Center(this, root, 920));
+        Controls.Add(ResponsiveLayout.Center(this, root, 1130));
         CancelButton = keepLocal;
 
         UiIcons.SetWindowIcon(this);
