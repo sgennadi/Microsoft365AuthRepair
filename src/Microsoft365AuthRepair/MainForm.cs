@@ -608,6 +608,17 @@ internal sealed class MainForm : Form
             "Крайняя мера: Reset Office sign-in удаляет кеш авторизации и потребует повторного входа.",
             "מוצא אחרון: איפוס Office מוחק מטמוני זהות ומחייב כניסה מחדש.");
         diagnose.Text = UpdateUiText.T("Check & Diagnose", "Проверить и объяснить", "בדוק ואבחן");
+        applyRecommendation.Text = UpdateUiText.T(
+            "Re-register WAM (confirm first)", "Восстановить WAM (с подтверждением)",
+            "תיקון WAM באישור");
+        entraReview.Text = UpdateUiText.T(
+            "Entra sign-in log (optional)", "Журнал входов Entra (необязательно)",
+            "יומן כניסה ל-Entra (אופציונלי)");
+        entraReview.AccessibleName = entraReview.Text;
+        signInWorks.Text = UpdateUiText.T(
+            "App sign-in works", "Вход в приложение работает", "הכניסה לאפליקציה פועלת");
+        signInFailed.Text = UpdateUiText.T(
+            "Still fails", "Вход всё ещё не работает", "עדיין לא עובד");
         signInErrors.Text = UpdateUiText.T("Explain sign-in error",
             "Объяснить ошибку входа", "הסבר שגיאת התחברות");
         signInErrors.AccessibleName = signInErrors.Text;
@@ -629,13 +640,44 @@ internal sealed class MainForm : Form
                 ? Color.White : Color.FromArgb(221, 245, 230);
             modern.Invalidate();
         }
-        foreach (Control button in new Control[] { repair, reset, diagnose, diagnostics, updates, settings })
+        foreach (Control button in new Control[] { repair, reset, diagnose, diagnostics, updates, settings,
+            applyRecommendation, signInWorks, signInFailed })
             button.AccessibleName = button.Text;
         UpdateScopeExplanation();
         if (string.IsNullOrWhiteSpace(status.Text)) ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
         if (lastRawDiagnostic is not null) DisplayDiagnosis(lastRawDiagnostic);
+    }
+
+    private void UpdateVerificationSummary()
+    {
+        if (lastRawDiagnostic is null)
+        {
+            verificationPanel.Visible = false;
+            return;
+        }
+        verificationSummary.Text = appSignInReportedWorking
+            ? UpdateUiText.T(
+                "App sign-in: working (reported by user, not automatically verified).",
+                "Вход в приложение: работает (со слов пользователя, без автоматической проверки).",
+                "הכניסה פועלת לפי דיווח המשתמש, ללא אימות אוטומטי.")
+            : appSignInReportedFailed
+                ? UpdateUiText.T(
+                    "App sign-in: still failing. Inspect the error code or Entra sign-in audit.",
+                    "Вход в приложение всё ещё не работает. Проверьте код ошибки или журнал Entra.",
+                    "הכניסה עדיין נכשלת. בדוק יומני Entra.")
+                : awaitingAppSignInCheck
+                    ? UpdateUiText.T(
+                        "Local repair finished; app sign-in NOT tested. Open Word, Outlook or Teams to confirm.",
+                        "Локальное восстановление выполнено; вход в Office НЕ проверен. Откройте Word, Outlook или Teams.",
+                        "התיקון המקומי הסתיים. כניסה לאפליקציה טרם אומתה.")
+                    : UpdateUiText.T(
+                        "Office app sign-in has NOT been tested. Try a real sign-in before resetting caches.",
+                        "Вход в приложения Office НЕ проверен. Попробуйте войти до сброса кешей.",
+                        "כניסה ל-Office טרם אומתה.");
+        signInWorks.Enabled = signInFailed.Enabled = !busy;
+        verificationPanel.Visible = !diagnosticsCollapsed;
     }
 
     private void UpdateTechnicalLink()
@@ -702,6 +744,40 @@ internal sealed class MainForm : Form
             });
         UpdateTechnicalLink();
         UpdateDiagnosticsToggle();
+    }
+
+    private static string FormatPreflight(RepairPreflight? check)
+    {
+        if (check is null)
+            return UpdateUiText.T("Preflight: unavailable", "Предпроверка: недоступна",
+                "בדיקה מוקדמת אינה זמינה");
+        string network = check.MicrosoftLoginReachable switch
+        {
+            true => UpdateUiText.T("HTTPS transport reachable (not signed in)",
+                "HTTPS доступен (вход не проверен)", "HTTPS זמין ללא אימות כניסה"),
+            false => UpdateUiText.T("HTTPS login endpoint unavailable",
+                "HTTPS сервера входа недоступен", "שרת הכניסה אינו זמין"),
+            _ => UpdateUiText.T("HTTPS not confirmed", "HTTPS не подтверждён", "HTTPS לא אומת")
+        };
+        string apps = check.OfficeAppsRunning
+            ? UpdateUiText.T("Office apps running: ", "Работают приложения Office: ",
+                "יישומי Office פעילים: ") + check.OfficeApps
+            : UpdateUiText.T("No Office app processes found",
+                "Процессы Office не обнаружены", "לא נמצאו תהליכי Office");
+        string clock = check.ClockAcceptable switch
+        {
+            true => UpdateUiText.T("clock appears aligned", "время согласовано", "השעון תואם"),
+            false => UpdateUiText.T("clock requires review", "проверьте время", "יש לבדוק את השעון"),
+            _ => UpdateUiText.T("clock unverified", "время не проверено", "השעון לא נבדק")
+        };
+        return UpdateUiText.T("PREFLIGHT", "ПРЕДВАРИТЕЛЬНАЯ ПРОВЕРКА", "בדיקה מוקדמת") +
+            ": " + network + " · " + clock + Environment.NewLine + apps +
+            (check.AppxDeploymentRestricted == true
+                ? Environment.NewLine + UpdateUiText.T(
+                    "AppX enterprise deployment restriction detected (advisory only).",
+                    "Найдена политика AppX (только индикатор, не доказательство блокировки).",
+                    "זוהתה מדיניות AppX.")
+                : "");
     }
 
     private void SetDiagnosticsCollapsed(bool collapsed)
