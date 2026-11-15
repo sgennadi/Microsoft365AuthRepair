@@ -27,6 +27,7 @@ internal static class Program
                 using var sendReview = new ReportSendDialog(
                     new PreparedDiagnostic("00000000-0000-4000-8000-000000000001", "{}"), null);
                 using var taskStatus = new AllUsersTaskStatusForm();
+                using var entraReview = new EntraSignInReviewDialog();
                 using var wizard = new AllUsersWizard(ScheduledWorkerMode.Exe,
                     initialScheduleOnly: false, elevated: false);
                 using var signInGuide = new SignInErrorDialog();
@@ -37,6 +38,7 @@ internal static class Program
                 sendReview.CreateControl();
                 wizard.CreateControl();
                 taskStatus.CreateControl();
+                entraReview.CreateControl();
                 signInGuide.CreateControl();
                 volumeLicensing.CreateControl();
                 // On a headless Windows CI runner the GUI has no console.
@@ -55,6 +57,7 @@ internal static class Program
                     ("Sign-in guide window icon", () => UiIcons.HasBrandIcon &&
                         signInGuide.Icon is not null && signInGuide.ShowIcon),
                     ("Volume licensing icon", () => UiIcons.Verify(volumeLicensing)),
+                    ("Entra review icon", () => UiIcons.Verify(entraReview)),
                     ("Responsive geometry", ResponsiveLayout.SelfTest),
                     ("Updater channel precedence", UpdaterIntegration.SelfTest),
                     ("Updater default channel", () => updater.IncludesPreviews == UpdaterIntegration.InstalledIsPreview),
@@ -64,6 +67,12 @@ internal static class Program
                     ("All users wizard", AllUsersWizard.SelfTest),
                     ("Read-only task status window", taskStatus.SelfTest),
                     ("Task history reconciliation", TaskRunHistory.SelfTest),
+                    ("Failed WAM selected retry guards", TaskRetryService.SelfTest),
+                    ("Smart repair evidence priority", SmartRepairEngine.SelfTest),
+                    ("Read-only preflight safety", RepairPreflightProbe.SelfTest),
+                    ("Office subscription activation parser", OfficeActivationProbe.SelfTest),
+                    ("BitKeyBridge-style Graph session policy", GraphSignInSession.SelfTest),
+                    ("Optional Entra review UI", entraReview.SelfTest),
                     ("Sign-in error codes", SignInIssueAdvisor.SelfTest),
                     ("Sign-in guide", SignInErrorDialog.SelfTest),
                     ("Microsoft Learn knowledge base", SignInKnowledgeBase.SelfTest),
@@ -86,7 +95,8 @@ internal static class Program
                     ("Wizard buttons", () => UiTheme.VerifyButtons(wizard, 3)),
                     ("Task status buttons", () => UiTheme.VerifyButtons(taskStatus, 2)),
                     ("Sign-in guide buttons", () => UiTheme.VerifyButtons(signInGuide, 1)),
-                    ("Volume licensing buttons", () => UiTheme.VerifyButtons(volumeLicensing, 2))
+                    ("Volume licensing buttons", () => UiTheme.VerifyButtons(volumeLicensing, 2)),
+                    ("Entra review buttons", () => UiTheme.VerifyButtons(entraReview, 4))
                 };
                 var outcomes = new List<string>();
                 bool passed = true;

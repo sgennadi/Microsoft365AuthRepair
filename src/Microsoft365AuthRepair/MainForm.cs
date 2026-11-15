@@ -23,6 +23,37 @@ internal sealed class MainForm : Form
         Margin = new Padding(7, 4, 0, 8)
     };
     private OfficeLicenseSnapshot? lastOfficeLicense;
+    private OfficeActivationHealth? lastOfficeActivation;
+    private RepairPreflight? lastPreflight;
+    private SmartRepairDecision? lastSmartDecision;
+    private bool awaitingAppSignInCheck;
+    private bool appSignInReportedWorking;
+    private bool appSignInReportedFailed;
+    private readonly TableLayoutPanel smartPanel = new()
+    {
+        AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1,
+        RowCount = 5, Margin = new Padding(0, 7, 0, 3),
+        Padding = new Padding(10, 8, 10, 8), Visible = false,
+        BackColor = SystemInformation.HighContrast ? SystemColors.Window : Color.FromArgb(240, 246, 252)
+    };
+    private readonly Label smartHeading = UiTheme.Caption(string.Empty, heading: true);
+    private readonly Label smartExplanation = UiTheme.Caption(string.Empty);
+    private readonly Label preflightSummary = UiTheme.Caption(string.Empty);
+    private readonly Label activationDetail = UiTheme.Caption(string.Empty);
+    private readonly Button applyRecommendation = UiTheme.CreateActionButton(string.Empty, primary: true);
+    private readonly LinkLabel entraReview = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 6, 0, 6)
+    };
+    private readonly FlowLayoutPanel verificationPanel = new()
+    {
+        AutoSize = true, Dock = DockStyle.Fill, WrapContents = true,
+        Visible = false, Margin = new Padding(0, 8, 0, 6)
+    };
+    private readonly Label verificationSummary = UiTheme.Caption(string.Empty);
+    private readonly Button signInWorks = UiTheme.CreateActionButton(string.Empty, primary: true);
+    private readonly Button signInFailed = UiTheme.CreateActionButton(string.Empty);
     private string? recommendedHelpKey;
     private readonly LinkLabel technicalToggle = new()
     {
@@ -120,12 +151,12 @@ internal sealed class MainForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(20), AutoScroll = true,
-            ColumnCount = 1, RowCount = 13,
+            ColumnCount = 1, RowCount = 16,
             BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas
         };
         mainLayout = root;
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var row = 0; row < 12; row++)
+        for (var row = 0; row < 15; row++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         // Only the canvas receives unused space on a maximized window.
         // Never stretch a read-only textbox into an empty grey rectangle.
@@ -272,6 +303,36 @@ internal sealed class MainForm : Form
         root.Controls.Add(officeVolumeLink, 0, 9);
         root.Controls.Add(technicalToggle, 0, 10);
         root.Controls.Add(detail, 0, 11);
+        smartPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < 5; i++)
+            smartPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        smartPanel.Controls.Add(smartHeading, 0, 0);
+        smartPanel.Controls.Add(smartExplanation, 0, 1);
+        smartPanel.Controls.Add(preflightSummary, 0, 2);
+        var recommendationRow = new FlowLayoutPanel
+        {
+            AutoSize = true, Dock = DockStyle.Fill, WrapContents = true
+        };
+        recommendationRow.Controls.Add(applyRecommendation);
+        smartPanel.Controls.Add(recommendationRow, 0, 3);
+        smartPanel.Controls.Add(entraReview, 0, 4);
+        root.Controls.Add(smartPanel, 0, 12);
+        activationDetail.Visible = false;
+        activationDetail.Margin = new Padding(6, 8, 0, 4);
+        root.Controls.Add(activationDetail, 0, 13);
+        verificationPanel.Controls.Add(verificationSummary);
+        verificationPanel.Controls.Add(signInWorks);
+        verificationPanel.Controls.Add(signInFailed);
+        root.Controls.Add(verificationPanel, 0, 14);
+        root.SizeChanged += (_, _) =>
+        {
+            int available = Math.Max(190, root.ClientSize.Width - root.Padding.Horizontal - 45);
+            smartHeading.MaximumSize = new Size(available, 0);
+            smartExplanation.MaximumSize = new Size(available, 0);
+            preflightSummary.MaximumSize = new Size(available, 0);
+            activationDetail.MaximumSize = new Size(available, 0);
+            verificationSummary.MaximumSize = new Size(available, 0);
+        };
         Controls.Add(ResponsiveLayout.Center(this, root, 1340));
         Controls.Add(progress);
         progress.BringToFront();
@@ -280,6 +341,9 @@ internal sealed class MainForm : Form
         UiIcons.Assign(repair, UiGlyph.Repair, primary: true);
         UiIcons.Assign(reset, UiGlyph.Reset, destructive: true);
         UiIcons.Assign(diagnose, UiGlyph.Search);
+        UiIcons.Assign(applyRecommendation, UiGlyph.Repair, primary: true);
+        UiIcons.Assign(signInWorks, UiGlyph.Success, primary: true);
+        UiIcons.Assign(signInFailed, UiGlyph.Search);
         UiIcons.Assign(diagnostics, UiGlyph.Reports);
         diagnostics.UseMnemonic = false; // show literal & instead of treating it as accelerator
         UiIcons.Assign(updates, UiGlyph.Updates);
@@ -312,6 +376,10 @@ internal sealed class MainForm : Form
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
         hints.SetToolTip(settings, "Configure all-users repair tasks and review old scheduled workers.");
+        hints.SetToolTip(applyRecommendation, "Start only the specifically recommended WAM action with the existing independent confirmation.");
+        hints.SetToolTip(entraReview, "Optional read-only Microsoft Graph sign-in audit using Device Code or an approved certificate.");
+        hints.SetToolTip(signInWorks, "You confirm that an actual Microsoft 365 application completed sign-in; this is not independently tested.");
+        hints.SetToolTip(signInFailed, "App sign-in still failed. Review the error and optional Entra audit.");
 
         scope.SelectedIndexChanged += async (_, _) =>
         {
@@ -347,6 +415,33 @@ internal sealed class MainForm : Form
         repair.Click += async (_, _) => await RunRepairAsync(false);
         reset.Click += async (_, _) => await RunRepairAsync(true);
         diagnose.Click += async (_, _) => await RunDiagnoseAsync();
+        applyRecommendation.Click += async (_, _) =>
+        {
+            if (!busy && scope.SelectedIndex == 0 &&
+                lastSmartDecision?.Action == SmartRepairAction.ReRegisterWam &&
+                lastSmartDecision.SafeToOfferRepair)
+                await RunRepairAsync(false);
+        };
+        entraReview.LinkClicked += (_, _) =>
+        {
+            if (busy) return;
+            using var reviewer = new EntraSignInReviewDialog();
+            reviewer.ShowDialog(this);
+        };
+        signInWorks.Click += (_, _) =>
+        {
+            if (busy || lastRawDiagnostic is null) return;
+            appSignInReportedWorking = true;
+            appSignInReportedFailed = false;
+            UpdateVerificationSummary();
+        };
+        signInFailed.Click += (_, _) =>
+        {
+            if (busy || lastRawDiagnostic is null) return;
+            appSignInReportedFailed = true;
+            appSignInReportedWorking = false;
+            UpdateVerificationSummary();
+        };
         signInErrors.LinkClicked += (_, _) =>
         {
             using var errorGuide = new SignInErrorDialog(recommendedHelpKey);
@@ -513,6 +608,17 @@ internal sealed class MainForm : Form
             "Крайняя мера: Reset Office sign-in удаляет кеш авторизации и потребует повторного входа.",
             "מוצא אחרון: איפוס Office מוחק מטמוני זהות ומחייב כניסה מחדש.");
         diagnose.Text = UpdateUiText.T("Check & Diagnose", "Проверить и объяснить", "בדוק ואבחן");
+        applyRecommendation.Text = UpdateUiText.T(
+            "Re-register WAM (confirm first)", "Восстановить WAM (с подтверждением)",
+            "תיקון WAM באישור");
+        entraReview.Text = UpdateUiText.T(
+            "Entra sign-in log (optional)", "Журнал входов Entra (необязательно)",
+            "יומן כניסה ל-Entra (אופציונלי)");
+        entraReview.AccessibleName = entraReview.Text;
+        signInWorks.Text = UpdateUiText.T(
+            "App sign-in works", "Вход в приложение работает", "הכניסה לאפליקציה פועלת");
+        signInFailed.Text = UpdateUiText.T(
+            "Still fails", "Вход всё ещё не работает", "עדיין לא עובד");
         signInErrors.Text = UpdateUiText.T("Explain sign-in error",
             "Объяснить ошибку входа", "הסבר שגיאת התחברות");
         signInErrors.AccessibleName = signInErrors.Text;
@@ -534,13 +640,44 @@ internal sealed class MainForm : Form
                 ? Color.White : Color.FromArgb(221, 245, 230);
             modern.Invalidate();
         }
-        foreach (Control button in new Control[] { repair, reset, diagnose, diagnostics, updates, settings })
+        foreach (Control button in new Control[] { repair, reset, diagnose, diagnostics, updates, settings,
+            applyRecommendation, signInWorks, signInFailed })
             button.AccessibleName = button.Text;
         UpdateScopeExplanation();
         if (string.IsNullOrWhiteSpace(status.Text)) ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
         if (lastRawDiagnostic is not null) DisplayDiagnosis(lastRawDiagnostic);
+    }
+
+    private void UpdateVerificationSummary()
+    {
+        if (lastRawDiagnostic is null)
+        {
+            verificationPanel.Visible = false;
+            return;
+        }
+        verificationSummary.Text = appSignInReportedWorking
+            ? UpdateUiText.T(
+                "App sign-in: working (reported by user, not automatically verified).",
+                "Вход в приложение: работает (со слов пользователя, без автоматической проверки).",
+                "הכניסה פועלת לפי דיווח המשתמש, ללא אימות אוטומטי.")
+            : appSignInReportedFailed
+                ? UpdateUiText.T(
+                    "App sign-in: still failing. Inspect the error code or Entra sign-in audit.",
+                    "Вход в приложение всё ещё не работает. Проверьте код ошибки или журнал Entra.",
+                    "הכניסה עדיין נכשלת. בדוק יומני Entra.")
+                : awaitingAppSignInCheck
+                    ? UpdateUiText.T(
+                        "Local repair finished; app sign-in NOT tested. Open Word, Outlook or Teams to confirm.",
+                        "Локальное восстановление выполнено; вход в Office НЕ проверен. Откройте Word, Outlook или Teams.",
+                        "התיקון המקומי הסתיים. כניסה לאפליקציה טרם אומתה.")
+                    : UpdateUiText.T(
+                        "Office app sign-in has NOT been tested. Try a real sign-in before resetting caches.",
+                        "Вход в приложения Office НЕ проверен. Попробуйте войти до сброса кешей.",
+                        "כניסה ל-Office טרם אומתה.");
+        signInWorks.Enabled = signInFailed.Enabled = !busy;
+        verificationPanel.Visible = !diagnosticsCollapsed;
     }
 
     private void UpdateTechnicalLink()
@@ -575,6 +712,24 @@ internal sealed class MainForm : Form
             detail.Text += Environment.NewLine + Environment.NewLine +
                 OfficeLicenseDiagnostics.Details(lastOfficeLicense);
         }
+        var ownSession = !elevated || desktopUser.SameAsProcess;
+        lastSmartDecision = SmartRepairEngine.Evaluate(report, lastOfficeLicense,
+            lastPreflight, ownSession);
+        smartHeading.Text = UpdateUiText.T(
+            "SMART RECOMMENDATION: ", "РЕКОМЕНДАЦИЯ: ", "המלצה חכמה: ") +
+            lastSmartDecision.Heading;
+        smartExplanation.Text = lastSmartDecision.Explanation +
+            Environment.NewLine + UpdateUiText.T("Next: ", "Дальше: ", "הבא: ") +
+            lastSmartDecision.NextAction;
+        preflightSummary.Text = FormatPreflight(lastPreflight);
+        applyRecommendation.Visible = lastSmartDecision.SafeToOfferRepair &&
+            lastSmartDecision.Action == SmartRepairAction.ReRegisterWam &&
+            scope.SelectedIndex == 0 && ownSession;
+        smartPanel.Visible = !diagnosticsCollapsed;
+        activationDetail.Text = lastOfficeActivation is null ? string.Empty :
+            lastOfficeActivation.Summary + Environment.NewLine + lastOfficeActivation.Evidence;
+        activationDetail.Visible = lastOfficeActivation is not null && !diagnosticsCollapsed;
+        UpdateVerificationSummary();
         officeLicenseSummary.Visible = lastOfficeLicense is not null && !diagnosticsCollapsed;
         officeVolumeLink.Visible = lastOfficeLicense is not null && !diagnosticsCollapsed;
         diagnosticResult.ShowResult(report);
@@ -585,6 +740,9 @@ internal sealed class MainForm : Form
             diagnosticResult.Visible = false;
             officeLicenseSummary.Visible = false;
             officeVolumeLink.Visible = false;
+            smartPanel.Visible = false;
+            activationDetail.Visible = false;
+            verificationPanel.Visible = false;
             technicalToggle.Visible = false;
             detail.Visible = false;
         }
@@ -607,6 +765,40 @@ internal sealed class MainForm : Form
             });
         UpdateTechnicalLink();
         UpdateDiagnosticsToggle();
+    }
+
+    private static string FormatPreflight(RepairPreflight? check)
+    {
+        if (check is null)
+            return UpdateUiText.T("Preflight: unavailable", "Предпроверка: недоступна",
+                "בדיקה מוקדמת אינה זמינה");
+        string network = check.MicrosoftLoginReachable switch
+        {
+            true => UpdateUiText.T("HTTPS transport reachable (not signed in)",
+                "HTTPS доступен (вход не проверен)", "HTTPS זמין ללא אימות כניסה"),
+            false => UpdateUiText.T("HTTPS login endpoint unavailable",
+                "HTTPS сервера входа недоступен", "שרת הכניסה אינו זמין"),
+            _ => UpdateUiText.T("HTTPS not confirmed", "HTTPS не подтверждён", "HTTPS לא אומת")
+        };
+        string apps = check.OfficeAppsRunning
+            ? UpdateUiText.T("Office apps running: ", "Работают приложения Office: ",
+                "יישומי Office פעילים: ") + check.OfficeApps
+            : UpdateUiText.T("No Office app processes found",
+                "Процессы Office не обнаружены", "לא נמצאו תהליכי Office");
+        string clock = check.ClockAcceptable switch
+        {
+            true => UpdateUiText.T("clock appears aligned", "время согласовано", "השעון תואם"),
+            false => UpdateUiText.T("clock requires review", "проверьте время", "יש לבדוק את השעון"),
+            _ => UpdateUiText.T("clock unverified", "время не проверено", "השעון לא נבדק")
+        };
+        return UpdateUiText.T("PREFLIGHT", "ПРЕДВАРИТЕЛЬНАЯ ПРОВЕРКА", "בדיקה מוקדמת") +
+            ": " + network + " · " + clock + Environment.NewLine + apps +
+            (check.AppxDeploymentRestricted == true
+                ? Environment.NewLine + UpdateUiText.T(
+                    "AppX enterprise deployment restriction detected (advisory only).",
+                    "Найдена политика AppX (только индикатор, не доказательство блокировки).",
+                    "זוהתה מדיניות AppX.")
+                : "");
     }
 
     private void SetDiagnosticsCollapsed(bool collapsed)
@@ -640,7 +832,9 @@ internal sealed class MainForm : Form
     {
         busy = isBusy;
         repair.Enabled = reset.Enabled = diagnose.Enabled = diagnostics.Enabled =
-            updates.Enabled = settings.Enabled = taskStatusLink.Enabled = !isBusy;
+            updates.Enabled = settings.Enabled = taskStatusLink.Enabled =
+            applyRecommendation.Enabled = entraReview.Enabled =
+            signInWorks.Enabled = signInFailed.Enabled = !isBusy;
         scope.Enabled = !isBusy;
         progress.Visible = isBusy;
     }
@@ -782,6 +976,34 @@ internal sealed class MainForm : Form
             return;
         }
 
+        // Read-only preflight before touching WAM or Office identity state.
+        // Network failures are advisory for WAM and do not silently prevent
+        // an explicitly requested re-registration.
+        RepairPreflight? beforeRepair = null;
+        SetBusy(true);
+        try
+        {
+            beforeRepair = await RepairPreflightProbe.CollectAsync(
+                !elevated || desktopUser.SameAsProcess);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException
+            or InvalidOperationException or UnauthorizedAccessException
+            or System.Security.SecurityException) { /* Unknown, never "healthy". */ }
+        finally { if (!IsDisposed && !Disposing) SetBusy(false); }
+        if (IsDisposed || Disposing) return;
+        lastPreflight = beforeRepair;
+        if (full && beforeRepair is { } check &&
+            (check.OfficeAppsRunning && (!everyone || !onlySchedule) ||
+             check.ClockAcceptable == false && !everyone))
+        {
+            ShowStatus(UpdateUiText.T(
+                "Full reset paused: close Office apps or review Windows time; for All users choose next-sign-in-only tasks.",
+                "Полный сброс остановлен: закройте Office или проверьте время. Для All users выберите запуск только при следующем входе.",
+                "איפוס מלא נעצר. סגור Office או בדוק את השעון; לכל המשתמשים בחר הפעלה בכניסה הבאה."),
+                UiGlyph.Info);
+            return;
+        }
+
         // Preflight the exact list before confirmation. These are existing
         // profile registry entries, not every possible future account.
         // Freeze the reviewed profile list so new profiles cannot silently
@@ -871,6 +1093,11 @@ internal sealed class MainForm : Form
         // Capture WinForms checkbox state on UI thread before Task.Run.
         lastRawDiagnostic = null;
         lastOfficeLicense = null;
+        lastOfficeActivation = null;
+        lastSmartDecision = null;
+        awaitingAppSignInCheck = false;
+        appSignInReportedWorking = appSignInReportedFailed = false;
+        smartPanel.Visible = activationDetail.Visible = verificationPanel.Visible = false;
         recommendedHelpKey = null;
         officeLicenseSummary.Visible = false;
         officeVolumeLink.Visible = false;
@@ -898,6 +1125,7 @@ internal sealed class MainForm : Form
             // A scheduled all-users / elevated worker has NOT necessarily
             // finished: never auto-claim a queued task as a successful repair.
             verifyCurrentUserAfterSuccess = ShouldRecheckAfterRepair(failed, everyone, elevated);
+            awaitingAppSignInCheck = verifyCurrentUserAfterSuccess;
             ShowStatus(failed ? UiStrings.T("failed") : elevated
                 ? UpdateUiText.T("Per-user tasks queued; check user logs for completion.",
                     "Задачи пользователей назначены. Проверяйте результат в их журналах.",
@@ -975,9 +1203,13 @@ internal sealed class MainForm : Form
         if (busy) return;
         lastRawDiagnostic = null;
         lastOfficeLicense = null;
+        lastOfficeActivation = null;
+        lastSmartDecision = null;
+        lastPreflight = null;
         recommendedHelpKey = null;
         officeLicenseSummary.Visible = false;
         officeVolumeLink.Visible = false;
+        smartPanel.Visible = activationDetail.Visible = verificationPanel.Visible = false;
         diagnosticsCollapsed = false;
         technicalWasOpen = false;
         detail.Visible = false;
@@ -988,31 +1220,41 @@ internal sealed class MainForm : Form
         ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
         {
-            // dsregcmd / WAM signals are account and session specific.
-            // Never show another administrator's results as the desktop user's.
+            // Separate machine-wide inventory from current-user checks.
+            // Elevated admin HKCU is never presented as another user's Office.
+            var ownAccount = !elevated || desktopUser.SameAsProcess;
+            var preflightTask = RepairPreflightProbe.CollectAsync(ownAccount);
             var data = await Task.Run(() =>
             {
                 var raw = Repair.DiagnoseReport();
                 OfficeLicenseSnapshot? license = null;
+                OfficeActivationHealth? activation = null;
                 try
                 {
-                    license = OfficeLicenseDiagnostics.Capture(
-                        !elevated || desktopUser.SameAsProcess);
+                    license = OfficeLicenseDiagnostics.Capture(ownAccount);
+                    activation = OfficeActivationProbe.Capture(license, ownAccount);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                    or System.Security.SecurityException or InvalidOperationException)
+                    or System.Security.SecurityException or InvalidOperationException
+                    or System.Management.ManagementException or TimeoutException
+                    or System.ComponentModel.Win32Exception)
                 {
-                    // Licensing is a separate optional read-only probe. WAM
-                    // results must remain usable even if Office is absent.
+                    // Optional Office probe must not hide the WAM diagnosis.
                 }
-                return (raw, license);
+                return (raw, license, activation);
             });
+            RepairPreflight? preflight = null;
+            try { preflight = await preflightTask; }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException
+                or HttpRequestException or UnauthorizedAccessException
+                or System.Security.SecurityException or OperationCanceledException) { }
             if (IsDisposed || Disposing) return;
             lastRawDiagnostic = data.raw;
             lastOfficeLicense = data.license;
+            lastOfficeActivation = data.activation;
+            lastPreflight = preflight;
             detail.Visible = false;
             DisplayDiagnosis(data.raw);
-            // Make the summary visible rather than scrolling to a textbox.
             mainLayout?.ScrollControlIntoView(diagnosticResult);
         }
         catch (Exception ex)
@@ -1020,9 +1262,12 @@ internal sealed class MainForm : Form
             if (IsDisposed || Disposing) return;
             lastRawDiagnostic = null;
             lastOfficeLicense = null;
+            lastOfficeActivation = null;
+            lastSmartDecision = null;
             recommendedHelpKey = null;
             officeLicenseSummary.Visible = false;
             officeVolumeLink.Visible = false;
+            smartPanel.Visible = activationDetail.Visible = verificationPanel.Visible = false;
             diagnosticToggle.Visible = false;
             diagnosticResult.ClearResult();
             statusBanner!.Visible = true;

@@ -11,7 +11,11 @@ internal sealed record TrackedTaskRun(
 
 internal sealed record TaskStatusRow(
     string User, string Action, string Mode, DateTimeOffset? SubmittedUtc,
-    string State, string Evidence);
+    string State, string Evidence)
+{
+    internal string? UserSid { get; init; }
+    internal string? TaskName { get; init; }
+}
 
 internal static class TaskRunHistory
 {
@@ -173,7 +177,8 @@ internal static class TaskRunHistory
             _ => "Task missing or no verifiable worker result. Do not assume success."
         };
         return new TaskStatusRow(profile?.Account ?? "Profile not found",
-            entry.Action, entry.Mode, entry.SubmittedUtc, state, evidence);
+            entry.Action, entry.Mode, entry.SubmittedUtc, state, evidence)
+        { UserSid = entry.UserSid, TaskName = entry.TaskName };
     }
 
     internal static IReadOnlyList<TaskStatusRow> Snapshot()

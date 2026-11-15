@@ -1,3 +1,13 @@
+## Preview v1.0.1-preview.18 — Smart Repair Center
+
+Seven integrated improvements: evidence-driven Smart Repair (without automatic destructive changes); read-only preflight; separate Office Volume versus Microsoft 365 subscription activation evidence; selected confirmed-failed WAM task retry after explicit approval, at next sign-in only; optional authorized Microsoft Graph sign-in audit with **AuditLog.Read.All only** using BitKeyBridge-style Device Code or certificate session; post-repair read-only check with honest user-reported Word/Outlook/Teams sign-in confirmation; compact DPI-aware EN/RU/HE UI.
+
+The Graph sign-in feature does not read BitLocker/LAPS keys, create app registrations, grant permissions or save tokens. Certificate mode requires a dedicated audit-only Entra application. Device Code requires an approved public client application with delegated audit scope and a sign-in log reader role. No ROPC or passwords.
+
+The app does not infer Office sign-in success from WAM registration, Task Scheduler completion, HTTP reachability or Graph sign-in metadata. Real Windows and tenant/Office pilots are required before Stable promotion.
+
+[Preview.18 release notes](docs/releases/v1.0.1-preview.18.md)
+
 ## Preview v1.0.1-preview.17 — transparent All users task status
 
 1. **View task status (read-only):** an administrator can review pending, running, worker-reported success, failure, attention and unconfirmed tasks. It does not execute, retry, delete or repair anything; a manual Refresh is available.
