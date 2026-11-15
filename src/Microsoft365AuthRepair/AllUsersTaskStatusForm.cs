@@ -3,8 +3,8 @@ using System.Windows.Forms;
 
 namespace Microsoft365AuthRepair;
 
-// Read-only, administrator-only inspection. Does not launch, cancel,
-// delete or requeue any task and never interprets success as Office login.
+// Read-only inspection by default. A separate explicit, narrowly scoped
+// button can queue ONLY a confirmed failed WAM action for next sign-in.
 internal sealed class AllUsersTaskStatusForm : Form
 {
     private readonly DataGridView rows = new()
@@ -32,6 +32,9 @@ internal sealed class AllUsersTaskStatusForm : Form
         UpdateUiText.T("Refresh status", "Обновить статусы", "רענון מצב"), primary: true);
     private readonly Button close = UiTheme.CreateActionButton(
         UpdateUiText.T("Close", "Закрыть", "סגור"));
+    private readonly Button retry = UiTheme.CreateActionButton(
+        UpdateUiText.T("Retry WAM at next sign-in", "Повторить WAM при следующем входе",
+            "ניסיון חוזר בכניסה הבאה"));
     private bool checking;
 
     internal AllUsersTaskStatusForm()
@@ -62,9 +65,9 @@ internal sealed class AllUsersTaskStatusForm : Form
         headline.Text = UpdateUiText.T("All users · Task status",
             "Все пользователи · Состояние заданий", "כל המשתמשים · מצב משימות");
         explanation.Text = UpdateUiText.T(
-            "Read-only. 'Worker reported success' means WAM registration/reset finished without reported errors. It does NOT prove successful Word, Outlook, Teams or OneDrive sign-in. Missing tasks are NOT counted as success.",
-            "Только просмотр. «Worker сообщил об успехе» означает отсутствие сообщённых ошибок при восстановлении WAM/сбросе. Это НЕ подтверждает вход в Word, Outlook, Teams или OneDrive. Отсутствие задания НЕ означает успех.",
-            "לקריאה בלבד. הצלחה של worker אינה הוכחת כניסה ליישומי Office. היעדר משימה אינו נחשב הצלחה.");
+            "Viewing task status makes no changes. To retry an explicitly failed WAM task, select it and approve a new next-sign-in task. This never retries an Office reset. A worker success does not prove Office sign-in.",
+            "Просмотр статусов ничего не изменяет. Для повторного запуска WAM выберите подтверждённо ошибочное задание и разрешите создание нового при следующем входе. Сброс Office не повторяется. Успех worker не доказывает вход в Office.",
+            "הצגת מצב אינה משנה דבר. אפשר לנסות שוב רק תיקון WAM שנכשל, באישור מפורש, בכניסה הבאה. אין איפוס Office חוזר.");
         explanation.MaximumSize = new Size(1240, 0);
         summary.Text = UpdateUiText.T("No task status loaded.",
             "Состояние заданий ещё не загружено.", "מצב המשימות טרם נטען.");
@@ -102,6 +105,8 @@ internal sealed class AllUsersTaskStatusForm : Form
             Margin = new Padding(0, 8, 0, 0)
         };
         footer.Controls.Add(close);
+        retry.Enabled = false;
+        footer.Controls.Add(retry);
         footer.Controls.Add(refresh);
         root.Controls.Add(footer, 0, 4);
         root.SizeChanged += (_, _) =>
@@ -119,6 +124,8 @@ internal sealed class AllUsersTaskStatusForm : Form
         CancelButton = close;
         close.Click += (_, _) => Close();
         refresh.Click += async (_, _) => await RefreshAsync();
+        rows.SelectionChanged += (_, _) => UpdateRetrySelection();
+        retry.Click += async (_, _) => await RetrySelectedAsync();
         Shown += async (_, _) => await RefreshAsync();
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
@@ -187,6 +194,7 @@ internal sealed class AllUsersTaskStatusForm : Form
         if (checking || IsDisposed || Disposing) return;
         checking = true;
         refresh.Enabled = false;
+        retry.Enabled = false;
         summary.Text = UpdateUiText.T("Reading protected local task records...",
             "Читаю локальную историю заданий...", "קורא את היסטוריית המשימות...");
         try
@@ -201,9 +209,11 @@ internal sealed class AllUsersTaskStatusForm : Form
                     : UpdateUiText.T("WAM re-registration", "Восстановление WAM", "רישום WAM");
                 var local = item.SubmittedUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
                     ?? UpdateUiText.T("Older task", "Старое задание", "משימה ישנה");
-                rows.Rows.Add(item.User, action + " · " + item.Mode, local,
+                int index = rows.Rows.Add(item.User, action + " · " + item.Mode, local,
                     StateText(item.State), EvidenceText(item.State));
+                rows.Rows[index].Tag = item;
             }
+            UpdateRetrySelection();
             int successes = data.Count(x => x.State == "WorkerReportedSuccess");
             int pending = data.Count(x => x.State is "Queued" or "Running");
             int followUp = data.Count - pending - successes;
@@ -226,8 +236,55 @@ internal sealed class AllUsersTaskStatusForm : Form
         }
     }
 
+    private TaskStatusRow? SelectedTask() =>
+        rows.SelectedRows.Count == 1 ? rows.SelectedRows[0].Tag as TaskStatusRow : null;
+
+    private void UpdateRetrySelection()
+    {
+        retry.Enabled = !checking && TaskRetryService.CanRetry(SelectedTask()) && Identity.IsElevated();
+    }
+
+    private async Task RetrySelectedAsync()
+    {
+        var selected = SelectedTask();
+        if (checking || !TaskRetryService.CanRetry(selected) || selected is null) return;
+        var approval = UpdateUiText.T(
+            $"Queue ONE WAM re-registration for {selected.User} at their NEXT sign-in? No immediate launch; no Office cache deletion. This does not retry Office Reset. Continue?",
+            $"Создать ОДНО задание перерегистрации WAM для {selected.User} при СЛЕДУЮЩЕМ входе? Без немедленного запуска и удаления кешей Office. Продолжить?",
+            $"ליצור משימת WAM אחת עבור {selected.User} בכניסה הבאה? ללא הפעלה מיידית או ניקוי מטמון Office?");
+        if (MessageBox.Show(this, approval,
+                UpdateUiText.T("Confirm selected retry", "Подтвердите повтор для пользователя", "אישור ניסיון חוזר"),
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        checking = true;
+        refresh.Enabled = retry.Enabled = false;
+        try
+        {
+            var message = await Task.Run(() => TaskRetryService.QueueAfterApproval(selected));
+            if (IsDisposed || Disposing) return;
+            summary.Text = UpdateUiText.T("New WAM task registered for next sign-in. Refresh to review status.",
+                "Новое задание WAM зарегистрировано для следующего входа. Обновите статусы.",
+                "משימת WAM נרשמה לכניסה הבאה.") + Environment.NewLine + message;
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                summary.Text = UpdateUiText.T("Retry was not confirmed: ",
+                    "Повторное задание не подтверждено: ", "המשימה לא אושרה: ") + ex.GetType().Name;
+        }
+        finally
+        {
+            checking = false;
+            if (!IsDisposed && !Disposing)
+            {
+                refresh.Enabled = true;
+                UpdateRetrySelection();
+            }
+        }
+    }
+
     internal bool SelfTest() =>
         rows.Columns.Count == 5 && rows.ReadOnly && !rows.AllowUserToAddRows &&
         !rows.AllowUserToDeleteRows && !string.IsNullOrWhiteSpace(headline.Text) &&
-        UiTheme.VerifyButtons(this, 2);
+        UiTheme.VerifyButtons(this, 3);
 }
