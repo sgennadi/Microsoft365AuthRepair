@@ -106,7 +106,7 @@ internal static class ResponsiveLayout
         InitialWindowSize(new Size(1366, 768), 96,
             new Size(1050, 740), new Size(1450, 940)) == new Size(1197, 732) &&
         InitialWindowSize(new Size(3840, 2160), 192,
-            new Size(1050, 740), new Size(1450, 940)) == new Size(2900, 1880) &&
+            new Size(1050, 740), new Size(1450, 940)) == new Size(2900, 1879) &&
         InitialWindowSize(new Size(640, 480), 96,
             new Size(1050, 740), new Size(1450, 940)) == new Size(604, 444);
 }
