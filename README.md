@@ -1,3 +1,15 @@
+## Preview 1.0.1-preview.1 (in development)
+
+- **Stable v1.0.0 is unchanged.** All new features are committed to the preview branch and require QA before promotion.
+- Main window title and Update Center title show the full installed application version.
+- Background update check highlights newer Stable versions; **Preview + Stable** chooses the highest compatible version across both channels.
+- Update Center has native streaming percentage/MiB progress, Cancel, a compact numbered What's New list (up to eight items), and a button to open the verified download folder.
+- The common UniversalUpdater.Core performs the actual download and SHA-256/architecture checks. **Automatic in-place EXE replacement is not enabled** until the trusted installer helper is tested.
+- Diagnostics & Reports offers local report creation, loading previously queued JSON, strict outgoing JSON preview, an explicit consent checkbox, and optional anonymous submission via the existing Google Apps Script web app.
+- The common Google receiver source must be redeployed manually and configured with a separate `GITHUB_M365_ISSUES_TOKEN` secret to write Issues in this repository. The existing Termsrv token and legacy routes remain unchanged.
+- Only typed Microsoft Entra/WAM states are sent; free-text summaries, credentials, usernames and device IDs stay local. Public GitHub Issues are not private or authenticated. No automatic send or retry.
+- Reference: `sgennadi/UniversalUpdater/docs/WINDOWS_UPDATER_UI_DEFAULT.md` for our shared Windows updater UX standard.
+
 # Microsoft 365 Auth Repair
 
 A Windows .NET 10 WinForms desktop repair utility for Microsoft Entra WAM / `Microsoft.AAD.BrokerPlugin`, Office sign-in caches and Microsoft 365 authentication. Version `1.0.0` **Stable baseline (source and binary release)**. The Windows GUI and x64/ARM64 builds have CI coverage, but real Microsoft Entra/WAM recovery, ARM64 hardware runtime and all-users reset have not yet received field QA. Test on pilot PCs before broad deployment.

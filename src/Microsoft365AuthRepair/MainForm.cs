@@ -33,10 +33,11 @@ internal sealed class MainForm : Form
     private readonly ProgressBar progress = new() { Dock = DockStyle.Top, Height = 5, Visible = false, Style = ProgressBarStyle.Marquee };
     private readonly System.Windows.Forms.Timer updateTimer = new() { Interval = 6 * 60 * 60 * 1000 };
     private bool busy;
+    private UniversalUpdater.UpdateRelease? availableUpdate;
 
     internal MainForm()
     {
-        Text = "Microsoft 365 Auth Repair";
+        Text = $"Microsoft 365 Auth Repair v{Repair.Version}";
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
         MinimumSize = new Size(610, 460);
@@ -140,7 +141,12 @@ internal sealed class MainForm : Form
         reset.Click += async (_, _) => await RunRepairAsync(true);
         diagnose.Click += async (_, _) => await RunDiagnoseAsync();
         diagnostics.Click += (_, _) => new DiagnosticsCenter().ShowDialog(this);
-        updates.Click += (_, _) => new UpdateCenter().ShowDialog(this);
+        updates.Click += async (_, _) =>
+        {
+            using var window = new UpdateCenter();
+            window.ShowDialog(this);
+            await CheckForUpdatesAsync();
+        };
         logs.Click += (_, _) => OpenLogs();
         language.SelectedIndexChanged += (_, _) =>
         {
@@ -159,7 +165,7 @@ internal sealed class MainForm : Form
 
     private void ApplyText()
     {
-        title.Text = UiStrings.T("title");
+        title.Text = $"{UiStrings.T("title")}  v{Repair.Version}";
         subtitle.Text = UiStrings.T("subtitle");
         account.Text = $"{Environment.UserDomainName}\\{Environment.UserName} | Session {Identity.SessionId()} | {(elevated ? "Administrator" : "Standard user")}";
         privilege.Text = UiStrings.T(elevated ? "admin" : "standard");
@@ -173,7 +179,16 @@ internal sealed class MainForm : Form
         reset.Text = UiStrings.T("full");
         diagnose.Text = UiStrings.T("diagnose");
         diagnostics.Text = UiStrings.T("debug");
-        updates.Text = UiStrings.T("updater");
+        updates.Text = availableUpdate is null ? UiStrings.T("updater") :
+            $"{UiStrings.T("updater")}  •  v{availableUpdate.Version}";
+        updates.AccessibleDescription = availableUpdate is null
+            ? "Check for Stable and Preview updates"
+            : $"Update available: {availableUpdate.Version}";
+        if (!SystemInformation.HighContrast)
+        {
+            updates.BackColor = availableUpdate is null ? SystemColors.Control
+                : Color.FromArgb(216, 242, 227);
+        }
         logs.Text = UiStrings.T("logs");
         advancedExplanation.Text = UiStrings.T("advanced");
         if (string.IsNullOrWhiteSpace(status.Text)) ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
@@ -273,14 +288,19 @@ internal sealed class MainForm : Form
 
     private async Task CheckForUpdatesAsync()
     {
-        if (busy) return;
+        if (busy || IsDisposed || Disposing) return;
         try
         {
-            using var client = new UniversalUpdater.GitHubReleaseClient();
-            var release = await client.CheckAsync(UpdaterIntegration.Options(UniversalUpdater.UpdateChannel.Stable));
-            if (release is not null) updates.Text = UiStrings.T("updater") + " *";
+            // Stable by default; preview remains opt-in inside Update Center.
+            availableUpdate = await UpdaterIntegration.FindAsync(withPreview: false);
+            if (IsDisposed || Disposing) return;
+            ApplyText();
         }
-        catch (Exception) { /* Updater must not block WAM repair or expose credentials. */ }
+        catch
+        {
+            // A transient GitHub failure must not block sign-in repair.
+            // Retain a previously confirmed update, if any.
+        }
     }
 
     private static void OpenLogs()

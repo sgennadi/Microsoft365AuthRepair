@@ -27,6 +27,8 @@ internal static class Program
                     && UiIcons.Verify(form)
                     && UiIcons.Verify(updater)
                     && UiIcons.Verify(reports)
+                    && UpdateUiText.SelfTest()
+                    && M365DiagnosticPayload.SelfTest()
                     ? 0 : 2;
             }
             if (args.Length > 0) return 2;

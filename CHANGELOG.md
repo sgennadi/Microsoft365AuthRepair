@@ -1,3 +1,11 @@
+## 1.0.1-preview.1 — 2026-11-15 — Preview
+
+1. Added update progress (percentage, transferred MiB and Cancel).
+2. Show installed version in title bars and available update on the main button.
+3. Simplified Update Center; fixed Preview + Stable checks and short numbered What's New.
+4. Integrated shared anonymous diagnostics submission with user consent, strict preview and legacy pending-report support.
+5. Stable 1.0.0 remains unchanged.
+
 # Changelog
 
 ## 1.0.0 — 2026-11-15 — Stable baseline
