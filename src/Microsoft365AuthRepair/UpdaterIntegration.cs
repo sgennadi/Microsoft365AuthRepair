@@ -102,9 +102,9 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. All users opens a 3-step mini wizard for method, timing and action.\n2. After UAC, repair still requires explicit confirmation.\n3. Check & Diagnose results can be collapsed and expanded.\n4. Offline sign-in code guide covers WAM, Entra, MFA and access policies.",
-        "1. Выбор All users открывает мини-мастер: способ, время и действие.\n2. После UAC восстановление требует отдельного подтверждения.\n3. Результат Check & Diagnose можно свернуть и развернуть.\n4. Справочник ошибок входа работает локально: WAM, Entra, MFA и политики.",
-        "1. בחירת כל המשתמשים פותחת אשף קצר לשלושה שלבים.\n2. לאחר הרשאת מנהל נדרש אישור נפרד לכל תיקון.\n3. אפשר לצמצם ולהרחיב תוצאות אבחון.\n4. מדריך קודי שגיאה מקומי ל-WAM, Entra, MFA ומדיניות.");
+        "1. Microsoft Learn guides for WAM, Entra, MFA, licensing and network issues.\n2. Native read-only Office vNext and shared activation checks.\n3. Office/Visio/Project 2024 Volume key and KMS diagnostics.\n4. Verified 2024 Preview key removal before separately confirmed KMS/MAK activation.",
+        "1. Рекомендации Microsoft Learn: WAM, Entra, MFA, лицензии и сеть.\n2. Собственная проверка vNext и Shared Activation на C#, без VBS.\n3. Диагностика KMS и ключей Office, Visio и Project 2024.\n4. Удаление проверенного Preview-ключа ДО KMS/MAK с отдельным подтверждением.",
+        "1. מדריכי Microsoft Learn ל-WAM, Entra, MFA, רישוי ורשת.\n2. בדיקות vNext ו-Shared Activation ללא VBS.\n3. בדיקת רישיונות KMS ל-Office, Visio ו-Project 2024.\n4. הסרת Preview מזוהה לפני הפעלת KMS/MAK באישור נפרד.");
 
     internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
 
