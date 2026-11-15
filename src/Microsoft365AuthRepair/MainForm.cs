@@ -1203,9 +1203,13 @@ internal sealed class MainForm : Form
         if (busy) return;
         lastRawDiagnostic = null;
         lastOfficeLicense = null;
+        lastOfficeActivation = null;
+        lastSmartDecision = null;
+        lastPreflight = null;
         recommendedHelpKey = null;
         officeLicenseSummary.Visible = false;
         officeVolumeLink.Visible = false;
+        smartPanel.Visible = activationDetail.Visible = verificationPanel.Visible = false;
         diagnosticsCollapsed = false;
         technicalWasOpen = false;
         detail.Visible = false;
@@ -1216,31 +1220,41 @@ internal sealed class MainForm : Form
         ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
         {
-            // dsregcmd / WAM signals are account and session specific.
-            // Never show another administrator's results as the desktop user's.
+            // Separate machine-wide inventory from current-user checks.
+            // Elevated admin HKCU is never presented as another user's Office.
+            var ownAccount = !elevated || desktopUser.SameAsProcess;
+            var preflightTask = RepairPreflightProbe.CollectAsync(ownAccount);
             var data = await Task.Run(() =>
             {
                 var raw = Repair.DiagnoseReport();
                 OfficeLicenseSnapshot? license = null;
+                OfficeActivationHealth? activation = null;
                 try
                 {
-                    license = OfficeLicenseDiagnostics.Capture(
-                        !elevated || desktopUser.SameAsProcess);
+                    license = OfficeLicenseDiagnostics.Capture(ownAccount);
+                    activation = OfficeActivationProbe.Capture(license, ownAccount);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                    or System.Security.SecurityException or InvalidOperationException)
+                    or System.Security.SecurityException or InvalidOperationException
+                    or System.Management.ManagementException or TimeoutException
+                    or System.ComponentModel.Win32Exception)
                 {
-                    // Licensing is a separate optional read-only probe. WAM
-                    // results must remain usable even if Office is absent.
+                    // Optional Office probe must not hide the WAM diagnosis.
                 }
-                return (raw, license);
+                return (raw, license, activation);
             });
+            RepairPreflight? preflight = null;
+            try { preflight = await preflightTask; }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException
+                or HttpRequestException or UnauthorizedAccessException
+                or System.Security.SecurityException or OperationCanceledException) { }
             if (IsDisposed || Disposing) return;
             lastRawDiagnostic = data.raw;
             lastOfficeLicense = data.license;
+            lastOfficeActivation = data.activation;
+            lastPreflight = preflight;
             detail.Visible = false;
             DisplayDiagnosis(data.raw);
-            // Make the summary visible rather than scrolling to a textbox.
             mainLayout?.ScrollControlIntoView(diagnosticResult);
         }
         catch (Exception ex)
@@ -1248,9 +1262,12 @@ internal sealed class MainForm : Form
             if (IsDisposed || Disposing) return;
             lastRawDiagnostic = null;
             lastOfficeLicense = null;
+            lastOfficeActivation = null;
+            lastSmartDecision = null;
             recommendedHelpKey = null;
             officeLicenseSummary.Visible = false;
             officeVolumeLink.Visible = false;
+            smartPanel.Visible = activationDetail.Visible = verificationPanel.Visible = false;
             diagnosticToggle.Visible = false;
             diagnosticResult.ClearResult();
             statusBanner!.Visible = true;
