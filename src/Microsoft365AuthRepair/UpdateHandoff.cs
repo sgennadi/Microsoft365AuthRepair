@@ -43,6 +43,10 @@ internal static class UpdateHandoff
         "Microsoft365AuthRepair");
 
     private static string HelperRoot => Path.Combine(Root, HelpersSubfolder);
+    // Elevated helper code must live in admin-protected storage, never in a
+    // standard user's writable LocalAppData temp directory.
+    private static string ProtectedHelperRoot =>
+        Path.Combine(Scheduling.ProtectedRoot, HelpersSubfolder);
 
     private static string Digest(string file)
     {
@@ -66,10 +70,9 @@ internal static class UpdateHandoff
 
     internal static void Queue(StagedPackage package)
     {
-        if (Identity.IsElevated())
-            throw new InvalidOperationException(
-                "For safety, automatic Update requires a standard-user process. " +
-                "Run the app without elevation or install the verified package manually.");
+        bool elevated = Identity.IsElevated();
+        if (elevated)
+            Scheduling.EnsureProtectedRoot();
 
         var target = Environment.ProcessPath ??
             throw new InvalidOperationException("Installed application path is unavailable.");
@@ -105,8 +108,15 @@ internal static class UpdateHandoff
             try { if (File.Exists(writeProbe)) File.Delete(writeProbe); } catch (IOException) { }
         }
 
-        var helperDir = Path.Combine(HelperRoot, Guid.NewGuid().ToString("N"));
+        var helperBase = elevated ? ProtectedHelperRoot : HelperRoot;
+        if (elevated)
+        {
+            Directory.CreateDirectory(helperBase); // inherits protected ACL
+            RejectLink(helperBase);
+        }
+        var helperDir = Path.Combine(helperBase, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(helperDir);
+        RejectLink(helperDir);
         var helperPath = Path.Combine(helperDir, HelperName);
         var ticketPath = Path.Combine(helperDir, "update-ticket.json");
         try
@@ -149,6 +159,72 @@ internal static class UpdateHandoff
         }
     }
 
+    // Called only after the user clicked Update and staging verified the
+    // GitHub asset. For a machine-protected install UAC launches a fresh copy
+    // of the installed EXE, which downloads/verifies in its own admin profile
+    // and completes the replacement. Never elevate a copied temp executable.
+    internal static bool TryRestartElevated(bool includePreview, out string result)
+    {
+        result = "No permission change was requested.";
+        if (Identity.IsElevated()) return false;
+        var origin = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(origin) || !File.Exists(origin)) return false;
+        origin = Path.GetFullPath(origin);
+        if (!Path.GetFileName(origin).Equals(ExeName, StringComparison.OrdinalIgnoreCase) ||
+            origin.StartsWith(@"\\", StringComparison.Ordinal)) return false;
+        var dir = Path.GetDirectoryName(origin)!;
+        string programFiles = Path.GetFullPath(Environment.GetFolderPath(
+            Environment.SpecialFolder.ProgramFiles)).TrimEnd('\\') + "\\";
+        string programFilesX86 = Path.GetFullPath(Environment.GetFolderPath(
+            Environment.SpecialFolder.ProgramFilesX86)).TrimEnd('\\') + "\\";
+        string protectedRoot = Path.GetFullPath(Scheduling.ProtectedRoot).TrimEnd('\\') + "\\";
+        if (!origin.StartsWith(programFiles, StringComparison.OrdinalIgnoreCase) &&
+            !origin.StartsWith(programFilesX86, StringComparison.OrdinalIgnoreCase) &&
+            !origin.StartsWith(protectedRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            result = "The executable is in a nonstandard protected folder; " +
+                     "automatic privileged installation is not enabled for that location.";
+            return false;
+        }
+
+        var caption = UpdateUiText.T("Administrator permission required",
+            "Требуются права администратора", "נדרשת הרשאת מנהל");
+        var message = UpdateUiText.T(
+            "Windows requires administrator permission to replace the EXE in this protected folder. Continue automatic Update? The new elevated window will verify the release again and restart the application. No account repair will start.",
+            "Для замены EXE в этой защищённой папке нужны права администратора. Продолжить автоматическое обновление? Новое окно повторно проверит релиз и перезапустит программу. Восстановление учётных записей не запускается.",
+            "דרושה הרשאת מנהל להחלפת ה-EXE בתיקייה זו. להמשיך עדכון אוטומטי? לא תתבצע פעולת תיקון חשבון.");
+        if (System.Windows.Forms.MessageBox.Show(message, caption,
+            System.Windows.Forms.MessageBoxButtons.YesNo, System.Windows.Forms.MessageBoxIcon.Information,
+            System.Windows.Forms.MessageBoxDefaultButton.Button2) != System.Windows.Forms.DialogResult.Yes)
+        {
+            result = "Operator declined UAC. No installation was performed.";
+            return false;
+        }
+
+        try
+        {
+            var psi = new ProcessStartInfo(origin)
+            {
+                UseShellExecute = true, Verb = "runas", WorkingDirectory = dir
+            };
+            psi.ArgumentList.Add(includePreview ? "--update-elevated-preview" : "--update-elevated-stable");
+            using var started = Process.Start(psi) ??
+                throw new InvalidOperationException("Windows did not start the elevated updater.");
+            result = "UAC accepted; continuing automated update as administrator.";
+            return true;
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            result = "UAC cancelled; verified package is still available.";
+            return false;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            result = "Could not elevate updater (" + ex.GetType().Name + ").";
+            return false;
+        }
+    }
+
     internal static int RunHelper(string ticketPath)
     {
         try
@@ -166,8 +242,9 @@ internal static class UpdateHandoff
     {
         var self = Full(Environment.ProcessPath ??
             throw new InvalidOperationException("Update helper executable unavailable."));
+        var expectedHelperRoot = Identity.IsElevated() ? ProtectedHelperRoot : HelperRoot;
         if (!Path.GetFileName(self).Equals(HelperName, StringComparison.Ordinal) ||
-            !Path.GetDirectoryName(self)!.StartsWith(NormalizeRoot(HelperRoot), StringComparison.OrdinalIgnoreCase))
+            !Path.GetDirectoryName(self)!.StartsWith(NormalizeRoot(expectedHelperRoot), StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Updater helper is not in its expected directory.");
 
         ticketPath = Full(ticketPath);
@@ -302,8 +379,11 @@ internal static class UpdateHandoff
     {
         try
         {
-            if (!Directory.Exists(HelperRoot)) return;
-            foreach (var dir in Directory.EnumerateDirectories(HelperRoot))
+            // Never delete a protected machine worker from a non-elevated
+            // process. It might still be needed for offline profile logons.
+            var baseDir = Identity.IsElevated() ? ProtectedHelperRoot : HelperRoot;
+            if (!Directory.Exists(baseDir)) return;
+            foreach (var dir in Directory.EnumerateDirectories(baseDir))
             {
                 if (Directory.GetCreationTimeUtc(dir) > DateTime.UtcNow.AddDays(-1)) continue;
                 try { Directory.Delete(dir, recursive: true); } catch (IOException) { }

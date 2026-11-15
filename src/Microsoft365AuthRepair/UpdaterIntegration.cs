@@ -72,10 +72,10 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. Modern buttons across all three windows.\n2. One-click Update: verified download and safe replace with .bak rollback.\n3. Real progress, restart and short What's New.\n4. WAM diagnostics and anonymous report preview.",
-        "1. Современные кнопки во всех окнах.\n2. Update: проверка, замена EXE и откат при ошибке.\n3. Прогресс, перезапуск и краткий список изменений.\n4. Диагностика WAM и предпросмотр отчёта.",
-        "1. כפתורים מודרניים בכל החלונות.\n2. עדכון מאומת עם גיבוי ושחזור.\n3. התקדמות והפעלה מחדש.\n4. אבחון WAM ודוח לבדיקה.");
-    
+        "1. One-click Update with safe EXE replacement, UAC when needed and rollback.\n2. All users includes optional first-sign-in launch for new Windows profiles.\n3. Portable self-deletion after a successful current-user repair (opt-in).\n4. Shared diagnostics, short What's New, EN/RU/HE and HiDPI.",
+        "1. Update: замена EXE, UAC при необходимости и откат.\n2. Все пользователи: выполнение также при первом входе в Windows.\n3. Удаление переносного EXE после успешного восстановления (по выбору).\n4. Общая диагностика, краткий What's New и HiDPI.",
+        "1. עדכון EXE עם UAC ושחזור במקרה תקלה.\n2. תיקון משתמשים גם בכניסה הראשונה ל-Windows.\n3. מחיקת EXE נייד לאחר הצלחה לפי בחירה.\n4. אבחון משותף ותמיכת HiDPI.");
+
     internal static bool SelfTest() => FormatWhatsNew(
         "## What's new\n1. Alpha\n2. Beta\n## Limitations\n- Private") ==
         $"1. Alpha{Environment.NewLine}2. Beta";
@@ -107,7 +107,7 @@ internal sealed class UpdateCenter : Form
     private CancellationTokenSource? active;
     private bool busy;
 
-    internal UpdateCenter()
+    internal UpdateCenter(bool autoUpdate = false, bool includePreviews = false)
     {
         Text = $"Microsoft 365 Auth Repair v{Repair.Version} - Updates";
         Font = UiTheme.BodyFont();
@@ -130,7 +130,7 @@ internal sealed class UpdateCenter : Form
             UpdateUiText.T("Stable", "Стабильная", "יציבה"),
             "Preview + Stable"
         ]);
-        channel.SelectedIndex = 0;
+        channel.SelectedIndex = includePreviews ? 1 : 0;
         top.Controls.Add(channel);
         check.Text = UpdateUiText.T("Check now", "Проверить", "בדוק");
         top.Controls.Add(check);
@@ -202,7 +202,14 @@ internal sealed class UpdateCenter : Form
                     $"/select,\"{staged.ArchivePath}\"") { UseShellExecute = true });
         };
         FormClosing += (_, _) => active?.Cancel();
-        Shown += async (_, _) => await CheckAsync(); // One check immediately on opening, no second Check click.
+        Shown += async (_, _) =>
+        {
+            // UAC was confirmed by a user already clicking Update in a
+            // protected installation. Continue without a second Update click.
+            await CheckAsync();
+            if (autoUpdate && release is not null && !busy)
+                await UpdateAsync();
+        };
     }
 
     private void Clear()
@@ -309,7 +316,22 @@ internal sealed class UpdateCenter : Form
             // A same-user helper runs outside the application, after it exits.
             // The helper calls PortableExeTransaction for atomic replacement,
             // health probe and rollback. Never silently elevate.
-            UpdateHandoff.Queue(staged);
+            try
+            {
+                UpdateHandoff.Queue(staged);
+            }
+            catch (UnauthorizedAccessException) when (!Identity.IsElevated())
+            {
+                // The verified archive is still present. A non-elevated
+                // instance in Program Files cannot replace its own EXE.
+                // Ask UAC and continue update from the trusted installed EXE.
+                if (!UpdateHandoff.TryRestartElevated(
+                        includePreview: channel.SelectedIndex == 1, out var explanation))
+                    throw new UnauthorizedAccessException(explanation);
+                status.Text = explanation;
+                Application.Exit();
+                return;
+            }
             status.Text = UpdateUiText.T("Restarting to complete update...", "Перезапуск для завершения обновления...", "מפעיל מחדש לסיום העדכון...");
             Application.Exit();
         }

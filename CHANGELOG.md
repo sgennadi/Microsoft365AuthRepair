@@ -1,3 +1,11 @@
+## 1.0.1-preview.5 — 2026-11-15 — Preview
+
+1. Update replaces the EXE automatically with the canonical UniversalUpdater transaction, rollback and health-check before restart.
+2. Privileged installations continue through explicit UAC and a protected admin-only helper, rather than forcing manual ZIP extraction.
+3. All users supports future first-time sign-ins through an optional 90-day per-machine, one-time-per-new-profile campaign, excluding already-queued existing profiles.
+4. Optional portable EXE self-deletion after a successful current-user operation; the protected shared worker remains available for offline users.
+5. Added worker argument and safety self-tests, while keeping the stable release, diagnostic consent and normal non-admin current-user repair unchanged.
+
 ## 1.0.1-preview.4 — 2026-11-15 — Preview
 
 1. Show the actual current desktop username beside the scope selector.

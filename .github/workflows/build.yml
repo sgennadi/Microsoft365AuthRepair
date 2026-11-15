@@ -105,6 +105,18 @@ jobs:
           $selfTestExe = (Resolve-Path "publish/win-x64/Microsoft365AuthRepair.exe").Path
           $selfTest = Start-Process -FilePath $selfTestExe -ArgumentList '--ui-self-test' -PassThru -Wait
           if ($selfTest.ExitCode -ne 0) { throw "x64 GUI self-test failed: $($selfTest.ExitCode)" }
+      - name: Reject invalid background-worker requests without touching WAM
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path "publish/win-x64/Microsoft365AuthRepair.exe").Path
+          foreach ($arguments in @('--first-logon INVALID', '--cleanup-helper INVALID')) {
+            $test = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru -Wait
+            if ($test.ExitCode -ne 2) {
+              throw "Background worker accepted invalid input: $arguments ($($test.ExitCode))"
+            }
+          }
+          Write-Host 'Invalid worker requests were rejected without running any repair.'
       - name: Upload verified build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -172,7 +184,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj | head -1)"
-          test "$version" = "1.0.1-preview.4"
+          test "$version" = "1.0.1-preview.5"
           tag="v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag already exists; refusing to overwrite a published preview."
@@ -184,5 +196,5 @@ jobs:
             release-assets/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Microsoft 365 Auth Repair $version (Preview)" \
-            --notes-file docs/releases/v1.0.1-preview.4.md \
+            --notes-file docs/releases/v1.0.1-preview.5.md \
             --prerelease

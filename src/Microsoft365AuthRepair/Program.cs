@@ -14,6 +14,10 @@ internal static class Program
                 return Scheduling.Worker(args[1], args[2], args[3], args[4]);
             if (args.Length == 2 && args[0] == "--update-helper")
                 return UpdateHandoff.RunHelper(args[1]);
+            if (args.Length == 2 && args[0] == "--first-logon")
+                return FirstLogonDeployment.Worker(args[1]);
+            if (args.Length == 2 && args[0] == "--cleanup-helper")
+                return PortableSelfCleanup.RunHelper(args[1]);
             if (args.Length == 1 && args[0] == "--ui-self-test")
             {
                 Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
@@ -33,6 +37,8 @@ internal static class Program
                     && M365DiagnosticPayload.SelfTest()
                     && UpdateHandoff.SelfTest()
                     && UserScopeSupport.SelfTest()
+                    && FirstLogonDeployment.SelfTest()
+                    && PortableSelfCleanup.SelfTest()
                     && UiTheme.VerifyButtons(form, 6)
                     && UiTheme.VerifyButtons(updater, 5)
                     && UiTheme.VerifyButtons(reports, 5)
@@ -41,12 +47,19 @@ internal static class Program
             // Post-UAC launch selects All users only. It never starts repair
             // or full reset automatically; the operator must confirm again.
             bool adminAll = args.Length == 1 && args[0] == "--all-users";
-            if (args.Length > 0 && !adminAll) return 2;
+            bool privilegedUpdate = args.Length == 1 && args[0] is
+                ("--update-elevated-stable" or "--update-elevated-preview");
+            if (args.Length > 0 && !adminAll && !privilegedUpdate) return 2;
+            if (privilegedUpdate && !Identity.IsElevated()) return 2;
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             UpdateHandoff.CleanupOldHelpers();
-            Application.Run(new MainForm(preferAllUsers: adminAll && Identity.IsElevated()));
+            if (privilegedUpdate)
+                Application.Run(new UpdateCenter(autoUpdate: true,
+                    includePreviews: args[0] == "--update-elevated-preview"));
+            else
+                Application.Run(new MainForm(preferAllUsers: adminAll && Identity.IsElevated()));
             return 0;
         }
         catch (Exception ex)

@@ -1,3 +1,13 @@
+## Preview v1.0.1-preview.5 — automatic EXE update and first-sign-in user support
+
+1. **Update** now performs end-to-end EXE replacement for same-user writable installs, with SHA-256 and PE architecture validation, a trusted out-of-process helper, `.bak` rollback, post-replacement GUI health test and automatic restart. Does not require the operator to extract or copy the EXE manually.
+2. **Protected installs**: if a standard user can't replace the EXE in Program Files or our protected ProgramData worker folder, the app asks for UAC. After explicit acceptance, a separate elevated Update Center independently downloads and validates the release then continues the replacement using a **protected helper directory**, never a user-writable elevated helper. No WAM repair is launched by updating. Other nonstandard protected paths fail closed rather than escalating arbitrary code.
+3. **All users**: existing Windows profiles (local and domain) use per-SID interactive logon scheduled tasks; active sessions start immediately, offline users run at next sign-in. New profiles that never existed on this PC cannot have WAM repaired before first sign-in.
+4. **Include users who have never signed in**: optional (enabled when All users selected), explicit confirmation and administrator rights create a 90-day first-sign-in HKLM Run campaign. Its protected EXE runs within the new user's interactive session, never as SYSTEM/admin, once per new profile. Existing profiles are excluded to prevent double resets. No passwords are stored. No operation runs on a user who never signs in.
+5. **Optional one-time portable cleanup**: Advanced can delete *this user's own portable EXE* after a successful current-user repair/reset using an unelevated child helper after process exit; disabled by default. The protected shared EXE is **never** deleted while offline-user tasks may still need it.
+6. Window version, progress, concise What’s New, EN/RU/HE and diagnostics preview/consent remain in place.
+7. **Stable v1.0.0 unchanged**. Preview CI verifies Windows x64/ARM64 build and GUI contract; live UAC, first-logon task scheduling, EXE replacement and real Microsoft Entra/WAM repair still require pilot testing.
+
 ## Preview v1.0.1-preview.4 — user scope and diagnostics repair
 
 1. The scope picker now shows `Current user — DOMAIN\username` (the actual desktop owner, not an unrelated elevated administrator) and `All users on this PC`. The latter means local **and domain** accounts that already have a Windows profile on this PC.

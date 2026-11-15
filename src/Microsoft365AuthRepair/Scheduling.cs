@@ -11,13 +11,21 @@ internal static class Scheduling
     private static readonly string SharedRoot = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), FolderName);
     private static readonly string SharedExe = System.IO.Path.Combine(SharedRoot, "Microsoft365AuthRepair.exe");
 
-    internal static void PrepareProtectedExe()
+    internal static string ProtectedRoot => SharedRoot;
+
+    internal static void EnsureProtectedRoot()
     {
-        if (!Identity.IsElevated()) throw new UnauthorizedAccessException("Admin rights required to prepare all-users deployment.");
+        if (!Identity.IsElevated())
+            throw new UnauthorizedAccessException("Administrator rights required for protected updater staging.");
         CheckNotReparse(SharedRoot);
         Directory.CreateDirectory(SharedRoot);
         CheckNotReparse(SharedRoot);
         ProtectDirectory();
+    }
+
+    internal static void PrepareProtectedExe()
+    {
+        EnsureProtectedRoot();
         CheckNotReparse(SharedExe);
         var source = Environment.ProcessPath ?? throw new IOException("Cannot identify executing EXE path.");
         if (!System.IO.Path.GetFullPath(source).Equals(System.IO.Path.GetFullPath(SharedExe), StringComparison.OrdinalIgnoreCase))

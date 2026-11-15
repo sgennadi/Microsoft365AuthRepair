@@ -16,6 +16,16 @@ internal sealed class MainForm : Form
     private readonly Label status = UiTheme.Caption(string.Empty);
     private readonly PictureBox statusGlyph = UiIcons.CreateStatus();
     private readonly Label advancedExplanation = UiTheme.Caption(string.Empty);
+    private readonly CheckBox includeFirstSignIn = new()
+    {
+        AutoSize = true, Checked = true, Visible = false,
+        Text = "Also prepare one-time repair for users who have NEVER signed in on this PC (runs at their first sign-in)"
+    };
+    private readonly CheckBox deletePortableAfterRepair = new()
+    {
+        AutoSize = true, Checked = false, Visible = false,
+        Text = "Remove this portable EXE after a successful current-user repair"
+    };
     private readonly ComboBox scope = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 420, Margin = new Padding(0, 4, 0, 8) };
     private readonly ComboBox language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 115, Margin = new Padding(10, 2, 0, 0) };
     private readonly Button repair = UiTheme.CreateActionButton(string.Empty, primary: true);
@@ -86,6 +96,7 @@ internal sealed class MainForm : Form
         scope.SelectedIndex = preferAllUsers && elevated ? 1 : 0;
         scope.Enabled = true;
         target.Controls.Add(privilege);
+        root.Controls.Add(includeFirstSignIn);
         root.Controls.Add(target, 0, 3);
 
         var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
@@ -101,15 +112,17 @@ internal sealed class MainForm : Form
         advanced.Controls.Add(showAdvanced, 0, 0);
         var advancedInner = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 2
+            Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 3
         };
         advancedInner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        advancedInner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         advancedInner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         advancedInner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         advancedInner.Controls.Add(reset, 0, 0);
         advancedExplanation.MaximumSize = new Size(725, 0);
         advancedExplanation.UseMnemonic = false;
         advancedInner.Controls.Add(advancedExplanation, 0, 1);
+        advancedInner.Controls.Add(deletePortableAfterRepair, 0, 2);
         advancedPanel.Controls.Add(advancedInner);
         advanced.Controls.Add(advancedPanel, 0, 1);
         root.Controls.Add(advanced, 0, 5);
@@ -140,7 +153,9 @@ internal sealed class MainForm : Form
         hints.SetToolTip(diagnostics, "Review a sanitized diagnostic report before saving it locally.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
-        hints.SetToolTip(scope, "Current user never requires UAC. All users on this PC requires administrator consent and uses per-user tasks.");
+        hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
+        hints.SetToolTip(includeFirstSignIn, "Admin-approved first sign-in deployment. Uses a protected per-machine EXE and an HKLM Run entry for up to 90 days; users already scheduled are excluded.");
+        hints.SetToolTip(deletePortableAfterRepair, "Optional: after a successful current-user operation, close this portable instance and delete only its own EXE. Never removes the protected all-users worker.");
 
         showAdvanced.CheckedChanged += (_, _) =>
         {
@@ -192,6 +207,14 @@ internal sealed class MainForm : Form
         scope.Items.Add(UiStrings.T("all"));
         scope.SelectedIndex = Math.Min(previous, scope.Items.Count - 1);
         showAdvanced.Text = UpdateUiText.T("Advanced", "Дополнительно", "מתקדם");
+        includeFirstSignIn.Text = UpdateUiText.T(
+            "Include users who have never signed in (one-time repair at first sign-in; 90 days)",
+            "Включить тех, кто ещё не входил (один раз при первом входе; 90 дней)",
+            "גם משתמשים שלא התחברו עדיין (פעם אחת בכניסה הראשונה; 90 יום)");
+        deletePortableAfterRepair.Text = UpdateUiText.T(
+            "Delete this portable EXE after successful repair for current user",
+            "Удалить этот переносной EXE после успешного восстановления текущего пользователя",
+            "מחק עותק EXE נייד זה לאחר תיקון מוצלח של המשתמש הנוכחי");
         repair.Text = UiStrings.T("repair");
         reset.Text = UiStrings.T("full");
         diagnose.Text = UiStrings.T("diagnose");
@@ -228,6 +251,8 @@ internal sealed class MainForm : Form
         busy = isBusy;
         repair.Enabled = reset.Enabled = diagnose.Enabled = diagnostics.Enabled = updates.Enabled = !isBusy;
         scope.Enabled = !isBusy;
+        includeFirstSignIn.Enabled = !isBusy && scope.SelectedIndex == 1;
+        deletePortableAfterRepair.Enabled = !isBusy && scope.SelectedIndex == 0;
         progress.Visible = isBusy;
     }
 
@@ -238,6 +263,11 @@ internal sealed class MainForm : Form
     {
         if (scope.SelectedIndex < 0) return;
         bool everyone = scope.SelectedIndex == 1;
+        includeFirstSignIn.Visible = everyone;
+        includeFirstSignIn.Enabled = everyone && !busy;
+        deletePortableAfterRepair.Visible = !everyone && showAdvanced.Checked &&
+            PortableSelfCleanup.IsEligible();
+        deletePortableAfterRepair.Enabled = !everyone && !busy;
         var admin = everyone
             ? elevated
                 ? UpdateUiText.T("Administrator enabled; each user runs under their own account.",
@@ -328,11 +358,18 @@ internal sealed class MainForm : Form
             var caption = !full && everyone
                 ? UpdateUiText.T("Confirm repair for all users", "Подтвердите восстановление всех пользователей", "אישור תיקון לכל המשתמשים")
                 : UiStrings.T("confirmTitle");
+            if (everyone && includeFirstSignIn.Checked)
+                prompt += Environment.NewLine + UpdateUiText.T(
+                    "Also includes users with NO Windows profile yet: runs once at their first sign-in for up to 90 days.",
+                    "Включая пользователей БЕЗ профиля Windows: одноразовое выполнение при первом входе в течение 90 дней.",
+                    "כולל משתמשים ללא פרופיל Windows: פעולה חד-פעמית בכניסה הראשונה במשך 90 יום.");
             if (MessageBox.Show(this, prompt, caption, MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
                 return;
         }
 
+        // Capture WinForms checkbox state on UI thread before Task.Run.
+        var includeNeverLoggedIn = everyone && includeFirstSignIn.Checked;
         SetBusy(true);
         ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
@@ -341,7 +378,7 @@ internal sealed class MainForm : Form
             {
                 if (!elevated) return full ? Repair.Run(quiet: true) == 0 ? "SUCCESS" : "FAILED" :
                     Repair.ReRegister(quiet: true) == 0 ? "SUCCESS" : "FAILED";
-                return ScheduleAdminRepair(everyone, full);
+                return ScheduleAdminRepair(everyone, full, includeNeverLoggedIn);
             });
             detail.AppendText(result + Environment.NewLine);
             var failed = result.Contains("FAILED", StringComparison.Ordinal);
@@ -350,6 +387,11 @@ internal sealed class MainForm : Form
                     "Задачи пользователей назначены. Проверяйте результат в их журналах.",
                     "המשימות תוזמנו. בדוק את יומני המשתמשים.")
                 : UiStrings.T("done"), failed ? UiGlyph.Error : UiGlyph.Success);
+            if (!failed && !everyone && !elevated && deletePortableAfterRepair.Checked)
+            {
+                PortableSelfCleanup.Queue();
+                Close(); // Cleaner waits for this process to exit before deleting EXE.
+            }
         }
         catch (Exception ex)
         {
@@ -359,7 +401,7 @@ internal sealed class MainForm : Form
         finally { SetBusy(false); }
     }
 
-    private static string ScheduleAdminRepair(bool everyone, bool full)
+    private static string ScheduleAdminRepair(bool everyone, bool full, bool includeNeverLoggedIn)
     {
         var profiles = UserProfiles.Enumerate();
         var sessions = Native.FindExplorerSessions();
@@ -375,6 +417,13 @@ internal sealed class MainForm : Form
         Scheduling.PrepareProtectedExe();
         var onlineSids = sessions.Values.SelectMany(s => s).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var results = new List<string>();
+        // Register before dispatching online users: another running worker
+        // might lock the shared EXE while an installer refreshes its copy.
+        if (everyone && includeNeverLoggedIn)
+        {
+            try { results.Add(FirstLogonDeployment.Register(full ? "full" : "reregister")); }
+            catch (Exception ex) { results.Add("FAILED first-sign-in campaign: " + ex.GetType().Name); }
+        }
         foreach (var profile in selected)
         {
             try { results.Add(Scheduling.QueueForSid(profile, onlineSids.Contains(profile.Sid), full ? "full" : "reregister")); }
