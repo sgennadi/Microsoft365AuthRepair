@@ -177,7 +177,8 @@ internal static class TaskRunHistory
             _ => "Task missing or no verifiable worker result. Do not assume success."
         };
         return new TaskStatusRow(profile?.Account ?? "Profile not found",
-            entry.Action, entry.Mode, entry.SubmittedUtc, state, evidence);
+            entry.Action, entry.Mode, entry.SubmittedUtc, state, evidence)
+        { UserSid = entry.UserSid, TaskName = entry.TaskName };
     }
 
     internal static IReadOnlyList<TaskStatusRow> Snapshot()
