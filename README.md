@@ -16,10 +16,10 @@ A Windows .NET 10 WinForms desktop repair utility for Microsoft Entra WAM / `Mic
 
 ## Verified CI build
 
-- **2026-11-15 preview CI:** [successful x64/ARM64 build and x64 UI initialization test](https://github.com/sgennadi/Microsoft365AuthRepair/actions/runs/43702018055).
+- **2026-11-15 v0.1.0-preview.2 CI:** [successful x64/ARM64 build and x64 GUI/icon initialization test](https://github.com/sgennadi/Microsoft365AuthRepair/actions/runs/43706415667).
 - Download the **Microsoft365AuthRepair-preview-x64-arm64** artifact from the workflow run (GitHub sign-in may be required).
 - The artifact contains `Microsoft365AuthRepair-win-x64.zip`, `Microsoft365AuthRepair-win-arm64.zip` and `SHA256SUMS.txt`. Each architecture ZIP contains one self-contained `Microsoft365AuthRepair.exe`.
-- This verifies compilation and basic GUI construction **only**. ARM64 actual-device execution, real Microsoft Entra sign-in repair, all-users scheduling and full identity reset have NOT yet been tested. Do not deploy the full reset to production before pilot validation.
+- This verifies compilation, icon embedding and basic GUI construction **only**. ARM64 actual-device execution, real Microsoft Entra sign-in repair, all-users scheduling and full identity reset have NOT yet been tested. Do not deploy the full reset to production before pilot validation.
 - No stable Release has been published.
 
 ## Packaging
