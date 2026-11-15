@@ -397,6 +397,19 @@ internal sealed class MainForm : Form
             ? UiGlyph.Success : UiGlyph.Error);
     }
 
+    internal bool HeaderLayoutSelfTest()
+    {
+        if (headerRow is null || subtitleRow is null) return false;
+        return settings.Parent == headerRow &&
+            headerRow.Controls.Contains(title) &&
+            !headerRow.Controls.Contains(language) &&
+            subtitleRow.Controls.Contains(subtitle) &&
+            subtitleRow.Controls.OfType<FlowLayoutPanel>()
+                .Any(group => group.Controls.Contains(language) &&
+                    group.Controls.Contains(languageLabel)) &&
+            !string.IsNullOrWhiteSpace(languageLabel.Text);
+    }
+
     private void ApplyText()
     {
         title.Text = UiStrings.T("title");
