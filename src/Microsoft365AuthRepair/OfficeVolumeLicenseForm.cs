@@ -212,7 +212,8 @@ internal sealed class OfficeVolumeLicenseForm : Form
         bool canChange = HasSelectedSupportedProduct && Identity.IsElevated();
         bool isPreview = selected is not null && inventory is not null &&
             OfficeVolumeLicensing.ShouldRemoveOldKey(selected, inventory);
-        host.Enabled = port.Enabled = discover.Enabled = kms.Checked && !busy;
+        host.Enabled = port.Enabled = kms.Checked && !busy;
+        discover.Enabled = kms.Checked && selected is not null && !busy;
         makKey.Enabled = mak.Checked && !busy;
         removePreview.Enabled = isPreview && !busy;
         apply.Enabled = canChange && !busy && (!isPreview || removePreview.Checked);
@@ -405,7 +406,8 @@ internal sealed class OfficeVolumeLicenseForm : Form
             outcome.Text = result.Stage + ": " + result.Status +
                 (result.PreviewKeyRemoved ? Environment.NewLine + "Previous Preview key removed." : "") +
                 (result.ActivationVerified ? Environment.NewLine + "Office licensed." : "");
-            if (result.ActivationVerified) await RefreshAsync();
+            // Preserve the final activation result until the user chooses
+            // Refresh. Never hide a partially completed key replacement.
         }
         catch (Exception ex)
         {
