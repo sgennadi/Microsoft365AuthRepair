@@ -230,7 +230,7 @@ internal static class OfficeVolumeLicensing
         inventory.Products.Any(x =>
             x.ActivationId != product.ActivationId &&
             x.ProductId.Equals(product.ProductId, StringComparison.OrdinalIgnoreCase) &&
-            !x.IsPreview && IsActive(x));
+            IsActive(x));
 
     // Show one canonical record per installed SKU by default. WMI can include
     // many empty MAK/KMS template rows in addition to one activated product.
