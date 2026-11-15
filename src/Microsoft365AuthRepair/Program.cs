@@ -31,11 +31,16 @@ internal static class Program
                     target: "Test desktop user", elevated: false);
                 using var sendReview = new ReportSendDialog(
                     new PreparedDiagnostic("00000000-0000-4000-8000-000000000001", "{}"), null);
+                using var wizard = new AllUsersWizard(ScheduledWorkerMode.Exe,
+                    initialScheduleOnly: false, elevated: false);
+                using var signInGuide = new SignInErrorDialog();
                 form.CreateControl();
                 updater.CreateControl();
                 reports.CreateControl();
                 settings.CreateControl();
                 sendReview.CreateControl();
+                wizard.CreateControl();
+                signInGuide.CreateControl();
                 // On a headless Windows CI runner the GUI has no console.
                 // Record boolean test names only; never log user identities.
                 var tests = new (string Name, Func<bool> Run)[]
@@ -46,6 +51,8 @@ internal static class Program
                     ("Reports icon", () => UiIcons.Verify(reports)),
                     ("Settings icon", () => UiIcons.Verify(settings)),
                     ("Send review icon", () => UiIcons.Verify(sendReview)),
+                    ("Wizard icon", () => UiIcons.Verify(wizard)),
+                    ("Sign-in guide icon", () => UiIcons.Verify(signInGuide)),
                     ("Settings state", () => settings.TaskMethod == ScheduledWorkerMode.PowerShell &&
                         settings.ScheduleOnly && !settings.CleanupAfterRepair),
                     ("Responsive geometry", ResponsiveLayout.SelfTest),
@@ -54,6 +61,9 @@ internal static class Program
                     ("Update notes layout", () => updater.ChangeListHasSeparateLines),
                     ("Review approval default", () => sendReview.ConsentInitiallyChecked &&
                         sendReview.ConfirmedIssue is null),
+                    ("All users wizard", AllUsersWizard.SelfTest),
+                    ("Sign-in error codes", SignInIssueAdvisor.SelfTest),
+                    ("Sign-in guide", SignInErrorDialog.SelfTest),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
                     ("WAM result card", DiagnosticResultCard.SelfTest),
                     ("What's New format", UpdateUiText.SelfTest),
@@ -67,7 +77,9 @@ internal static class Program
                     ("Updater buttons", () => UiTheme.VerifyButtons(updater, 4)),
                     ("Reports buttons", () => UiTheme.VerifyButtons(reports, 4)),
                     ("Settings buttons", () => UiTheme.VerifyButtons(settings, 2)),
-                    ("Review buttons", () => UiTheme.VerifyButtons(sendReview, 2))
+                    ("Review buttons", () => UiTheme.VerifyButtons(sendReview, 2)),
+                    ("Wizard buttons", () => UiTheme.VerifyButtons(wizard, 3)),
+                    ("Sign-in guide buttons", () => UiTheme.VerifyButtons(signInGuide, 2))
                 };
                 var outcomes = new List<string>();
                 bool passed = true;
@@ -94,10 +106,15 @@ internal static class Program
             // no arbitrary command line is accepted for bulk user actions.
             var allOptions = args.Length >= 1 && args[0] == "--all-users"
                 ? args.Skip(1).ToArray() : [];
+            bool hasWamReview = allOptions.Contains("--review-wam", StringComparer.Ordinal);
+            bool hasResetReview = allOptions.Contains("--review-reset", StringComparer.Ordinal);
             bool adminAll = args.Length >= 1 && args[0] == "--all-users"
-                && allOptions.Length <= 2
-                && allOptions.All(x => x is "--powershell-tasks" or "--schedule-only")
-                && allOptions.Distinct(StringComparer.Ordinal).Count() == allOptions.Length;
+                && allOptions.Length <= 3
+                && allOptions.All(x => x is "--powershell-tasks" or "--schedule-only"
+                    or "--review-wam" or "--review-reset")
+                && allOptions.Distinct(StringComparer.Ordinal).Count() == allOptions.Length
+                && !(hasWamReview && hasResetReview)
+                && !(hasResetReview && allOptions.Contains("--powershell-tasks", StringComparer.Ordinal));
             bool usePsTask = adminAll && allOptions.Contains("--powershell-tasks", StringComparer.Ordinal);
             bool onlySchedule = adminAll && allOptions.Contains("--schedule-only", StringComparer.Ordinal);
             bool privilegedUpdate = args.Length == 1 && args[0] is
@@ -115,7 +132,12 @@ internal static class Program
                 Application.Run(new MainForm(
                     preferAllUsers: adminAll && Identity.IsElevated(),
                     usePowerShellTasks: usePsTask,
-                    scheduleOnlyAtLogon: onlySchedule));
+                    scheduleOnlyAtLogon: onlySchedule,
+                    pendingAction: adminAll && Identity.IsElevated()
+                        ? hasResetReview ? AllUsersWizardAction.ResetOffice
+                          : hasWamReview ? AllUsersWizardAction.RepairWam
+                          : AllUsersWizardAction.SaveOnly
+                        : AllUsersWizardAction.SaveOnly));
             return 0;
         }
         catch (Exception ex)
