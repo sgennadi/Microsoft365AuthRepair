@@ -52,12 +52,13 @@ internal static class OfficeVolumeLicensing
     // These are *not* sufficient by themselves: require exact installed SKU
     // and Office-only WMI ApplicationID verification.
     // Do NOT infer Preview status only from the Office build number.
-    private static readonly IReadOnlyDictionary<string, string> PreviewSuffixes =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    private static readonly IReadOnlyDictionary<string, string[]> PreviewSuffixes =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
-            ["ProPlus2024Volume"] = "TX3T2",
-            ["ProjectPro2024Volume"] = "JB89R",
-            ["VisioPro2024Volume"] = "WXGKQ"
+            // Commercial-preview KMS and MAK last-five suffixes.
+            ["ProPlus2024Volume"] = ["TX3T2", "HH966"],
+            ["ProjectPro2024Volume"] = ["JB89R", "94W9W"],
+            ["VisioPro2024Volume"] = ["WXGKQ", "CPVG7"]
         };
 
     private static string? ReadConfigValue(string key)
@@ -115,7 +116,7 @@ internal static class OfficeVolumeLicensing
     {
         if (sku is null || partial is null) return false;
         return PreviewSuffixes.TryGetValue(sku, out var expected) &&
-            expected.Equals(partial, StringComparison.OrdinalIgnoreCase);
+            expected.Contains(partial, StringComparer.OrdinalIgnoreCase);
     }
 
     // Exact 2024 Volume edition must be present. A previous Preview key does
@@ -207,12 +208,9 @@ internal static class OfficeVolumeLicensing
             return false;
 
         // Preview names are not consistent across old WMI/C2R builds.
-        // Accept a well-known Preview KMS suffix, or an explicit "-Preview"
-        // product release with a Preview-labeled product. Never guess from
-        // merely having a non-GVLK partial key (it may be a valid MAK).
-        return IsKnownPreviewKey(sku, product.PartialKey) ||
-            IsPreviewLabel(product.Name + " " + product.Description) &&
-            inventory.ProductReleaseIds.Contains(sku + "-Preview", StringComparer.OrdinalIgnoreCase);
+        // The suffix must match a known 2024 commercial-preview key. Do not
+        // delete an arbitrary MAK just because the product label says Preview.
+        return IsKnownPreviewKey(sku, product.PartialKey);
     }
 
     internal static bool CanApply(OfficeVolumeProduct product, OfficeVolumeInventory inventory) =>
@@ -384,9 +382,7 @@ internal static class OfficeVolumeLicensing
                     if (!Str(old, "ApplicationID").Equals(OfficeApplicationId, StringComparison.OrdinalIgnoreCase) ||
                         !Str(old, "PartialProductKey").Equals(oldRow.PartialKey, StringComparison.OrdinalIgnoreCase) ||
                         directSku != DetectSku(oldRow.Name + " " + oldRow.Description) ||
-                        !IsKnownPreviewKey(directSku, oldRow.PartialKey) &&
-                            !(IsPreviewLabel(Str(old, "Name") + " " + Str(old, "Description")) &&
-                                fresh.ProductReleaseIds.Contains(directSku + "-Preview", StringComparer.OrdinalIgnoreCase)))
+                        !IsKnownPreviewKey(directSku, oldRow.PartialKey))
                         return new(false, "Recheck Preview key",
                             "Preview identity could not be independently verified. No keys removed.",
                             false, false);
@@ -473,7 +469,7 @@ internal static class OfficeVolumeLicensing
     {
         var preview = new OfficeVolumeProduct(Guid.Empty.ToString("D"),
             "Office 24, Office24VisioPro2024VL_KMS_Client Preview edition",
-            "", "VisioPro2024Volume", "ABCDE", "Unlicensed", true, false,
+            "", "VisioPro2024Volume", "WXGKQ", "Unlicensed", true, false,
             null, null, null, null);
         var valid = preview with
         {
@@ -491,8 +487,11 @@ internal static class OfficeVolumeLicensing
             IsPreviewLabel(preview.Name) && IsUnverified2026(invalid.Name) &&
             CanReplacePreview(preview, inv) && !CanReplacePreview(invalid, inv) &&
             IsKnownPreviewKey("ProPlus2024Volume", "TX3T2") &&
+            IsKnownPreviewKey("ProPlus2024Volume", "HH966") &&
             IsKnownPreviewKey("ProjectPro2024Volume", "JB89R") &&
+            IsKnownPreviewKey("ProjectPro2024Volume", "94W9W") &&
             IsKnownPreviewKey("VisioPro2024Volume", "WXGKQ") &&
+            IsKnownPreviewKey("VisioPro2024Volume", "CPVG7") &&
             !IsKnownPreviewKey("VisioPro2024Volume", "GCVGB") &&
             CanReplacePreview(realPreview with { IsPreview = true }, realPreviewInventory) &&
             !CanReplacePreview(unrelated, realPreviewInventory) &&
