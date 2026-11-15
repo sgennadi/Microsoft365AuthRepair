@@ -46,7 +46,8 @@ internal static class UserScopeSupport
     internal static bool CanRunCurrent(bool elevated, DesktopUser desktop) =>
         !elevated || desktop.Verified;
 
-    internal static bool TryElevateForAll(bool usePowerShell, bool scheduleOnly, out string? error)
+    internal static bool TryElevateForAll(bool usePowerShell, bool scheduleOnly,
+        AllUsersWizardAction action, out string? error)
     {
         error = null;
         try
@@ -64,6 +65,12 @@ internal static class UserScopeSupport
             psi.ArgumentList.Add("--all-users");
             if (usePowerShell) psi.ArgumentList.Add("--powershell-tasks");
             if (scheduleOnly) psi.ArgumentList.Add("--schedule-only");
+            // The following flags ONLY open the existing separate consent
+            // dialog after UAC. They must never execute a worker by themselves.
+            if (action == AllUsersWizardAction.RepairWam)
+                psi.ArgumentList.Add("--review-wam");
+            else if (action == AllUsersWizardAction.ResetOffice)
+                psi.ArgumentList.Add("--review-reset");
             using var p = Process.Start(psi) ??
                 throw new InvalidOperationException("Windows did not open the administrator window.");
             return true;
@@ -80,10 +87,19 @@ internal static class UserScopeSupport
         }
     }
 
+    internal static bool SafePendingAction(AllUsersWizardAction action, bool elevated,
+        bool allUsers) => elevated && allUsers &&
+        action is AllUsersWizardAction.RepairWam or AllUsersWizardAction.ResetOffice;
+
     internal static bool SelfTest() =>
         RequiresUac(true, false) && !RequiresUac(false, false) &&
         !RequiresUac(true, true) &&
         CanRunCurrent(false, new DesktopUser("DOMAIN\\someone", "", false)) &&
         !CanRunCurrent(true, new DesktopUser("Unknown", "", false)) &&
-        CanRunCurrent(true, new DesktopUser("DOMAIN\\someone", "S-1-5-21-1-2-3-4", true));
+        CanRunCurrent(true, new DesktopUser("DOMAIN\\someone", "S-1-5-21-1-2-3-4", true)) &&
+        SafePendingAction(AllUsersWizardAction.RepairWam, true, true) &&
+        SafePendingAction(AllUsersWizardAction.ResetOffice, true, true) &&
+        !SafePendingAction(AllUsersWizardAction.RepairWam, false, true) &&
+        !SafePendingAction(AllUsersWizardAction.SaveOnly, true, true) &&
+        !SafePendingAction(AllUsersWizardAction.ResetOffice, true, false);
 }
