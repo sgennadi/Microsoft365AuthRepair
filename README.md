@@ -1,3 +1,12 @@
+## Preview v1.0.1-preview.13 — Microsoft-guided diagnosis and native Office licensing
+
+1. **Microsoft Learn troubleshooting:** the offline sign-in guide includes symptom, check, possible cause, safe action, and the Microsoft Learn reference for WAM, PRT, Entra, MFA, Conditional Access, network, personal CloudExperienceHost, Office licensing and RDS/VDI SCA. No passwords or logs are uploaded.
+2. **Native read-only Office vNext diagnostics:** checks Office Click-to-Run edition, local vNext/SCA indicators and license tool availability using C#/.NET. It never executes ospp.vbs, vnextdiag.ps1 or any external licensing script and does not claim local token files prove a valid subscription.
+3. **Office / Visio / Project Volume licensing:** a separate on-demand dialog shows product-specific WMI license status and the last five characters of installed keys. KMS lookup reads the configured/discovered Office host or DNS `_vlmcs._tcp`, with manual host and port (default 1688).
+4. **2024 Preview key replacement:** for a strictly matched Office LTSC/Visio/Project Volume 2024 SKU and Preview key, an administrator can explicitly approve removing the old Preview key *before* installing the official Microsoft 2024 GVLK (KMS) or a private MAK. The operation requests a second confirmation, verifies the chosen Office WMI record, does not remove Windows keys, and reports when activation remains unverified.
+5. **Safety:** unknown Office/Visio/Project 2026 Preview, Retail, Microsoft 365 subscriptions and unsupported product IDs remain read-only. MAK values are masked and never intentionally saved or included in reports. No bulk or scheduled key removal is available.
+6. Windows x64/ARM64 CI and GUI smoke checks must pass. **Live KMS/MAK, UAC, RTL and 100–200% DPI field tests remain required before Stable promotion.** Stable v1.0.0 is unchanged. [Preview.13 release notes](docs/releases/v1.0.1-preview.13.md).
+
 ## Preview v1.0.1-preview.12 — All users wizard, collapsible diagnosis and sign-in error guide
 
 1. **All users mini wizard:** Choosing All users opens a 3-step guide: protected EXE or PowerShell (WAM only), start for active sessions or defer to next sign-in, then Save only / Re-register WAM / Reset Office sign-in. The default is Save only; Reset is available with EXE only.
