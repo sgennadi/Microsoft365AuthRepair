@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -74,7 +73,6 @@ internal sealed class MainForm : Form
     };
     private readonly Button updates = UiTheme.CreateActionButton(string.Empty);
     private readonly Button diagnostics = UiTheme.CreateActionButton(string.Empty);
-    private readonly Button logs = UiTheme.CreateActionButton(string.Empty);
     // Scope-specific Setup is for All users only; Current user has direct actions.
     private readonly LinkLabel settings = new()
     {
@@ -228,7 +226,6 @@ internal sealed class MainForm : Form
         var tools = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
         tools.Controls.Add(diagnostics);
         tools.Controls.Add(updates);
-        tools.Controls.Add(logs);
         actions.Controls.Add(tools, 0, 4);
         root.Controls.Add(actions, 0, 4);
 
@@ -270,7 +267,6 @@ internal sealed class MainForm : Form
         UiIcons.Assign(diagnostics, UiGlyph.Reports);
         diagnostics.UseMnemonic = false; // show literal & instead of treating it as accelerator
         UiIcons.Assign(updates, UiGlyph.Updates);
-        UiIcons.Assign(logs, UiGlyph.Logs);
         UiIcons.TrackDpi(this);
         technicalToggle.LinkClicked += (_, _) =>
         {
@@ -298,7 +294,6 @@ internal sealed class MainForm : Form
         hints.SetToolTip(signInErrors, "Offline Microsoft 365 error-code guide: no report is sent and no account is changed.");
         hints.SetToolTip(diagnostics, "Generate a sanitized report, review the exact JSON and explicitly choose whether to send.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
-        hints.SetToolTip(logs, "Open local repair logs without sending any data.");
         hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
         hints.SetToolTip(settings, "Configure all-users repair tasks and review old scheduled workers.");
 
@@ -342,7 +337,6 @@ internal sealed class MainForm : Form
             window.ShowDialog(this);
             await CheckForUpdatesAsync();
         };
-        logs.Click += (_, _) => OpenLogs();
         language.SelectedIndexChanged += (_, _) =>
         {
             var index = language.SelectedIndex;
@@ -508,8 +502,7 @@ internal sealed class MainForm : Form
                 ? Color.White : Color.FromArgb(221, 245, 230);
             modern.Invalidate();
         }
-        logs.Text = UiStrings.T("logs");
-        foreach (Control button in new Control[] { repair, reset, diagnose, diagnostics, updates, logs, settings })
+        foreach (Control button in new Control[] { repair, reset, diagnose, diagnostics, updates, settings })
             button.AccessibleName = button.Text;
         UpdateScopeExplanation();
         if (string.IsNullOrWhiteSpace(status.Text)) ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
@@ -959,10 +952,4 @@ internal sealed class MainForm : Form
         }
     }
 
-    private static void OpenLogs()
-    {
-        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft365AuthRepair", "Logs");
-        Directory.CreateDirectory(path);
-        Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
-    }
 }
