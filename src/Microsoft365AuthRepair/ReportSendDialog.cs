@@ -177,16 +177,19 @@ internal sealed class ReportSendDialog : Form
         {
             using var gateway = new GoogleDiagnosticsGateway();
             var issue = await gateway.SendAsync(prepared, cts.Token);
-
-            // The remote receipt is authoritative even if local queue write fails.
+            // The remote receipt is authoritative. Never turn a confirmed
+            // GitHub submission into a "not delivered" message just because
+            // writing the local marker failed.
+            ConfirmedIssue = issue;
             if (sourceFile is not null)
             {
                 try { M365DiagnosticPayload.MarkDelivered(sourceFile, prepared.Id, issue); }
-                catch (IOException) { /* A confirmed GitHub issue remains delivered. */ }
-                catch (UnauthorizedAccessException) { }
-                catch (InvalidDataException) { }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                    InvalidDataException or System.Text.Json.JsonException)
+                {
+                    // Best-effort local marker; no re-submission on this path.
+                }
             }
-            ConfirmedIssue = issue;
         }
         catch (OperationCanceledException)
         {
