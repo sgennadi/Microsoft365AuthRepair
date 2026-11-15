@@ -976,6 +976,34 @@ internal sealed class MainForm : Form
             return;
         }
 
+        // Read-only preflight before touching WAM or Office identity state.
+        // Network failures are advisory for WAM and do not silently prevent
+        // an explicitly requested re-registration.
+        RepairPreflight? beforeRepair = null;
+        SetBusy(true);
+        try
+        {
+            beforeRepair = await RepairPreflightProbe.CollectAsync(
+                !elevated || desktopUser.SameAsProcess);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException
+            or InvalidOperationException or UnauthorizedAccessException
+            or System.Security.SecurityException) { /* Unknown, never "healthy". */ }
+        finally { if (!IsDisposed && !Disposing) SetBusy(false); }
+        if (IsDisposed || Disposing) return;
+        lastPreflight = beforeRepair;
+        if (full && beforeRepair is { } check &&
+            (check.OfficeAppsRunning && (!everyone || !onlySchedule) ||
+             check.ClockAcceptable == false && !everyone))
+        {
+            ShowStatus(UpdateUiText.T(
+                "Full reset paused: close Office apps or review Windows time; for All users choose next-sign-in-only tasks.",
+                "Полный сброс остановлен: закройте Office или проверьте время. Для All users выберите запуск только при следующем входе.",
+                "איפוס מלא נעצר. סגור Office או בדוק את השעון; לכל המשתמשים בחר הפעלה בכניסה הבאה."),
+                UiGlyph.Info);
+            return;
+        }
+
         // Preflight the exact list before confirmation. These are existing
         // profile registry entries, not every possible future account.
         // Freeze the reviewed profile list so new profiles cannot silently
@@ -1065,6 +1093,11 @@ internal sealed class MainForm : Form
         // Capture WinForms checkbox state on UI thread before Task.Run.
         lastRawDiagnostic = null;
         lastOfficeLicense = null;
+        lastOfficeActivation = null;
+        lastSmartDecision = null;
+        awaitingAppSignInCheck = false;
+        appSignInReportedWorking = appSignInReportedFailed = false;
+        smartPanel.Visible = activationDetail.Visible = verificationPanel.Visible = false;
         recommendedHelpKey = null;
         officeLicenseSummary.Visible = false;
         officeVolumeLink.Visible = false;
@@ -1092,6 +1125,7 @@ internal sealed class MainForm : Form
             // A scheduled all-users / elevated worker has NOT necessarily
             // finished: never auto-claim a queued task as a successful repair.
             verifyCurrentUserAfterSuccess = ShouldRecheckAfterRepair(failed, everyone, elevated);
+            awaitingAppSignInCheck = verifyCurrentUserAfterSuccess;
             ShowStatus(failed ? UiStrings.T("failed") : elevated
                 ? UpdateUiText.T("Per-user tasks queued; check user logs for completion.",
                     "Задачи пользователей назначены. Проверяйте результат в их журналах.",
