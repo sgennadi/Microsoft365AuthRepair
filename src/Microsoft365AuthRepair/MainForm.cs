@@ -141,7 +141,7 @@ internal sealed class MainForm : Form
         banner.Controls.Add(status);
         root.Controls.Add(banner, 0, 6);
         root.Controls.Add(detail, 0, 7);
-        Controls.Add(root);
+        Controls.Add(ResponsiveLayout.Center(this, root, 1080));
         Controls.Add(progress);
         progress.BringToFront();
 
