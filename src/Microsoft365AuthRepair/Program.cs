@@ -55,6 +55,7 @@ internal static class Program
                     ("Review approval default", () => sendReview.ConsentInitiallyChecked &&
                         sendReview.ConfirmedIssue is null),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
+                    ("WAM result card", DiagnosticResultCard.SelfTest),
                     ("What's New format", UpdateUiText.SelfTest),
                     ("Diagnostic payload", M365DiagnosticPayload.SelfTest),
                     ("Updater helper", UpdateHandoff.SelfTest),
