@@ -54,7 +54,8 @@ internal static class Program
                     ("Current user setup icon", () => UiIcons.Verify(currentSetup)),
                     ("Send review icon", () => UiIcons.Verify(sendReview)),
                     ("Wizard icon", () => UiIcons.Verify(wizard)),
-                    ("Sign-in guide icon", () => UiIcons.Verify(signInGuide)),
+                    ("Sign-in guide window icon", () => UiIcons.HasBrandIcon &&
+                        signInGuide.Icon is not null && signInGuide.ShowIcon),
                     ("Volume licensing icon", () => UiIcons.Verify(volumeLicensing)),
                     ("Current user setup state", CurrentUserWizard.SelfTest),
                     ("Responsive geometry", ResponsiveLayout.SelfTest),
