@@ -54,7 +54,6 @@ internal sealed class MainForm : Form
     // receive only the two existing, validated command-line flags.
     private ScheduledWorkerMode allUsersTaskMethod = ScheduledWorkerMode.Exe;
     private bool allUsersScheduleOnly;
-    private bool cleanupAfterCurrentRepair;
     private readonly ComboBox language = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList, Width = 138,
@@ -76,7 +75,7 @@ internal sealed class MainForm : Form
     private readonly Button updates = UiTheme.CreateActionButton(string.Empty);
     private readonly Button diagnostics = UiTheme.CreateActionButton(string.Empty);
     private readonly Button logs = UiTheme.CreateActionButton(string.Empty);
-    // Small Setup link replaces the redundant full Settings window.
+    // Scope-specific Setup is for All users only; Current user has direct actions.
     private readonly LinkLabel settings = new()
     {
         AutoSize = true, TabStop = true,
@@ -301,7 +300,7 @@ internal sealed class MainForm : Form
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
         hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
-        hints.SetToolTip(settings, "Setup guide for the selected user scope. Includes safe cleanup options.");
+        hints.SetToolTip(settings, "Configure all-users repair tasks and review old scheduled workers.");
 
         scope.SelectedIndexChanged += async (_, _) =>
         {
@@ -325,18 +324,8 @@ internal sealed class MainForm : Form
         };
         settings.LinkClicked += async (_, _) =>
         {
-            if (busy) return;
-            if (scope.SelectedIndex == 1)
-            {
-                await ShowAllUsersWizardAsync();
-                return;
-            }
-            using var wizard = new CurrentUserWizard(
-                cleanupAfterCurrentRepair, PortableSelfCleanup.IsEligible(), elevated);
-            if (wizard.ShowDialog(this) != DialogResult.OK) return;
-            cleanupAfterCurrentRepair = wizard.CleanupAfterRepair;
-            if (wizard.SelectedAction != AllUsersWizardAction.SaveOnly)
-                await RunRepairAsync(wizard.SelectedAction == AllUsersWizardAction.ResetOffice);
+            if (busy || scope.SelectedIndex != 1) return;
+            await ShowAllUsersWizardAsync();
         };
         repair.Click += async (_, _) => await RunRepairAsync(false);
         reset.Click += async (_, _) => await RunRepairAsync(true);
@@ -442,11 +431,12 @@ internal sealed class MainForm : Form
             scope.SelectedIndex = Math.Min(previous, scope.Items.Count - 1);
         }
         finally { suppressScopeWizard = false; }
-        settings.Text = UpdateUiText.T("Setup", "Мастер", "הגדרה");
+        settings.Text = UpdateUiText.T("All users setup", "Мастер: все пользователи",
+            "הגדרות כל המשתמשים");
         settings.AccessibleDescription = UpdateUiText.T(
-            "Open setup for the selected user scope, including optional cleanup",
-            "Настройка выбранного режима пользователей и необязательная очистка",
-            "פתח הגדרה וניקוי אופציונלי עבור המשתמשים שנבחרו");
+            "Open the all-users task wizard and review protected worker cleanup",
+            "Открыть мастер заданий всех пользователей и очистку worker-файлов",
+            "פתח אשף משימות לכל המשתמשים וניקוי קובצי worker");
         languageLabel.Text = UpdateUiText.T("Language", "Язык", "שפה");
         languageLabel.AccessibleName = languageLabel.Text;
         language.AccessibleDescription = UpdateUiText.T(
@@ -602,22 +592,26 @@ internal sealed class MainForm : Form
     {
         if (scope.SelectedIndex < 0) return;
         bool everyone = scope.SelectedIndex == 1;
-        repair.Text = everyone && allUsersScheduleOnly
-            ? UpdateUiText.T("Schedule WAM re-registration", "Назначить регистрацию WAM", "תזמן רישום WAM מחדש")
-            : UiStrings.T("repair");
-        reset.Text = everyone && allUsersScheduleOnly
-            ? UpdateUiText.T("Schedule full reset", "Назначить полный сброс", "תזמן איפוס מלא")
-            : UiStrings.T("full");
+        // All users uses the scope-specific wizard, not a second set of
+        // repair buttons. Current user always acts directly on this screen.
+        settings.Visible = everyone;
+        repair.Visible = !everyone;
+        reset.Visible = !everyone;
+        if (reset.Parent is not null) reset.Parent.Visible = !everyone;
+        repairExplanation.Visible = !everyone;
+        resetExplanation.Visible = !everyone;
+        repair.Text = UiStrings.T("repair");
+        reset.Text = UiStrings.T("full");
         repair.AccessibleName = repair.Text;
         reset.AccessibleName = reset.Text;
         allUsersSettingsSummary.Visible = everyone;
         allUsersSettingsSummary.Text = UpdateUiText.T(
             $"All users: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell (WAM only)" : "EXE")} · " +
-                (allUsersScheduleOnly ? "at next sign-in" : "now for online users") + " · Adjust in Setup",
+                (allUsersScheduleOnly ? "at next sign-in" : "now for online users") + " · Run or adjust in All users setup",
             $"Все пользователи: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell (только WAM)" : "EXE")} · " +
-                (allUsersScheduleOnly ? "при следующем входе" : "сейчас для активных") + " · Изменить в мастере",
+                (allUsersScheduleOnly ? "при следующем входе" : "сейчас для активных") + " · Запустить или изменить в мастере",
             $"כל המשתמשים: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell" : "EXE")} · " +
-                (allUsersScheduleOnly ? "בכניסה הבאה" : "כעת למשתמשים מחוברים") + " · שינוי באשף");
+                (allUsersScheduleOnly ? "בכניסה הבאה" : "כעת למשתמשים מחוברים") + " · הפעל או עדכן באשף");
         var admin = everyone
             ? elevated
                 ? UpdateUiText.T("Administrator enabled; each user runs under their own account.",
@@ -776,12 +770,7 @@ internal sealed class MainForm : Form
                     "Задачи пользователей назначены. Проверяйте результат в их журналах.",
                     "המשימות תוזמנו. בדוק את יומני המשתמשים.")
                 : UiStrings.T("done"), failed ? UiGlyph.Error : UiGlyph.Success);
-            if (!failed && !everyone && !elevated && cleanupAfterCurrentRepair &&
-                PortableSelfCleanup.IsEligible())
-            {
-                PortableSelfCleanup.Queue();
-                Close(); // Cleaner waits for this process to exit before deleting EXE.
-            }
+
         }
         catch (Exception ex)
         {
