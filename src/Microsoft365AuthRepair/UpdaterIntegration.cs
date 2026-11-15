@@ -62,13 +62,15 @@ internal static class UpdateUiText
             var item = Regex.Replace(match.Groups[1].Value, @"\[([^\]]+)\]\([^)]+\)", "$1");
             item = item.Replace("**", "").Replace("\u0060", "").Trim();
             if (item.Length == 0) continue;
-            if (item.Length > 190) item = item[..187] + "...";
+            // Keep release notes concise by item count, not by chopping words.
+            // Long items wrap and are scrollable in the adaptive What's new area.
+            if (item.Length > 500) item = item[..497] + "...";
             if (section) selected.Add(item);
             else if (!seen) all.Add(item);
         }
         var list = selected.Count > 0 ? selected : all;
         return list.Count == 0 ? "See release page for details." :
-            string.Join(Environment.NewLine, list.Take(8).Select((x, i) => $"{i + 1}. {x}"));
+            string.Join(Environment.NewLine, list.Take(12).Select((x, i) => $"{i + 1}. {x}"));
     }
 
     internal static string CurrentChangelog() => T(
