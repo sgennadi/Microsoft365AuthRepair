@@ -26,18 +26,20 @@ internal sealed class DiagnosticsCenter : Form
             UpdateUiText.T("Diagnostics & reports", "Диагностика и отчёты", "אבחון ודוחות");
         Font = UiTheme.BodyFont();
         AutoScaleMode = AutoScaleMode.Dpi;
-        Size = new Size(770, 390);
+        Size = new Size(820, 380);
         MinimumSize = new Size(560, 310);
         StartPosition = FormStartPosition.CenterParent;
+        BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
+        ResponsiveLayout.FitInitialWindow(this, new Size(820, 380),
+            new Size(1050, 480), widthFraction: 0.76, heightFraction: 0.42);
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(18),
             AutoScroll = true, ColumnCount = 1, RowCount = 4
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 4; i++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         root.Controls.Add(UiTheme.Caption(UpdateUiText.T(
             "Diagnostics & reports", "Диагностика и отчёты", "אבחון ודוחות"), heading: true), 0, 0);
@@ -64,7 +66,13 @@ internal sealed class DiagnosticsCenter : Form
             "לא נשלח דבר. דוחות נשמרים מקומית עד לאישור GitHub.");
         status.MaximumSize = new Size(780, 0);
         root.Controls.Add(status, 0, 3);
-        Controls.Add(ResponsiveLayout.Center(this, root, 920));
+        root.SizeChanged += (_, _) =>
+        {
+            int width = Math.Max(180, root.ClientSize.Width - root.Padding.Horizontal - 15);
+            description.MaximumSize = new Size(width, 0);
+            status.MaximumSize = new Size(width, 0);
+        };
+        Controls.Add(ResponsiveLayout.Center(this, root, 1000));
 
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(generate, UiGlyph.Reports, primary: true);
