@@ -665,6 +665,15 @@ internal sealed class MainForm : Form
         repair.AccessibleDescription = $"Re-register WAM, target: {target}. {admin}";
     }
 
+    private static bool ShouldRecheckAfterRepair(bool failed, bool everyone, bool elevated) =>
+        !failed && !everyone && !elevated;
+
+    internal static bool PostRepairSelfTest() =>
+        ShouldRecheckAfterRepair(false, false, false) &&
+        !ShouldRecheckAfterRepair(true, false, false) &&
+        !ShouldRecheckAfterRepair(false, true, false) &&
+        !ShouldRecheckAfterRepair(false, false, true);
+
     private async Task RunRepairAsync(bool full)
     {
         if (busy) return;
@@ -839,7 +848,7 @@ internal sealed class MainForm : Form
             // The local user has already finished repair synchronously.
             // A scheduled all-users / elevated worker has NOT necessarily
             // finished: never auto-claim a queued task as a successful repair.
-            verifyCurrentUserAfterSuccess = !failed && !everyone && !elevated;
+            verifyCurrentUserAfterSuccess = ShouldRecheckAfterRepair(failed, everyone, elevated);
             ShowStatus(failed ? UiStrings.T("failed") : elevated
                 ? UpdateUiText.T("Per-user tasks queued; check user logs for completion.",
                     "Задачи пользователей назначены. Проверяйте результат в их журналах.",
