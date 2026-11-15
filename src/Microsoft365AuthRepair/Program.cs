@@ -64,6 +64,8 @@ internal static class Program
                     ("All users wizard", AllUsersWizard.SelfTest),
                     ("Sign-in error codes", SignInIssueAdvisor.SelfTest),
                     ("Sign-in guide", SignInErrorDialog.SelfTest),
+                    ("Microsoft Learn knowledge base", SignInKnowledgeBase.SelfTest),
+                    ("Native vNext license checks", OfficeLicenseDiagnostics.SelfTest),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
                     ("WAM result card", DiagnosticResultCard.SelfTest),
                     ("What's New format", UpdateUiText.SelfTest),
