@@ -89,4 +89,16 @@ internal sealed class DiagnosticResultCard : TableLayoutPanel
 
     internal bool HasSummary => Visible && !string.IsNullOrWhiteSpace(headline.Text)
         && !string.IsNullOrWhiteSpace(nextSteps.Text);
+
+    internal static bool SelfTest()
+    {
+        using var card = new DiagnosticResultCard();
+        const string healthy = "BrokerPlugin: PRESENT (1.0)\\nAzureAdJoined: YES\\n" +
+            "DomainJoined: YES\\nDeviceAuthStatus: SUCCESS\\nAzureAdPrt: YES\\nWamDefaultSet: YES";
+        var report = WamHealthAnalysis.Evaluate(healthy.Replace("\\n", Environment.NewLine), true);
+        card.ShowResult(report);
+        return card.HasSummary && card.Controls.Count == 4 &&
+            card.RowCount == 3 && card.findings.Text.Contains("BrokerPlugin", StringComparison.OrdinalIgnoreCase) == false &&
+            !string.IsNullOrWhiteSpace(card.nextSteps.Text);
+    }
 }
