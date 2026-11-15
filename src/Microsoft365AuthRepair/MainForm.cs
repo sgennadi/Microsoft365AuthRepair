@@ -55,7 +55,15 @@ internal sealed class MainForm : Form
     private ScheduledWorkerMode allUsersTaskMethod = ScheduledWorkerMode.Exe;
     private bool allUsersScheduleOnly;
     private bool cleanupAfterCurrentRepair;
-    private readonly ComboBox language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 115, Margin = new Padding(10, 2, 0, 0) };
+    private readonly ComboBox language = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList, Width = 138,
+        Margin = new Padding(0, 0, 0, 0),
+        AccessibleName = "Interface language"
+    };
+    private readonly Label languageLabel = UiTheme.Caption(string.Empty);
+    private TableLayoutPanel? headerRow;
+    private TableLayoutPanel? subtitleRow;
     private readonly Button repair = UiTheme.CreateActionButton(string.Empty, primary: true);
     private readonly Button reset = UiTheme.CreateActionButton(string.Empty, destructive: true);
     private readonly Button diagnose = UiTheme.CreateActionButton(string.Empty);
@@ -114,20 +122,69 @@ internal sealed class MainForm : Form
         // Never stretch a read-only textbox into an empty grey rectangle.
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var top = new TableLayoutPanel { ColumnCount = 4, Dock = DockStyle.Fill, AutoSize = true };
+        // Distinct header zones: Settings belongs with the app title on the
+        // upper right; language has its own labeled selector below. Neither
+        // is squeezed against the other, including in RU/HE at 200% DPI.
+        var top = new TableLayoutPanel
+        {
+            ColumnCount = 3, RowCount = 1, Dock = DockStyle.Fill,
+            AutoSize = true, Margin = new Padding(0, 0, 0, 3)
+        };
+        headerRow = top;
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        top.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         top.Controls.Add(UiIcons.CreateBrand(), 0, 0);
         title.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        title.Margin = new Padding(12, 0, 15, 0);
         top.Controls.Add(title, 1, 0);
+        settings.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        settings.Margin = new Padding(18, 0, 0, 0);
+        top.Controls.Add(settings, 2, 0);
+
         language.Items.AddRange(["English", "Русский", "עברית"]);
         language.SelectedIndex = UiStrings.Language switch { "ru" => 1, "he" => 2, _ => 0 };
-        top.Controls.Add(settings, 2, 0);
-        top.Controls.Add(language, 3, 0);
+        languageLabel.Margin = new Padding(0, 5, 9, 0);
+        languageLabel.Anchor = AnchorStyles.Left;
+        var chooser = new FlowLayoutPanel
+        {
+            AutoSize = true, WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Dock = DockStyle.Fill,
+            Padding = new Padding(10, 5, 0, 5),
+            Margin = new Padding(18, 2, 0, 2)
+        };
+        chooser.Controls.Add(languageLabel);
+        chooser.Controls.Add(language);
+        var subline = new TableLayoutPanel
+        {
+            ColumnCount = 2, RowCount = 1,
+            AutoSize = true, Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 0, 9)
+        };
+        subtitleRow = subline;
+        subline.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        subline.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        subline.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        subtitle.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        subtitle.Margin = new Padding(0, 8, 10, 2);
+        subline.Controls.Add(subtitle, 0, 0);
+        subline.Controls.Add(chooser, 1, 0);
+        top.SizeChanged += (_, _) =>
+        {
+            int available = Math.Max(150, top.ClientSize.Width -
+                settings.GetPreferredSize(Size.Empty).Width - 105);
+            title.MaximumSize = new Size(available, 0);
+        };
+        subline.SizeChanged += (_, _) =>
+        {
+            int available = Math.Max(150, subline.ClientSize.Width -
+                chooser.GetPreferredSize(Size.Empty).Width - 40);
+            subtitle.MaximumSize = new Size(available, 0);
+        };
         root.Controls.Add(top, 0, 0);
-        root.Controls.Add(subtitle, 0, 1);
+        root.Controls.Add(subline, 0, 1);
         root.Controls.Add(account, 0, 2);
 
         var target = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
@@ -363,6 +420,11 @@ internal sealed class MainForm : Form
         }
         finally { suppressScopeWizard = false; }
         settings.Text = UpdateUiText.T("Settings", "Настройки", "הגדרות");
+        languageLabel.Text = UpdateUiText.T("Language", "Язык", "שפה");
+        languageLabel.AccessibleName = languageLabel.Text;
+        language.AccessibleDescription = UpdateUiText.T(
+            "Change the interface language", "Изменить язык интерфейса",
+            "שינוי שפת הממשק");
         repair.Text = UiStrings.T("repair");
         reset.Text = UiStrings.T("full");
         repairExplanation.Text = UpdateUiText.T(
