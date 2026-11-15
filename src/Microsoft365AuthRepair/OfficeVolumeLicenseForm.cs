@@ -21,6 +21,22 @@ internal sealed class OfficeVolumeLicenseForm : Form
     };
     private readonly RadioButton kms = new() { AutoSize = true };
     private readonly RadioButton mak = new() { AutoSize = true };
+    // Public Microsoft GVLK, not an organization's confidential MAK.
+    // Selected automatically by exact Office 2024 Volume SKU, copyable with Ctrl+C.
+    private readonly FlowLayoutPanel gvlkRow = new()
+    {
+        AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        Dock = DockStyle.Fill, WrapContents = true,
+        Margin = new Padding(0, 2, 0, 8)
+    };
+    private readonly Label gvlkCaption = UiTheme.Caption(string.Empty);
+    private readonly TextBox gvlkValue = new()
+    {
+        Width = 295, ReadOnly = true, TabStop = true, ShortcutsEnabled = true,
+        Margin = new Padding(8, 3, 6, 5),
+        AccessibleName = "Microsoft published KMS client setup key for selected Office product"
+    };
+    private readonly Label gvlkHelp = UiTheme.Caption(string.Empty);
     private readonly Label hostLabel = UiTheme.Caption(string.Empty);
     private readonly TextBox host = new()
     {
@@ -61,6 +77,10 @@ internal sealed class OfficeVolumeLicenseForm : Form
     internal bool HasSelectedSupportedProduct =>
         selected is not null && inventory is not null &&
         OfficeVolumeLicensing.CanApply(selected, inventory);
+    internal string? SuggestedKmsKey =>
+        selected is not null && inventory is not null
+            ? OfficeVolumeLicensing.SuggestGvlk(selected, inventory)?.Key
+            : null;
 
     internal OfficeVolumeLicenseForm()
     {
@@ -79,11 +99,11 @@ internal sealed class OfficeVolumeLicenseForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, AutoScroll = true,
-            ColumnCount = 1, RowCount = 9,
+            ColumnCount = 1, RowCount = 10,
             Padding = new Padding(18)
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 9; i++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
@@ -120,6 +140,21 @@ internal sealed class OfficeVolumeLicenseForm : Form
         options.Controls.Add(mak);
         root.Controls.Add(options, 0, 4);
 
+        gvlkCaption.Text = UpdateUiText.T(
+            "Suggested KMS client key (GVLK):",
+            "Предлагаемый KMS-ключ (GVLK):",
+            "מפתח KMS מומלץ (GVLK):");
+        gvlkHelp.Text = UpdateUiText.T(
+            "Official Microsoft key; inserted automatically at activation. Copy with Ctrl+C. Does not replace a KMS server.",
+            "Официальный ключ Microsoft. Подставится автоматически при активации. Ctrl+C — копировать. Не заменяет KMS-сервер.",
+            "מפתח רשמי של Microsoft. יוזן אוטומטית בהפעלה. להעתקה Ctrl+C. לא מחליף שרת KMS.");
+        gvlkValue.AccessibleDescription = gvlkHelp.Text;
+        gvlkRow.Controls.Add(gvlkCaption);
+        gvlkRow.Controls.Add(gvlkValue);
+        gvlkRow.Controls.Add(gvlkHelp);
+        gvlkRow.Visible = false;
+        root.Controls.Add(gvlkRow, 0, 5);
+
         var entry = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill, AutoSize = true, WrapContents = true,
@@ -134,13 +169,13 @@ internal sealed class OfficeVolumeLicenseForm : Form
         entry.Controls.Add(discover);
         entry.Controls.Add(UiTheme.Caption("MAK:"));
         entry.Controls.Add(makKey);
-        root.Controls.Add(entry, 0, 5);
+        root.Controls.Add(entry, 0, 6);
 
         removePreview.Text = UpdateUiText.T(
             "I approve removing the identified Office 2024 Preview key BEFORE installation of the new key.",
             "Разрешаю удалить найденный ключ Office 2024 Preview ДО установки нового ключа.",
             "אני מאשר להסיר מפתח Preview 2024 לפני התקנת מפתח חדש.");
-        root.Controls.Add(removePreview, 0, 6);
+        root.Controls.Add(removePreview, 0, 7);
 
         var statusPanel = new TableLayoutPanel
         {
@@ -157,7 +192,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
             "Microsoft Learn — официальные KMS-ключи Office",
             "Microsoft Learn — מפתחות KMS רשמיים");
         statusPanel.Controls.Add(docs, 0, 2);
-        root.Controls.Add(statusPanel, 0, 7);
+        root.Controls.Add(statusPanel, 0, 8);
 
         var buttons = new FlowLayoutPanel
         {
@@ -166,7 +201,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
         };
         buttons.Controls.Add(close);
         buttons.Controls.Add(apply);
-        root.Controls.Add(buttons, 0, 8);
+        root.Controls.Add(buttons, 0, 9);
         Controls.Add(ResponsiveLayout.Center(this, root, 1110));
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(apply, UiGlyph.Save, primary: true);
@@ -181,6 +216,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
             info.MaximumSize = selectedStatus.MaximumSize =
                 kmsStatus.MaximumSize = outcome.MaximumSize =
                 removePreview.MaximumSize = max;
+            gvlkHelp.MaximumSize = new Size(Math.Max(170, max.Width - 24), 0);
         };
         productList.SelectedIndexChanged += (_, _) => SelectProduct();
         kms.CheckedChanged += (_, _) => UpdateControls();
@@ -216,7 +252,14 @@ internal sealed class OfficeVolumeLicenseForm : Form
         discover.Enabled = kms.Checked && selected is not null && !busy;
         makKey.Enabled = mak.Checked && !busy;
         removePreview.Enabled = isPreview && !busy;
-        apply.Enabled = canChange && !busy && (!isPreview || removePreview.Checked);
+        // No extra "Choose key" button: only an exact 2024 Volume match
+        // exposes the public GVLK, which is used by ReplaceKey automatically.
+        var suggestion = selected is not null && inventory is not null
+            ? OfficeVolumeLicensing.SuggestGvlk(selected, inventory) : null;
+        gvlkValue.Text = suggestion?.Key ?? string.Empty;
+        gvlkRow.Visible = kms.Checked && suggestion is not null;
+        apply.Enabled = canChange && !busy && (!isPreview || removePreview.Checked) &&
+            (!kms.Checked || suggestion is not null);
         if (selected is not null && !Identity.IsElevated())
             outcome.Text = UpdateUiText.T(
                 "Changes require elevation. Read-only inventory is available without administrator rights.",
@@ -360,6 +403,14 @@ internal sealed class OfficeVolumeLicenseForm : Form
         bool isPreview = OfficeVolumeLicensing.ShouldRemoveOldKey(product, snapshot);
         if (isPreview && !removePreview.Checked) return;
         var isMak = mak.Checked;
+        if (!isMak && OfficeVolumeLicensing.SuggestGvlk(product, snapshot) is null)
+        {
+            outcome.Text = UpdateUiText.T(
+                "No verified Microsoft 2024 KMS key for this edition. No changes made.",
+                "Для этой редакции не найден подтверждённый ключ Microsoft KMS 2024. Изменения не выполнены.",
+                "לא נמצא מפתח KMS מאומת עבור מהדורה זו. לא בוצעו שינויים.");
+            return;
+        }
         var provided = isMak ? makKey.Text.Trim().ToUpperInvariant() : null;
         // Never send a malformed or empty key to the global Windows licensing
         // provider, especially before removing an existing Preview license.
@@ -444,9 +495,29 @@ internal sealed class OfficeVolumeLicenseForm : Form
     internal static bool SelfTest()
     {
         using var form = new OfficeVolumeLicenseForm();
-        return form.ReadOnlyUntilConfirmed && form.MakHidden &&
-            !form.HasSelectedSupportedProduct &&
-            !form.apply.Enabled && !form.removePreview.Checked &&
+        var initial = form.ReadOnlyUntilConfirmed && form.MakHidden &&
+            form.SuggestedKmsKey is null && !form.HasSelectedSupportedProduct &&
+            !form.apply.Enabled && !form.removePreview.Checked;
+        var visio = new OfficeVolumeProduct(Guid.Empty.ToString("D"),
+            "Office24VisioPro2024VL_KMS_Client", "", "VisioPro2024Volume",
+            "ABCDE", "Unlicensed", false, true, null, null, null, null);
+        form.inventory = new OfficeVolumeInventory([visio], ["VisioPro2024Volume"], null);
+        form.selected = visio;
+        form.kms.Checked = true;
+        form.UpdateControls();
+        bool automatic = form.SuggestedKmsKey == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
+            form.gvlkValue.Text == form.SuggestedKmsKey && form.gvlkValue.ReadOnly;
+        form.mak.Checked = true;
+        form.UpdateControls();
+        // When MAK is selected the recommendation remains in state but is not
+        // used; the input is an independent private key.
+        bool makMode = form.mak.Checked && !form.kms.Checked &&
+            form.gvlkValue.ReadOnly && form.makKey.Enabled;
+        form.selected = visio with { ProductId = "ProPlus2024Volume" };
+        form.UpdateControls();
+        bool wrongEdition = form.SuggestedKmsKey is null &&
+            form.gvlkValue.Text.Length == 0;
+        return initial && automatic && makMode && wrongEdition &&
             UiTheme.VerifyButtons(form, 4);
     }
 }
