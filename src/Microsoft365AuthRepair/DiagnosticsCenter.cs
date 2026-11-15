@@ -70,7 +70,7 @@ internal sealed class DiagnosticsCenter : Form
         status.MaximumSize = new Size(780, 0);
         root.Controls.Add(status, 0, 3);
         root.Controls.Add(preview, 0, 4);
-        Controls.Add(root);
+        Controls.Add(ResponsiveLayout.Center(this, root, 920));
 
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(generate, UiGlyph.Reports, primary: true);
