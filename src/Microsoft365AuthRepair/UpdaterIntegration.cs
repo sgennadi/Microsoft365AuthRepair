@@ -113,7 +113,7 @@ internal sealed class UpdateCenter : Form
         {
             using var downloader = new UpdateDownloader();
             var staged = await downloader.StageAsync(UpdaterIntegration.Options(Channel), selected);
-            state.Text = "Verified download staged. No executable was replaced. Install is disabled in this preview until the trusted updater helper is tested.";
+            state.Text = "Verified download staged. No executable was replaced. Automatic installation is unavailable in version 1.0.0 until the trusted updater helper is validated.";
             releaseNotes.Text = "Verified ZIP: " + staged.ArchivePath + Environment.NewLine + Environment.NewLine + releaseNotes.Text;
         }
         catch (Exception ex) { state.Text = "Verification failed: " + ex.GetType().Name + "."; }

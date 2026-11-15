@@ -1,6 +1,6 @@
 # Microsoft 365 Auth Repair
 
-A Windows .NET 10 WinForms desktop repair utility for Microsoft Entra WAM / `Microsoft.AAD.BrokerPlugin`, Office sign-in caches and Microsoft 365 authentication. Version `0.1.0-preview.2` **PREVIEW — NOT YET TESTED FOR REAL WAM REPAIR**.
+A Windows .NET 10 WinForms desktop repair utility for Microsoft Entra WAM / `Microsoft.AAD.BrokerPlugin`, Office sign-in caches and Microsoft 365 authentication. Version `1.0.0` **Stable baseline (source and binary release)**. The Windows GUI and x64/ARM64 builds have CI coverage, but real Microsoft Entra/WAM recovery, ARM64 hardware runtime and all-users reset have not yet received field QA. Test on pilot PCs before broad deployment.
 
 ## Features
 
@@ -11,16 +11,24 @@ A Windows .NET 10 WinForms desktop repair utility for Microsoft Entra WAM / `Mic
 - Local-only log files in `%LOCALAPPDATA%\Microsoft365AuthRepair\Logs`, plus current-user per-task completion markers.
 - Modern compact WinForms GUI with PerMonitorV2 DPI, Windows High Contrast, EN / RU / HE interface (technical diagnostics remain English), and Advanced mode.
 - Multi-size 16/32/48/64/256 px Windows EXE icon (custom shield/check branding), embedded window/taskbar icons, DPI-redrawn vector action and status glyphs throughout main window, Update Center and Diagnostics, with tooltips and accessibility descriptions. Icon presence is checked in CI UI smoke test.
-- **UniversalUpdater** from `sgennadi/UniversalUpdater` (pinned official core) handles GitHub Releases checks, stable/preview SemVer, SHA256 release metadata, download and staging validation, archive safety and PE architecture. In this preview **install is deliberately not wired** until safe close-and-replace helper + rollback are tested; `Download and verify` does not replace a running EXE.
+- **UniversalUpdater** from `sgennadi/UniversalUpdater` (pinned official core) handles GitHub Releases checks, stable/preview SemVer, SHA256 release metadata, download and staging validation, archive safety and PE architecture. In this stable baseline **install is deliberately not wired** until safe close-and-replace helper + rollback are tested; `Download and verify` does not replace a running EXE.
 - **UniversalDiagnostics** from `sgennadi/UniversalDiagnocticsModule` (pinned canonical VB embedded adapter) writes redacted schema v1 local reports only after a review and explicit click. No automatic HTTP sending; no GitHub tokens in the binary. A shared verified HTTPS gateway will be connected separately after deployment/security testing.
+
+## Stable baseline 1.0.0
+
+- The first stable release freezes the `preview.2` features and branding; no new reset behavior is introduced.
+- Assets: `Microsoft365AuthRepair-win-x64.zip`, `Microsoft365AuthRepair-win-arm64.zip` and `SHA256SUMS.txt`, attached to GitHub Releases under tag `v1.0.0` upon successful release workflow.
+- **Do not treat the "Stable" label as enterprise certification.** Test individual Repair, Advanced identity reset and admin all-profiles scheduled tasks on controlled Windows endpoints before deployment.
+- Full reset may sign users out of Microsoft 365 services; normal Repair sign-in does not clear identity caches.
+- The Update Center supports Stable and Preview checks but **automatic EXE installation remains disabled** pending updater-helper QA.
 
 ## Verified CI build
 
-- **2026-11-15 v0.1.0-preview.2 CI:** [successful x64/ARM64 build and x64 GUI/icon initialization test](https://github.com/sgennadi/Microsoft365AuthRepair/actions/runs/43706415667).
+- **Preview.2 reference CI:** [successful x64/ARM64 build and x64 GUI/icon initialization test](https://github.com/sgennadi/Microsoft365AuthRepair/actions/runs/43706415667). Stable release builds perform the same checks.
 - Download the **Microsoft365AuthRepair-preview-x64-arm64** artifact from the workflow run (GitHub sign-in may be required).
 - The artifact contains `Microsoft365AuthRepair-win-x64.zip`, `Microsoft365AuthRepair-win-arm64.zip` and `SHA256SUMS.txt`. Each architecture ZIP contains one self-contained `Microsoft365AuthRepair.exe`.
 - This verifies compilation, icon embedding and basic GUI construction **only**. ARM64 actual-device execution, real Microsoft Entra sign-in repair, all-users scheduling and full identity reset have NOT yet been tested. Do not deploy the full reset to production before pilot validation.
-- No stable Release has been published.
+- Release availability is confirmed by the GitHub Releases page; a passing build alone does not create a release.
 
 ## Packaging
 

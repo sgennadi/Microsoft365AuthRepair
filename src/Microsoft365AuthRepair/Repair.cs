@@ -5,7 +5,7 @@ namespace Microsoft365AuthRepair;
 
 internal static class Repair
 {
-    internal const string Version = "0.1.0-preview.2";
+    internal const string Version = "1.0.0";
     private static readonly string[] RegistryKeys =
     [
         @"Software\Microsoft\Office\16.0\Common\Identity",
@@ -31,7 +31,7 @@ internal static class Repair
             throw new InvalidOperationException("Process user differs from the desktop owner. Launch normally, not with Run as different user.");
 
         using var log = new RepairLog(quiet);
-        log.Info($"Microsoft 365 Auth Repair 0.1.0-preview.2, session={session}, account={Environment.UserDomainName}\\{Environment.UserName}");
+        log.Info($"Microsoft 365 Auth Repair 1.0.0, session={session}, account={Environment.UserDomainName}\\{Environment.UserName}");
         log.Warn("FULL RESET: Microsoft/Office sign-in caches will be deleted from this user only. Applications may require sign-in again.");
 
         var manifest = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SystemApps", "Microsoft.AAD.BrokerPlugin_cw5n1h2txyewy", "AppxManifest.xml");
