@@ -50,8 +50,8 @@ internal sealed class MainForm : Form
     private readonly Label resetExplanation = UiTheme.Caption(string.Empty);
     private readonly Label allUsersSettingsSummary = UiTheme.Caption(string.Empty);
     private readonly ComboBox scope = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 420, Margin = new Padding(0, 4, 0, 8) };
-    // Options are edited together in Settings; UAC continues to receive only
-    // the two existing, validated command-line flags.
+    // All-users options are configured in its mini wizard; UAC continues to
+    // receive only the two existing, validated command-line flags.
     private ScheduledWorkerMode allUsersTaskMethod = ScheduledWorkerMode.Exe;
     private bool allUsersScheduleOnly;
     private bool cleanupAfterCurrentRepair;
@@ -76,7 +76,13 @@ internal sealed class MainForm : Form
     private readonly Button updates = UiTheme.CreateActionButton(string.Empty);
     private readonly Button diagnostics = UiTheme.CreateActionButton(string.Empty);
     private readonly Button logs = UiTheme.CreateActionButton(string.Empty);
-    private readonly Button settings = UiTheme.CreateActionButton(string.Empty);
+    // Small Setup link replaces the redundant full Settings window.
+    private readonly LinkLabel settings = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(14, 8, 0, 0)
+    };
     private readonly TextBox detail = new()
     {
         Multiline = true, ReadOnly = true, Dock = DockStyle.Top, Height = 210,
@@ -227,8 +233,8 @@ internal sealed class MainForm : Form
         actions.Controls.Add(tools, 0, 4);
         root.Controls.Add(actions, 0, 4);
 
-        // All-users task choices are summarized here instead of occupying
-        // several rows; their controls live in the Settings dialog.
+        // All-users task choices are summarized here; all controls now live
+        // in the scope-specific Setup wizard.
         allUsersSettingsSummary.MaximumSize = new Size(850, 0);
         root.Controls.Add(allUsersSettingsSummary, 0, 5);
 
@@ -266,7 +272,6 @@ internal sealed class MainForm : Form
         diagnostics.UseMnemonic = false; // show literal & instead of treating it as accelerator
         UiIcons.Assign(updates, UiGlyph.Updates);
         UiIcons.Assign(logs, UiGlyph.Logs);
-        UiIcons.Assign(settings, UiGlyph.Settings);
         UiIcons.TrackDpi(this);
         technicalToggle.LinkClicked += (_, _) =>
         {
@@ -296,64 +301,42 @@ internal sealed class MainForm : Form
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
         hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
-        hints.SetToolTip(settings, "All-users task options and optional cleanup of your own portable EXE.");
+        hints.SetToolTip(settings, "Setup guide for the selected user scope. Includes safe cleanup options.");
 
         scope.SelectedIndexChanged += async (_, _) =>
         {
             if (suppressScopeWizard) return;
             if (scope.SelectedIndex == 1 && !allUsersWizardOpen)
             {
-                allUsersWizardOpen = true;
-                AllUsersWizardAction action = AllUsersWizardAction.SaveOnly;
-                bool confirmed;
-                try
-                {
-                    using var wizard = new AllUsersWizard(allUsersTaskMethod,
-                        allUsersScheduleOnly, elevated);
-                    confirmed = wizard.ShowDialog(this) == DialogResult.OK;
-                    if (confirmed)
-                    {
-                        allUsersTaskMethod = wizard.TaskMethod;
-                        allUsersScheduleOnly = wizard.ScheduleOnly;
-                        action = wizard.SelectedAction;
-                    }
-                }
-                finally { allUsersWizardOpen = false; }
-
+                bool confirmed = await ShowAllUsersWizardAsync();
+                if (IsDisposed || Disposing) return;
                 if (!confirmed)
                 {
-                    // Cancelling selection must never quietly leave All users
-                    // selected with an unseen default execution policy.
+                    // Cancel doesn't silently leave All users selected.
                     suppressScopeWizard = true;
                     try { scope.SelectedIndex = 0; }
                     finally { suppressScopeWizard = false; }
                     UpdateScopeExplanation();
                     return;
                 }
-                UpdateScopeExplanation();
-                if (action != AllUsersWizardAction.SaveOnly)
-                {
-                    // Wizard is closed before the existing independent
-                    // confirmation / UAC / scheduling sequence starts.
-                    await RunRepairAsync(action == AllUsersWizardAction.ResetOffice);
-                    return;
-                }
             }
             UpdateScopeExplanation();
             if (lastRawDiagnostic is not null) DisplayDiagnosis(lastRawDiagnostic);
         };
-        settings.Click += (_, _) =>
+        settings.LinkClicked += async (_, _) =>
         {
-            using var window = new SettingsForm(
-                allUsersTaskMethod, allUsersScheduleOnly, cleanupAfterCurrentRepair,
-                scope.SelectedIndex == 0 && PortableSelfCleanup.IsEligible(),
-                scope.SelectedIndex == 1 ? UiStrings.T("all") : desktopUser.Name,
-                elevated);
-            if (window.ShowDialog(this) != DialogResult.OK) return;
-            allUsersTaskMethod = window.TaskMethod;
-            allUsersScheduleOnly = window.ScheduleOnly;
-            cleanupAfterCurrentRepair = window.CleanupAfterRepair;
-            UpdateScopeExplanation();
+            if (busy) return;
+            if (scope.SelectedIndex == 1)
+            {
+                await ShowAllUsersWizardAsync();
+                return;
+            }
+            using var wizard = new CurrentUserWizard(
+                cleanupAfterCurrentRepair, PortableSelfCleanup.IsEligible(), elevated);
+            if (wizard.ShowDialog(this) != DialogResult.OK) return;
+            cleanupAfterCurrentRepair = wizard.CleanupAfterRepair;
+            if (wizard.SelectedAction != AllUsersWizardAction.SaveOnly)
+                await RunRepairAsync(wizard.SelectedAction == AllUsersWizardAction.ResetOffice);
         };
         repair.Click += async (_, _) => await RunRepairAsync(false);
         reset.Click += async (_, _) => await RunRepairAsync(true);
@@ -397,6 +380,33 @@ internal sealed class MainForm : Form
             ? UiGlyph.Success : UiGlyph.Error);
     }
 
+    private async Task<bool> ShowAllUsersWizardAsync()
+    {
+        if (allUsersWizardOpen || busy) return false;
+        allUsersWizardOpen = true;
+        AllUsersWizardAction action = AllUsersWizardAction.SaveOnly;
+        bool confirmed;
+        try
+        {
+            using var wizard = new AllUsersWizard(allUsersTaskMethod,
+                allUsersScheduleOnly, elevated);
+            confirmed = wizard.ShowDialog(this) == DialogResult.OK;
+            if (confirmed)
+            {
+                allUsersTaskMethod = wizard.TaskMethod;
+                allUsersScheduleOnly = wizard.ScheduleOnly;
+                action = wizard.SelectedAction;
+            }
+        }
+        finally { allUsersWizardOpen = false; }
+        if (!confirmed) return false;
+
+        UpdateScopeExplanation();
+        if (action != AllUsersWizardAction.SaveOnly)
+            await RunRepairAsync(action == AllUsersWizardAction.ResetOffice);
+        return true;
+    }
+
     internal bool HeaderLayoutSelfTest()
     {
         if (headerRow is null || subtitleRow is null) return false;
@@ -432,7 +442,11 @@ internal sealed class MainForm : Form
             scope.SelectedIndex = Math.Min(previous, scope.Items.Count - 1);
         }
         finally { suppressScopeWizard = false; }
-        settings.Text = UpdateUiText.T("Settings", "Настройки", "הגדרות");
+        settings.Text = UpdateUiText.T("Setup", "Мастер", "הגדרה");
+        settings.AccessibleDescription = UpdateUiText.T(
+            "Open setup for the selected user scope, including optional cleanup",
+            "Настройка выбранного режима пользователей и необязательная очистка",
+            "פתח הגדרה וניקוי אופציונלי עבור המשתמשים שנבחרו");
         languageLabel.Text = UpdateUiText.T("Language", "Язык", "שפה");
         languageLabel.AccessibleName = languageLabel.Text;
         language.AccessibleDescription = UpdateUiText.T(
@@ -471,7 +485,7 @@ internal sealed class MainForm : Form
             modern.Invalidate();
         }
         logs.Text = UiStrings.T("logs");
-        foreach (var button in new[] { repair, reset, diagnose, diagnostics, updates, logs, settings })
+        foreach (Control button in new Control[] { repair, reset, diagnose, diagnostics, updates, logs, settings })
             button.AccessibleName = button.Text;
         UpdateScopeExplanation();
         if (string.IsNullOrWhiteSpace(status.Text)) ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
@@ -599,11 +613,11 @@ internal sealed class MainForm : Form
         allUsersSettingsSummary.Visible = everyone;
         allUsersSettingsSummary.Text = UpdateUiText.T(
             $"All users: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell (WAM only)" : "EXE")} · " +
-                (allUsersScheduleOnly ? "at next sign-in" : "now for online users") + " · Adjust in Settings",
+                (allUsersScheduleOnly ? "at next sign-in" : "now for online users") + " · Adjust in Setup",
             $"Все пользователи: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell (только WAM)" : "EXE")} · " +
-                (allUsersScheduleOnly ? "при следующем входе" : "сейчас для активных") + " · Изменить в настройках",
+                (allUsersScheduleOnly ? "при следующем входе" : "сейчас для активных") + " · Изменить в мастере",
             $"כל המשתמשים: {(allUsersTaskMethod == ScheduledWorkerMode.PowerShell ? "PowerShell" : "EXE")} · " +
-                (allUsersScheduleOnly ? "בכניסה הבאה" : "כעת למשתמשים מחוברים") + " · שינוי בהגדרות");
+                (allUsersScheduleOnly ? "בכניסה הבאה" : "כעת למשתמשים מחוברים") + " · שינוי באשף");
         var admin = everyone
             ? elevated
                 ? UpdateUiText.T("Administrator enabled; each user runs under their own account.",
