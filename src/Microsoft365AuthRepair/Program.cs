@@ -34,6 +34,7 @@ internal static class Program
                 using var wizard = new AllUsersWizard(ScheduledWorkerMode.Exe,
                     initialScheduleOnly: false, elevated: false);
                 using var signInGuide = new SignInErrorDialog();
+                using var volumeLicensing = new OfficeVolumeLicenseForm();
                 form.CreateControl();
                 updater.CreateControl();
                 reports.CreateControl();
@@ -41,6 +42,7 @@ internal static class Program
                 sendReview.CreateControl();
                 wizard.CreateControl();
                 signInGuide.CreateControl();
+                volumeLicensing.CreateControl();
                 // On a headless Windows CI runner the GUI has no console.
                 // Record boolean test names only; never log user identities.
                 var tests = new (string Name, Func<bool> Run)[]
@@ -53,6 +55,7 @@ internal static class Program
                     ("Send review icon", () => UiIcons.Verify(sendReview)),
                     ("Wizard icon", () => UiIcons.Verify(wizard)),
                     ("Sign-in guide icon", () => UiIcons.Verify(signInGuide)),
+                    ("Volume licensing icon", () => UiIcons.Verify(volumeLicensing)),
                     ("Settings state", () => settings.TaskMethod == ScheduledWorkerMode.PowerShell &&
                         settings.ScheduleOnly && !settings.CleanupAfterRepair),
                     ("Responsive geometry", ResponsiveLayout.SelfTest),
@@ -66,6 +69,8 @@ internal static class Program
                     ("Sign-in guide", SignInErrorDialog.SelfTest),
                     ("Microsoft Learn knowledge base", SignInKnowledgeBase.SelfTest),
                     ("Native vNext license checks", OfficeLicenseDiagnostics.SelfTest),
+                    ("Office 2024 Volume product identity", OfficeVolumeLicensing.SelfTest),
+                    ("Volume licensing UI", OfficeVolumeLicenseForm.SelfTest),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
                     ("WAM result card", DiagnosticResultCard.SelfTest),
                     ("What's New format", UpdateUiText.SelfTest),
@@ -81,7 +86,8 @@ internal static class Program
                     ("Settings buttons", () => UiTheme.VerifyButtons(settings, 2)),
                     ("Review buttons", () => UiTheme.VerifyButtons(sendReview, 2)),
                     ("Wizard buttons", () => UiTheme.VerifyButtons(wizard, 3)),
-                    ("Sign-in guide buttons", () => UiTheme.VerifyButtons(signInGuide, 2))
+                    ("Sign-in guide buttons", () => UiTheme.VerifyButtons(signInGuide, 2)),
+                    ("Volume licensing buttons", () => UiTheme.VerifyButtons(volumeLicensing, 4))
                 };
                 var outcomes = new List<string>();
                 bool passed = true;
