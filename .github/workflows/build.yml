@@ -1,8 +1,8 @@
-name: Microsoft 365 Auth Repair - Build x64 ARM64
+name: Microsoft 365 Auth Repair - Windows x64 and ARM64
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'src/**'
       - 'MODULES.lock'
@@ -15,23 +15,18 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ms365-auth-repair-${{ github.ref }}
+  group: m365-auth-repair-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   windows-publish:
     runs-on: windows-2025
+    env:
+      MODULES_READ_TOKEN: ${{ secrets.MODULES_READ_TOKEN }}
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
-      - name: Validate private shared module access
-        shell: pwsh
-        env:
-          MODULES_READ_TOKEN: ${{ secrets.MODULES_READ_TOKEN }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:MODULES_READ_TOKEN)) {
-            throw 'Configure secret MODULES_READ_TOKEN (fine-grained PAT, Contents: Read) for the two private shared module repositories.'
-          }
       - name: Checkout canonical UniversalUpdater
+        if: ${{ env.MODULES_READ_TOKEN != '' }}
         uses: actions/checkout@v4
         with:
           repository: sgennadi/UniversalUpdater
@@ -40,6 +35,7 @@ jobs:
           path: modules/UniversalUpdater
           persist-credentials: false
       - name: Checkout canonical UniversalDiagnostics
+        if: ${{ env.MODULES_READ_TOKEN != '' }}
         uses: actions/checkout@v4
         with:
           repository: sgennadi/UniversalDiagnocticsModule
@@ -47,31 +43,66 @@ jobs:
           token: ${{ secrets.MODULES_READ_TOKEN }}
           path: modules/UniversalDiagnocticsModule
           persist-credentials: false
+      # Existing public snapshots are used when no private read token is configured.
+      # They are pinned to reviewed commits, not floating branch names.
+      - name: Checkout public UniversalUpdater snapshot
+        if: ${{ env.MODULES_READ_TOKEN == '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: sgennadi/TermsrvPatcherUnified
+          ref: 65cceb96cba8524ede659961df2e3814c9c5355c
+          path: upstream/TermsrvPatcherUnified
+          persist-credentials: false
+      - name: Checkout public UniversalDiagnostics snapshot
+        if: ${{ env.MODULES_READ_TOKEN == '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: sgennadi/BitKeyBridge
+          ref: eac3178a627d524c92ef310f46d8c3b6c9fcd1af
+          path: upstream/BitKeyBridge
+          persist-credentials: false
+      - name: Assemble public module snapshots
+        if: ${{ env.MODULES_READ_TOKEN == '' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $updaterSource = 'upstream/TermsrvPatcherUnified/Shared/UniversalUpdater.Core'
+          $diagnosticsSource = 'upstream/BitKeyBridge/src/UniversalDiagnostics.Embedded/UniversalDiagnosticsEmbedded.vb'
+          if (-not (Test-Path "$updaterSource/UniversalUpdater.Core.csproj") -or -not (Test-Path $diagnosticsSource)) {
+            throw 'Pinned public module source path is unavailable.'
+          }
+          $updaterTarget = 'modules/UniversalUpdater/src/UniversalUpdater.Core'
+          $diagnosticsTarget = 'modules/UniversalDiagnocticsModule/embedded/dotnet'
+          New-Item -ItemType Directory -Force $updaterTarget, $diagnosticsTarget | Out-Null
+          Copy-Item "$updaterSource/*" $updaterTarget -Recurse -Force
+          Copy-Item $diagnosticsSource "$diagnosticsTarget/UniversalDiagnosticsEmbedded.vb" -Force
+          Write-Host 'Using pinned public snapshots of existing UniversalUpdater and UniversalDiagnostics.'
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Build and archive both architectures
+      - name: Build self-contained x64 and ARM64 executables
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force artifacts | Out-Null
           foreach ($rid in @('win-x64','win-arm64')) {
-            dotnet publish src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj -c Release -r $rid --self-contained true -o "publish/$rid" -p:PublishSingleFile=true -p:PublishAot=false -p:PublishTrimmed=false
+            dotnet publish src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj -c Release -r $rid --self-contained true -o "publish/$rid" -p:PublishSingleFile=true -p:PublishAot=false -p:PublishTrimmed=false -p:PublishReadyToRun=false
             if ($LASTEXITCODE -ne 0) { throw "Publish failed: $rid" }
-            if (-not (Test-Path "publish/$rid/Microsoft365AuthRepair.exe")) { throw "Missing EXE: $rid" }
-            Compress-Archive -Path "publish/$rid/Microsoft365AuthRepair.exe" -DestinationPath "artifacts/Microsoft365AuthRepair-$rid.zip" -Force
+            $exe = "publish/$rid/Microsoft365AuthRepair.exe"
+            if (-not (Test-Path $exe)) { throw "Missing EXE: $rid" }
+            Compress-Archive -Path $exe -DestinationPath "artifacts/Microsoft365AuthRepair-$rid.zip" -Force
           }
           Get-ChildItem artifacts -Filter '*.zip' | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
           } | Set-Content artifacts/SHA256SUMS.txt -Encoding ascii
-      - name: Smoke test x64 GUI
+      - name: Smoke-test x64 GUI initialization
         shell: pwsh
         run: |
           & "publish/win-x64/Microsoft365AuthRepair.exe" --ui-self-test
-          if ($LASTEXITCODE -ne 0) { throw 'x64 GUI smoke test failed' }
-      - name: Upload artifacts (not a stable release)
+          if ($LASTEXITCODE -ne 0) { throw "x64 GUI self-test failed: $LASTEXITCODE" }
+      - name: Upload both executables as preview artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Microsoft365AuthRepair-preview-x64-arm64
