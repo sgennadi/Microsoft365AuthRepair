@@ -396,6 +396,40 @@ internal sealed class MainForm : Form
         return true;
     }
 
+    // UI-only scope transition. Suppress the modal All users wizard for the
+    // Windows smoke test, then restore the default Current user selection.
+    internal bool ScopeWorkflowSelfTest()
+    {
+        if (scope.SelectedIndex != 0 || scope.Items.Count != 2 ||
+            allUsersWizardOpen || repair.Parent is null || reset.Parent is null)
+            return false;
+        bool previousSuppression = suppressScopeWizard;
+        suppressScopeWizard = true;
+        try
+        {
+            scope.SelectedIndex = 1;
+            UpdateScopeExplanation();
+            bool bulk = scope.SelectedIndex == 1 &&
+                allUsersSettingsSummary.Text.Length > 10 &&
+                settings.Text.Length > 3;
+            scope.SelectedIndex = 0;
+            UpdateScopeExplanation();
+            return bulk && scope.SelectedIndex == 0 &&
+                repair.Parent is not null && reset.Parent is not null;
+        }
+        finally
+        {
+            suppressScopeWizard = previousSuppression;
+            if (scope.SelectedIndex != 0)
+            {
+                suppressScopeWizard = true;
+                scope.SelectedIndex = 0;
+                UpdateScopeExplanation();
+                suppressScopeWizard = previousSuppression;
+            }
+        }
+    }
+
     internal bool HeaderLayoutSelfTest()
     {
         if (headerRow is null || subtitleRow is null) return false;
