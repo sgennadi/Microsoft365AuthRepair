@@ -139,7 +139,7 @@ internal sealed class SettingsForm : Form
         footer.Controls.Add(cancel);
         root.Controls.Add(tabs, 0, 1);
         root.Controls.Add(footer, 0, 2);
-        Controls.Add(root);
+        Controls.Add(ResponsiveLayout.Center(this, root, 870));
         AcceptButton = save;
         CancelButton = cancel;
 
