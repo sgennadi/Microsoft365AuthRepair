@@ -157,9 +157,23 @@ internal static class Scheduling
         var response = ExternalCommand.RunPowerShell(script, 60);
         if (response.ExitCode != 0 || !response.StdOut.Contains("TASK_REGISTERED", StringComparison.Ordinal))
             throw new IOException("Task Scheduler could not register " + profile.Account + ": " + response.StdErr.Trim() + " " + response.StdOut.Trim());
-        var state = startImmediately ? "STARTED" : "QUEUED FOR NEXT SIGN-IN";
+        var state = startImmediately ? "START REQUESTED" : "QUEUED FOR NEXT SIGN-IN";
         var engine = mode == ScheduledWorkerMode.PowerShell ? "PowerShell" : "EXE";
-        return $"{profile.Account}: {state} [{engine}] | {taskName}";
+        // Scheduler registration is not the same as repair completion.
+        // A local, administrator-owned record survives one-shot task removal.
+        string historyWarning = "";
+        try
+        {
+            TaskRunHistory.Record(new TrackedTaskRun(taskName, profile.Sid, runId,
+                engine, repairAction, DateTimeOffset.UtcNow, startImmediately));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                   or ArgumentException or System.Text.Json.JsonException)
+        {
+            // Registration succeeded. Do not cause an accidental duplicate retry.
+            historyWarning = " [status history unavailable: " + ex.GetType().Name + "]";
+        }
+        return $"{profile.Account}: {state} [{engine}] | {taskName}{historyWarning}";
     }
 
     internal static bool SelfTest()
@@ -208,13 +222,31 @@ internal static class Scheduling
         }
 
         var exitCode = 2;
+        var failed = System.IO.Path.Combine(doneDir, runId + ".failed");
         try
         {
             exitCode = repairAction == "full" ? Repair.Run(quiet: true) : Repair.ReRegister(quiet: true);
-            if (exitCode == 0) File.WriteAllText(complete, DateTimeOffset.Now.ToString("O"));
+            if (exitCode == 0)
+                File.WriteAllText(complete, DateTimeOffset.UtcNow.ToString("O"));
             return exitCode;
         }
-        finally { TryDeleteOwnTask(taskName); }
+        catch
+        {
+            // The outer program still handles the error. Preserve a minimal
+            // failure receipt so the admin UI does not report a false success.
+            exitCode = 2;
+            return exitCode;
+        }
+        finally
+        {
+            if (exitCode != 0)
+            {
+                try { File.WriteAllText(failed, DateTimeOffset.UtcNow.ToString("O")); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            TryDeleteOwnTask(taskName);
+        }
     }
 
     private static void TryDeleteOwnTask(string taskName)
