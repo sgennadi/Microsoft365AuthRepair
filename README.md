@@ -1,3 +1,14 @@
+## Preview v1.0.1-preview.8 — clearer repair actions and Windows-style buttons
+
+1. The ambiguous `Repair sign-in` button is now `Re-register WAM`, explicitly separated from a read-only `Check Entra / WAM` action and a destructive `Reset Office sign-in` action.
+2. Each action explains whether it only checks status, re-registers AAD BrokerPlugin without removing sign-in caches, or deletes Office/WAM cached identity data and may require signing in again.
+3. A current-user WAM re-registration now asks for confirmation before changing AppX registration. Existing UAC, all-users scheduled tasks, and full-reset confirmations remain in place.
+4. The reset button is no longer hidden in Advanced; it is shown in a separate cautionary section. Advanced continues to hold optional portable-EXE cleanup.
+5. Shared action buttons now paint their entire background to eliminate black rounded corners, with a restrained Windows-inspired 3D/bevel effect and less aggressive corner radius. Icons, keyboard focus, high contrast, RTL, and DPI support remain.
+6. Existing repair algorithms are unchanged; GitHub diagnostics Issue #1 confirmed the shared receiver, and all six reported Entra/WAM signals were healthy. This does not test actual Office/Teams/OneDrive sign-in.
+
+Stable v1.0.0 is unchanged. Preview requires Windows visual and behavior QA at 100–200% DPI before stable promotion.
+
 ## Preview v1.0.1-preview.7 — scheduled-task execution choice
 
 - Choose between **EXE** (default, Repair + Full reset) and an independent **PowerShell script** (WAM re-registration only) when the scope is All users on this PC.

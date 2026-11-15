@@ -92,22 +92,38 @@ internal sealed class ModernButton : Button
         }
 
         var g = e.Graphics;
+        // Paint the entire rectangular surface first. The old rounded owner
+        // paint omitted the four corners and left black pixels on some GPUs/DPI.
+        var surround = Parent?.BackColor ?? UiTheme.Canvas;
+        if (surround.A != 255) surround = UiTheme.Canvas;
+        g.Clear(surround);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        var r = new Rectangle(0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
-        if (r.Width == 0 || r.Height == 0) return;
+        var r = new Rectangle(1, 1, Math.Max(0, Width - 3), Math.Max(0, Height - 3));
+        if (r.Width < 5 || r.Height < 5) return;
         float dpi = DeviceDpi / 96f;
-        int radius = Math.Max(7, (int)Math.Round(10 * dpi));
+        int radius = Math.Max(3, (int)Math.Round(4 * dpi)); // subtle Windows-style corners
         using var path = Rounded(r, radius);
         Color fill = BackColor;
         if (!Enabled) fill = Mix(fill, SystemColors.Control, .65f);
         else if (pressed) fill = Mix(fill, Color.Black, .14f);
         else if (hovered) fill = Mix(fill, Role == Kind.Primary ? Color.White : UiTheme.Accent, .09f);
-        using (var brush = new SolidBrush(fill)) g.FillPath(brush, path);
+        // A restrained embossed gradient gives the buttons depth, without
+        // opaque unpainted corners or bitmap skins.
+        using (var brush = new LinearGradientBrush(r,
+            Mix(fill, Color.White, pressed ? .01f : .11f),
+            Mix(fill, Color.Black, pressed ? .11f : .035f),
+            LinearGradientMode.Vertical))
+            g.FillPath(brush, path);
 
-        var border = Role == Kind.Primary ? Mix(fill, Color.Black, .06f)
-            : Role == Kind.Destructive ? Color.FromArgb(233, 185, 187) : UiTheme.Border;
+        var border = Role == Kind.Primary ? Mix(fill, Color.Black, .19f)
+            : Role == Kind.Destructive ? Color.FromArgb(207, 148, 153)
+            : Mix(UiTheme.Border, Color.Black, .15f);
         using (var pen = new Pen(border, Math.Max(1f, dpi)))
             g.DrawPath(pen, path);
+        using (var highlight = new Pen(Mix(fill, Color.White, pressed ? .04f : .35f), Math.Max(1f, dpi)))
+            g.DrawLine(highlight, r.Left + radius, r.Top + 2, r.Right - radius, r.Top + 2);
+        using (var shade = new Pen(Mix(fill, Color.Black, pressed ? .14f : .09f), Math.Max(1f, dpi)))
+            g.DrawLine(shade, r.Left + radius, r.Bottom - 2, r.Right - radius, r.Bottom - 2);
 
         var text = Text ?? string.Empty;
         int imageWidth = Image?.Width ?? 0;

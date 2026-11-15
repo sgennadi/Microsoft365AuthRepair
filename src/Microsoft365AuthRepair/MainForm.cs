@@ -16,6 +16,8 @@ internal sealed class MainForm : Form
     private readonly Label status = UiTheme.Caption(string.Empty);
     private readonly PictureBox statusGlyph = UiIcons.CreateStatus();
     private readonly Label advancedExplanation = UiTheme.Caption(string.Empty);
+    private readonly Label repairExplanation = UiTheme.Caption(string.Empty);
+    private readonly Label resetExplanation = UiTheme.Caption(string.Empty);
     private readonly CheckBox deletePortableAfterRepair = new()
     {
         AutoSize = true, Checked = false, Visible = false,
@@ -113,30 +115,47 @@ internal sealed class MainForm : Form
         scheduleOnly.Checked = scheduleOnlyAtLogon;
         root.Controls.Add(target, 0, 3);
 
-        var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
-        // Keep the reporting action visible beside the primary repair action.
-        actions.Controls.Add(repair);
-        actions.Controls.Add(diagnostics);
-        actions.Controls.Add(diagnose);
-        actions.Controls.Add(updates);
-        actions.Controls.Add(logs);
+        // Distinct, explained choices. The destructive reset is no longer hidden
+        // behind Advanced, and is visually separated from safe WAM registration.
+        var actions = new TableLayoutPanel
+        {
+            AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5,
+            Margin = new Padding(0, 6, 0, 6)
+        };
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < 5; i++)
+            actions.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        repairExplanation.MaximumSize = new Size(850, 0);
+        resetExplanation.MaximumSize = new Size(850, 0);
+        actions.Controls.Add(repairExplanation, 0, 0);
+        var safeActions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
+        safeActions.Controls.Add(diagnose);
+        safeActions.Controls.Add(repair);
+        actions.Controls.Add(safeActions, 0, 1);
+        actions.Controls.Add(resetExplanation, 0, 2);
+        var resetActions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
+        resetActions.Controls.Add(reset);
+        actions.Controls.Add(resetActions, 0, 3);
+        var tools = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
+        tools.Controls.Add(diagnostics);
+        tools.Controls.Add(updates);
+        tools.Controls.Add(logs);
+        actions.Controls.Add(tools, 0, 4);
         root.Controls.Add(actions, 0, 4);
 
         var advanced = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 2 };
         advanced.Controls.Add(showAdvanced, 0, 0);
         var advancedInner = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 3
+            Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 2
         };
         advancedInner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         advancedInner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         advancedInner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        advancedInner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        advancedInner.Controls.Add(reset, 0, 0);
-        advancedExplanation.MaximumSize = new Size(725, 0);
+        advancedExplanation.MaximumSize = new Size(850, 0);
         advancedExplanation.UseMnemonic = false;
-        advancedInner.Controls.Add(advancedExplanation, 0, 1);
-        advancedInner.Controls.Add(deletePortableAfterRepair, 0, 2);
+        advancedInner.Controls.Add(advancedExplanation, 0, 0);
+        advancedInner.Controls.Add(deletePortableAfterRepair, 0, 1);
         advancedPanel.Controls.Add(advancedInner);
         advanced.Controls.Add(advancedPanel, 0, 1);
         root.Controls.Add(advanced, 0, 5);
@@ -161,9 +180,9 @@ internal sealed class MainForm : Form
         UiIcons.Assign(logs, UiGlyph.Logs);
         UiIcons.TrackDpi(this);
         var hints = new ToolTip { AutoPopDelay = 12000, InitialDelay = 500, ReshowDelay = 200 };
-        hints.SetToolTip(repair, "Re-register WAM / AAD Broker Plugin without clearing user tokens.");
-        hints.SetToolTip(reset, "Advanced: remove Office and WAM identity caches for the selected user scope.");
-        hints.SetToolTip(diagnose, "Check Hybrid Join, device authentication, PRT and WAM status.");
+        hints.SetToolTip(repair, "Re-register Microsoft.AAD.BrokerPlugin for the selected user. No credentials or sign-in caches are deleted; apps may briefly close.");
+        hints.SetToolTip(reset, "Destructive: remove Office/WAM identity and sign-in caches for the selected users. Re-authentication required; explicit confirmation.");
+        hints.SetToolTip(diagnose, "Read-only check: Entra/Hybrid Join, device authentication, PRT and WAM. Does not modify the device.");
         hints.SetToolTip(diagnostics, "Review a sanitized diagnostic report before saving it locally.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
@@ -244,6 +263,14 @@ internal sealed class MainForm : Form
             "מחק עותק EXE נייד זה לאחר תיקון מוצלח של המשתמש הנוכחי");
         repair.Text = UiStrings.T("repair");
         reset.Text = UiStrings.T("full");
+        repairExplanation.Text = UpdateUiText.T(
+            "1. Check Entra/WAM: read-only. 2. Re-register WAM: restores the broker registration without deleting cached sign-in data.",
+            "1. Проверить Entra/WAM: без изменений. 2. Перерегистрировать WAM: восстановить регистрацию без удаления данных входа.",
+            "1. בדיקת Entra/WAM: ללא שינויים. 2. רישום WAM מחדש: ללא מחיקת נתוני התחברות.");
+        resetExplanation.Text = UpdateUiText.T(
+            "3. If sign-in still fails: reset Office/WAM sign-in caches. This signs users out and requires explicit confirmation.",
+            "3. Если вход всё ещё не работает: сбросить кеши входа Office/WAM. Потребуется повторный вход и подтверждение.",
+            "3. אם הכניסה עדיין נכשלת: איפוס מטמון ההתחברות של Office/WAM. נדרש אישור וכניסה מחדש.");
         diagnose.Text = UiStrings.T("diagnose");
         diagnostics.Text = UiStrings.T("debug");
         updates.Text = availableUpdate is null ? UiStrings.T("updater") :
@@ -292,7 +319,7 @@ internal sealed class MainForm : Form
         if (scope.SelectedIndex < 0) return;
         bool everyone = scope.SelectedIndex == 1;
         repair.Text = everyone && scheduleOnly.Checked
-            ? UpdateUiText.T("Create repair tasks", "Создать задания восстановления", "צור משימות תיקון")
+            ? UpdateUiText.T("Schedule WAM re-registration", "Назначить регистрацию WAM", "תזמן רישום WAM מחדש")
             : UiStrings.T("repair");
         reset.Text = everyone && scheduleOnly.Checked
             ? UpdateUiText.T("Schedule full reset", "Назначить полный сброс", "תזמן איפוס מלא")
@@ -335,9 +362,9 @@ internal sealed class MainForm : Form
             $"יעד: {target}. איפוס מלא מוחק מטמון כניסה של Office/WAM; ייתכן שתידרש התחברות מחדש.");
         if (everyone && taskMethod.SelectedIndex == 1)
             advancedExplanation.Text += Environment.NewLine + UpdateUiText.T(
-                "PowerShell script supports Repair sign-in only; choose EXE for Full identity reset.",
-                "Скрипт PowerShell поддерживает только Repair sign-in. Для полного сброса выберите EXE.",
-                "סקריפט PowerShell תומך רק בתיקון כניסה. לאיפוס מלא בחר EXE.");
+                "PowerShell can only re-register WAM; choose EXE for the destructive Office/WAM sign-in reset.",
+                "PowerShell только перерегистрирует WAM; для сброса кешей входа выберите EXE.",
+                "PowerShell תומך רק ברישום WAM מחדש; לאיפוס מטמון התחברות יש לבחור EXE.");
         advancedExplanation.AccessibleDescription = admin;
         reset.AccessibleDescription = $"Full identity reset, target: {target}. {admin}";
         repair.AccessibleDescription = $"Re-register WAM, target: {target}. {admin}";
@@ -398,6 +425,23 @@ internal sealed class MainForm : Form
                 "Не удалось определить пользователя сеанса. Запустите от его имени либо выберите «Все пользователи» с правами администратора.",
                 "לא ניתן לזהות את המשתמש הפעיל. הפעל בחשבונו או בחר את כל המשתמשים עם הרשאת מנהל."), UiGlyph.Error);
             return;
+        }
+
+        // Even the non-destructive current-user action makes changes to AppX
+        // registration and may interrupt Microsoft apps. Require a clear consent.
+        if (!everyone && !full)
+        {
+            var prompt = UpdateUiText.T(
+                "Re-register Microsoft.AAD.BrokerPlugin for " + desktopUser.Name +
+                "? This does NOT delete Office tokens or sign-in caches, but Microsoft apps may briefly close. Continue?",
+                "Перерегистрировать Microsoft.AAD.BrokerPlugin для " + desktopUser.Name +
+                "? Токены и кеши входа Office НЕ удаляются, но приложения Microsoft могут закрыться. Продолжить?",
+                "לבצע רישום מחדש של Microsoft.AAD.BrokerPlugin עבור " + desktopUser.Name +
+                "? נתוני ההתחברות לא יימחקו, אך יישומי Microsoft עשויים להיסגר. להמשיך?");
+            if (MessageBox.Show(this, prompt,
+                    UpdateUiText.T("Confirm WAM re-registration", "Подтвердите регистрацию WAM", "אישור רישום WAM מחדש"),
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                return;
         }
 
         if (everyone || full)
