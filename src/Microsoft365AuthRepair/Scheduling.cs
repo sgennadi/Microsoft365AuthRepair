@@ -155,13 +155,20 @@ internal static class Scheduling
             $a.Path = '{{Q(targetExe)}}'
             $a.Arguments = '{{Q(args)}}'
             $t = $folder.RegisterTaskDefinition('{{Q(taskName)}}', $d, 6, '{{Q(profile.Sid)}}', $null, 3, $null)
-            if ({{(startImmediately ? "$true" : "$false")}}) { $null = $t.Run($null) }
-            Write-Output 'TASK_REGISTERED'
+            $startState = 'QUEUED'
+            if ({{(startImmediately ? "$true" : "$false")}}) {
+                try { $null = $t.Run($null); $startState = 'START_REQUESTED' }
+                catch { $startState = 'START_REJECTED' }
+            }
+            Write-Output ('TASK_REGISTERED:' + $startState)
             """;
         var response = ExternalCommand.RunPowerShell(script, 60);
-        if (response.ExitCode != 0 || !response.StdOut.Contains("TASK_REGISTERED", StringComparison.Ordinal))
-            throw new IOException("Task Scheduler could not register " + profile.Account + ": " + response.StdErr.Trim() + " " + response.StdOut.Trim());
-        var state = startImmediately ? "START REQUESTED" : "QUEUED FOR NEXT SIGN-IN";
+        if (response.ExitCode != 0 ||
+            !response.StdOut.Contains("TASK_REGISTERED:", StringComparison.Ordinal))
+            throw new IOException("Task Scheduler did not confirm registration for " + profile.Account + ".");
+        var launchRequested = response.StdOut.Contains("TASK_REGISTERED:START_REQUESTED", StringComparison.Ordinal);
+        var state = launchRequested ? "START REQUESTED" :
+            startImmediately ? "QUEUED (IMMEDIATE START REJECTED)" : "QUEUED FOR NEXT SIGN-IN";
         var engine = mode == ScheduledWorkerMode.PowerShell ? "PowerShell" : "EXE";
         // Scheduler registration is not the same as repair completion.
         // A local, administrator-owned record survives one-shot task removal.
@@ -169,7 +176,7 @@ internal static class Scheduling
         try
         {
             TaskRunHistory.Record(new TrackedTaskRun(taskName, profile.Sid, runId,
-                engine, repairAction, DateTimeOffset.UtcNow, startImmediately));
+                engine, repairAction, DateTimeOffset.UtcNow, launchRequested));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                    or ArgumentException or System.Text.Json.JsonException)
