@@ -113,7 +113,7 @@ internal static class UpdateUiText
         $"1. Alpha{Environment.NewLine}2. Beta" &&
         ForMultilineBox("1. Alpha\n2. Beta") ==
         $"1. Alpha{Environment.NewLine}2. Beta" &&
-        CurrentChangelog().Split(Environment.NewLine).Length == 1; // Newlines are normalized at display time.
+        ForMultilineBox(CurrentChangelog()).Split(Environment.NewLine).Length == 4;
 }
 
 internal sealed class UpdateCenter : Form
