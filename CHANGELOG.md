@@ -1,3 +1,10 @@
+## 1.0.1-preview.14 — 2026-11-15 — Preview
+
+1. Automatically suggest the official Microsoft KMS Client Setup Key (GVLK) for six verified Office, Visio and Project 2024 Volume editions.
+2. Show the public GVLK in a read-only, copyable inline field; select it automatically when KMS mode is used.
+3. Block GVLK suggestions for Retail, subscription, unknown Preview 2026 and mismatched Office product identities.
+4. Keep KMS host discovery/manual entry and Preview-key removal consent unchanged; Stable v1.0.0 untouched.
+
 ## 1.0.1-preview.13 — 2026-11-15 — Preview
 
 1. Added source-linked Microsoft Learn troubleshooting paths with a local sign-in-code and symptom browser.
