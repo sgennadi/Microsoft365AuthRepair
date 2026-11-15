@@ -22,7 +22,7 @@ A Windows .NET 10 WinForms desktop repair utility for Microsoft Entra WAM / `Mic
 
 ## Checkout existing shared modules (no forks or duplicates)
 
-Both common repositories are private. Use existing GitHub access (`gh auth login`), then:
+Both canonical repositories are private. For an authorized canonical-source build, use existing GitHub access (`gh auth login`), then:
 
 ```powershell
 .\scripts\setup-modules.ps1
@@ -30,7 +30,7 @@ dotnet publish .\src\Microsoft365AuthRepair\Microsoft365AuthRepair.csproj -c Rel
 dotnet publish .\src\Microsoft365AuthRepair\Microsoft365AuthRepair.csproj -c Release -r win-arm64 --self-contained true
 ```
 
-The CI workflow requires a **GitHub Actions secret** `MODULES_READ_TOKEN` with **read-only Contents** access to the two private module repositories. Do not include this token in the EXE or a checked-in file. Source commit pins are in `MODULES.lock`. Windows runners are used to compile and smoke-test; no production cleanup runs in CI.
+CI can build without private credentials: it checks out **pinned public snapshots** already published in `sgennadi/TermsrvPatcherUnified` and `sgennadi/BitKeyBridge`. These copies may differ from the private canonical versions. For a canonical-source build, optionally configure Actions secret `MODULES_READ_TOKEN` with read-only Contents access to both private repositories. Never embed this token in EXE or source. Private commit pins are in `MODULES.lock`; public snapshot pins are in `.github/workflows/build.yml`. The Windows runner compiles x64/ARM64 and smoke-tests the x64 GUI; actual ARM64 and domain/Entra repair still require manual QA.
 
 ## GitHub publication
 
@@ -57,4 +57,4 @@ This script only creates `sgennadi/Microsoft365AuthRepair` when absent; it is no
 
 - Full identity reset is intentionally disruptive and cannot guarantee restoration of session tokens, Credential Manager secrets or application caches; the recommended non-destructive ReRegister mode should be tried first.
 - The admin all-users workflow depends on Task Scheduler InteractiveToken and requires Windows account sessions. A queued task is not a verified successful repair. Offline profiles are processed upon next sign-in, subject to OS policy.
-- The source was statically assembled in an environment without the .NET SDK or Windows GUI; compilation, GUI visual QA and actual WAM/AD behavior **remain unverified**.
+- Source was initially assembled without a Windows/.NET build environment. Check GitHub Actions for actual compilation status; Windows UI visual QA, ARM64 runtime and real AD/WAM repair are not yet verified.
