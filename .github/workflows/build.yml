@@ -105,10 +105,79 @@ jobs:
           $selfTestExe = (Resolve-Path "publish/win-x64/Microsoft365AuthRepair.exe").Path
           $selfTest = Start-Process -FilePath $selfTestExe -ArgumentList '--ui-self-test' -PassThru -Wait
           if ($selfTest.ExitCode -ne 0) { throw "x64 GUI self-test failed: $($selfTest.ExitCode)" }
-      - name: Upload both executables as preview artifacts
+      - name: Upload verified build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Microsoft365AuthRepair-preview-x64-arm64
+          name: Microsoft365AuthRepair-stable-v1.0.0-x64-arm64
           path: artifacts/*
           if-no-files-found: error
           retention-days: 14
+
+  publish-stable-v1:
+    name: Publish immutable v1.0.0 release
+    needs: windows-publish
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact tested commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download validated x64 and ARM64 build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Microsoft365AuthRepair-stable-v1.0.0-x64-arm64
+          path: release-assets
+      - name: Validate version, archive contents and SHA-256 checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [xml]$project = Get-Content src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj
+          if ($project.Project.PropertyGroup.Version -ne '1.0.0') {
+            throw 'Stable publishing requires exact version 1.0.0.'
+          }
+          if ((Get-Content src/Microsoft365AuthRepair/Repair.cs -Raw) -notmatch 'internal const string Version = "1.0.0";') {
+            throw 'Repair runtime version does not match 1.0.0.'
+          }
+          $expected = @('Microsoft365AuthRepair-win-x64.zip', 'Microsoft365AuthRepair-win-arm64.zip')
+          $checksums = Get-Content release-assets/SHA256SUMS.txt
+          if ($checksums.Count -ne $expected.Count) { throw 'Unexpected SHA256SUMS format.' }
+          Add-Type -AssemblyName System.IO.Compression
+          foreach ($filename in $expected) {
+            $full = Join-Path release-assets $filename
+            if (-not (Test-Path $full)) { throw "Missing archive: $filename" }
+            $hash = (Get-FileHash $full -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($checksums -notcontains "$hash  $filename") {
+              throw "Checksum mismatch for $filename"
+            }
+            $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $full).Path)
+            try {
+              if ($zip.Entries.Count -ne 1 -or $zip.Entries[0].FullName -ne 'Microsoft365AuthRepair.exe') {
+                throw "Unexpected ZIP structure: $filename"
+              }
+              if ($zip.Entries[0].Length -lt 1000000) { throw "Unexpected EXE size: $filename" }
+            }
+            finally { $zip.Dispose() }
+          }
+          Write-Host 'Stable 1.0.0 checksum and package validation passed.'
+      - name: Publish GitHub stable release with downloadable assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view v1.0.0 >/dev/null 2>&1; then
+            echo "v1.0.0 already exists: do not replace existing stable assets or tag."
+            exit 0
+          fi
+          gh release create v1.0.0 \
+            release-assets/Microsoft365AuthRepair-win-x64.zip \
+            release-assets/Microsoft365AuthRepair-win-arm64.zip \
+            release-assets/SHA256SUMS.txt \
+            --target "$GITHUB_SHA" \
+            --title "Microsoft 365 Auth Repair 1.0.0 (Stable)" \
+            --notes-file docs/releases/v1.0.0.md \
+            --latest
