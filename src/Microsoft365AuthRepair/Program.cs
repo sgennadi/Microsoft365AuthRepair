@@ -16,8 +16,6 @@ internal static class Program
                 return UpdateHandoff.RunHelper(args[1]);
             // First-logon auto-repair was removed: users without an existing
             // Windows profile have no previous WAM cache to recover.
-            if (args.Length == 2 && args[0] == "--cleanup-helper")
-                return PortableSelfCleanup.RunHelper(args[1]);
             if (args.Length == 1 && args[0] == "--ui-self-test")
             {
                 Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
@@ -26,8 +24,6 @@ internal static class Program
                 using var form = new MainForm();
                 using var updater = new UpdateCenter();
                 using var reports = new DiagnosticsCenter(uiSelfTest: true);
-                using var currentSetup = new CurrentUserWizard(
-                    initialCleanup: true, canCleanup: false, elevated: false);
                 using var sendReview = new ReportSendDialog(
                     new PreparedDiagnostic("00000000-0000-4000-8000-000000000001", "{}"), null);
                 using var wizard = new AllUsersWizard(ScheduledWorkerMode.Exe,
@@ -37,7 +33,6 @@ internal static class Program
                 form.CreateControl();
                 updater.CreateControl();
                 reports.CreateControl();
-                currentSetup.CreateControl();
                 sendReview.CreateControl();
                 wizard.CreateControl();
                 signInGuide.CreateControl();
@@ -48,16 +43,15 @@ internal static class Program
                 {
                     ("Main minimum size", () => form.MinimumSize.Width >= 600),
                     ("Responsive Setup and Language header", form.HeaderLayoutSelfTest),
+                    ("Direct current-user / wizard-only all-users mode", form.ScopeWorkflowSelfTest),
                     ("Main icon", () => UiIcons.Verify(form)),
                     ("Updater icon", () => UiIcons.Verify(updater)),
                     ("Reports icon", () => UiIcons.Verify(reports)),
-                    ("Current user setup icon", () => UiIcons.Verify(currentSetup)),
                     ("Send review icon", () => UiIcons.Verify(sendReview)),
                     ("Wizard icon", () => UiIcons.Verify(wizard)),
                     ("Sign-in guide window icon", () => UiIcons.HasBrandIcon &&
                         signInGuide.Icon is not null && signInGuide.ShowIcon),
                     ("Volume licensing icon", () => UiIcons.Verify(volumeLicensing)),
-                    ("Current user setup state", CurrentUserWizard.SelfTest),
                     ("Responsive geometry", ResponsiveLayout.SelfTest),
                     ("Updater channel precedence", UpdaterIntegration.SelfTest),
                     ("Updater default channel", () => updater.IncludesPreviews == UpdaterIntegration.InstalledIsPreview),
@@ -80,11 +74,9 @@ internal static class Program
                     ("Scheduled worker resource", Scheduling.SelfTest),
                     ("Protected worker maintenance rules", ScheduledWorkerMaintenance.SelfTest),
                     ("Legacy logon cleanup", FirstLogonDeployment.SelfTest),
-                    ("Portable cleanup", PortableSelfCleanup.SelfTest),
                     ("Main buttons", () => UiTheme.VerifyButtons(form, 6)),
                     ("Updater buttons", () => UiTheme.VerifyButtons(updater, 4)),
                     ("Reports buttons", () => UiTheme.VerifyButtons(reports, 4)),
-                    ("Current user setup buttons", () => UiTheme.VerifyButtons(currentSetup, 2)),
                     ("Review buttons", () => UiTheme.VerifyButtons(sendReview, 2)),
                     ("Wizard buttons", () => UiTheme.VerifyButtons(wizard, 3)),
                     ("Sign-in guide buttons", () => UiTheme.VerifyButtons(signInGuide, 1)),
