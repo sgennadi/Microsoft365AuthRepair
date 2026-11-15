@@ -712,6 +712,24 @@ internal sealed class MainForm : Form
             detail.Text += Environment.NewLine + Environment.NewLine +
                 OfficeLicenseDiagnostics.Details(lastOfficeLicense);
         }
+        var ownSession = !elevated || desktopUser.SameAsProcess;
+        lastSmartDecision = SmartRepairEngine.Evaluate(report, lastOfficeLicense,
+            lastPreflight, ownSession);
+        smartHeading.Text = UpdateUiText.T(
+            "SMART RECOMMENDATION: ", "РЕКОМЕНДАЦИЯ: ", "המלצה חכמה: ") +
+            lastSmartDecision.Heading;
+        smartExplanation.Text = lastSmartDecision.Explanation +
+            Environment.NewLine + UpdateUiText.T("Next: ", "Дальше: ", "הבא: ") +
+            lastSmartDecision.NextAction;
+        preflightSummary.Text = FormatPreflight(lastPreflight);
+        applyRecommendation.Visible = lastSmartDecision.SafeToOfferRepair &&
+            lastSmartDecision.Action == SmartRepairAction.ReRegisterWam &&
+            scope.SelectedIndex == 0 && ownSession;
+        smartPanel.Visible = !diagnosticsCollapsed;
+        activationDetail.Text = lastOfficeActivation is null ? string.Empty :
+            lastOfficeActivation.Summary + Environment.NewLine + lastOfficeActivation.Evidence;
+        activationDetail.Visible = lastOfficeActivation is not null && !diagnosticsCollapsed;
+        UpdateVerificationSummary();
         officeLicenseSummary.Visible = lastOfficeLicense is not null && !diagnosticsCollapsed;
         officeVolumeLink.Visible = lastOfficeLicense is not null && !diagnosticsCollapsed;
         diagnosticResult.ShowResult(report);
@@ -722,6 +740,9 @@ internal sealed class MainForm : Form
             diagnosticResult.Visible = false;
             officeLicenseSummary.Visible = false;
             officeVolumeLink.Visible = false;
+            smartPanel.Visible = false;
+            activationDetail.Visible = false;
+            verificationPanel.Visible = false;
             technicalToggle.Visible = false;
             detail.Visible = false;
         }
@@ -811,7 +832,9 @@ internal sealed class MainForm : Form
     {
         busy = isBusy;
         repair.Enabled = reset.Enabled = diagnose.Enabled = diagnostics.Enabled =
-            updates.Enabled = settings.Enabled = taskStatusLink.Enabled = !isBusy;
+            updates.Enabled = settings.Enabled = taskStatusLink.Enabled =
+            applyRecommendation.Enabled = entraReview.Enabled =
+            signInWorks.Enabled = signInFailed.Enabled = !isBusy;
         scope.Enabled = !isBusy;
         progress.Visible = isBusy;
     }
