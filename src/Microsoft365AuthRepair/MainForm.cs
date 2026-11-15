@@ -34,10 +34,12 @@ internal sealed class MainForm : Form
     private readonly Button settings = UiTheme.CreateActionButton(string.Empty);
     private readonly TextBox detail = new()
     {
-        Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Both,
-        WordWrap = false, Margin = new Padding(0, 6, 0, 0), Font = new Font("Consolas", 9f)
+        Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical,
+        WordWrap = true, Margin = new Padding(0, 6, 0, 0), Font = new Font("Segoe UI", 10f),
+        MinimumSize = new Size(0, 170)
     };
     private readonly ProgressBar progress = new() { Dock = DockStyle.Top, Height = 5, Visible = false, Style = ProgressBarStyle.Marquee };
+    private TableLayoutPanel? mainLayout;
     private readonly System.Windows.Forms.Timer updateTimer = new() { Interval = 6 * 60 * 60 * 1000 };
     private bool busy;
     private UniversalUpdater.UpdateRelease? availableUpdate;
@@ -62,6 +64,7 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill, Padding = new Padding(18), AutoScroll = true,
             ColumnCount = 1, RowCount = 8
         };
+        mainLayout = root;
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -155,7 +158,7 @@ internal sealed class MainForm : Form
         var hints = new ToolTip { AutoPopDelay = 12000, InitialDelay = 500, ReshowDelay = 200 };
         hints.SetToolTip(repair, "Re-register Microsoft.AAD.BrokerPlugin for the selected user. No credentials or sign-in caches are deleted; apps may briefly close.");
         hints.SetToolTip(reset, "Destructive: remove Office/WAM identity and sign-in caches for the selected users. Re-authentication required; explicit confirmation.");
-        hints.SetToolTip(diagnose, "Read-only check: Entra/Hybrid Join, device authentication, PRT and WAM. Does not modify the device.");
+        hints.SetToolTip(diagnose, "Read-only health check with plain-language findings and next steps. It does not prove Office sign-in works.");
         hints.SetToolTip(diagnostics, "Review a sanitized diagnostic report before saving it locally.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
@@ -230,7 +233,7 @@ internal sealed class MainForm : Form
             "3. If sign-in still fails: reset Office/WAM sign-in caches. This signs users out and requires explicit confirmation.",
             "3. Если вход всё ещё не работает: сбросить кеши входа Office/WAM. Потребуется повторный вход и подтверждение.",
             "3. אם הכניסה עדיין נכשלת: איפוס מטמון ההתחברות של Office/WAM. נדרש אישור וכניסה מחדש.");
-        diagnose.Text = UiStrings.T("diagnose");
+        diagnose.Text = UpdateUiText.T("Check & Diagnose", "Проверить и объяснить", "בדוק ואבחן");
         diagnostics.Text = UiStrings.T("debug");
         updates.Text = availableUpdate is null ? UiStrings.T("updater") :
             $"{UiStrings.T("updater")}  •  v{availableUpdate.Version}";
@@ -496,13 +499,29 @@ internal sealed class MainForm : Form
         ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
         {
-            detail.Text = await Task.Run(Repair.DiagnoseReport);
-            ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
+            // dsregcmd/WAM information is account- and session-sensitive.
+            // Never label an administrator's token as another user's healthy login.
+            var raw = await Task.Run(Repair.DiagnoseReport);
+            var report = WamHealthAnalysis.Evaluate(raw, !elevated || desktopUser.SameAsProcess);
+            detail.Text = report.Details;
+            ShowStatus(report.Summary, report.Level switch
+            {
+                WamHealthLevel.Healthy => UiGlyph.Success,
+                WamHealthLevel.RepairRecommended => UiGlyph.Error,
+                _ => UiGlyph.Info
+            });
+            // Short screens must still reveal the result without manual scrolling.
+            mainLayout?.ScrollControlIntoView(detail);
+            detail.SelectionStart = 0;
+            detail.ScrollToCaret();
         }
         catch (Exception ex)
         {
             ShowStatus(UiStrings.T("failed"), UiGlyph.Error);
-            detail.Text = ex.GetType().Name;
+            detail.Text = UpdateUiText.T(
+                "Check could not complete: ", "Проверка не завершена: ", "הבדיקה לא הושלמה: ") +
+                ex.GetType().Name;
+            mainLayout?.ScrollControlIntoView(detail);
         }
         finally { SetBusy(false); }
     }
