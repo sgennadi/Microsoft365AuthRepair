@@ -72,9 +72,9 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. One-click Update with safe EXE replacement, UAC when needed and rollback.\n2. All users includes optional first-sign-in launch for new Windows profiles.\n3. Portable self-deletion after a successful current-user repair (opt-in).\n4. Shared diagnostics, short What's New, EN/RU/HE and HiDPI.",
-        "1. Update: замена EXE, UAC при необходимости и откат.\n2. Все пользователи: выполнение также при первом входе в Windows.\n3. Удаление переносного EXE после успешного восстановления (по выбору).\n4. Общая диагностика, краткий What's New и HiDPI.",
-        "1. עדכון EXE עם UAC ושחזור במקרה תקלה.\n2. תיקון משתמשים גם בכניסה הראשונה ל-Windows.\n3. מחיקת EXE נייד לאחר הצלחה לפי בחירה.\n4. אבחון משותף ותמיכת HiDPI.");
+        "1. Guided Check & Diagnose explains Entra/WAM status and next steps.\n2. Settings groups all-user tasks and portable cleanup.\n3. Generate report opens a separate reviewed Send anonymously dialog.\n4. Adaptive layouts for normal and maximized windows.",
+        "1. Проверка Entra/WAM объясняет состояние и следующие действия.\n2. Настройки заданий для всех пользователей и очистка EXE.\n3. Отчёт: отдельное окно просмотра и анонимной отправки.\n4. Интерфейс адаптируется к размеру окна.",
+        "1. בדיקת Entra/WAM עם הסברים והמלצות.\n2. הגדרות משימות לכל המשתמשים וניקוי EXE.\n3. דוח בחלון נפרד לאישור ושליחה.\n4. ממשק מותאם לגודל החלון.");
 
     internal static bool SelfTest() => FormatWhatsNew(
         "## What's new\n1. Alpha\n2. Beta\n## Limitations\n- Private") ==
@@ -83,21 +83,40 @@ internal static class UpdateUiText
 
 internal sealed class UpdateCenter : Form
 {
-    private readonly ComboBox channel = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
+    private readonly ComboBox channel = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Width = 205,
+        Margin = new Padding(6, 7, 0, 5)
+    };
+    // Automatic check on open or channel change. Manual refresh is a small link
+    // separated from the channel selection and primary Update action.
+    private readonly LinkLabel refresh = new()
+    {
+        AutoSize = true,
+        TextAlign = ContentAlignment.MiddleRight,
+        Margin = new Padding(10, 13, 3, 0),
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        TabStop = true
+    };
     private readonly Label installed = UiTheme.Caption(string.Empty);
     private readonly Label available = UiTheme.Caption(string.Empty);
     private readonly Label status = UiTheme.Caption(string.Empty);
     private readonly Label bytesText = UiTheme.Caption(string.Empty);
     private readonly TextBox changes = new()
     {
-        Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
-        Font = new Font("Segoe UI", 10f), BackColor = SystemColors.Window
+        Dock = DockStyle.Fill, Multiline = true, ReadOnly = true,
+        WordWrap = true, ScrollBars = ScrollBars.Vertical,
+        BorderStyle = BorderStyle.FixedSingle,
+        MinimumSize = new Size(0, 180),
+        Font = new Font("Segoe UI", 10f),
+        Margin = new Padding(0, 6, 0, 0),
+        BackColor = SystemColors.Window
     };
     private readonly ProgressBar progress = new()
     {
         Dock = DockStyle.Fill, Minimum = 0, Maximum = 100, Height = 20
     };
-    private readonly Button check = UiTheme.CreateActionButton("Check now");
     private readonly Button download = UiTheme.CreateActionButton("Update", true);
     private readonly Button page = UiTheme.CreateActionButton("Release page");
     private readonly Button folder = UiTheme.CreateActionButton("Open folder");
@@ -112,19 +131,38 @@ internal sealed class UpdateCenter : Form
         Text = $"Microsoft 365 Auth Repair v{Repair.Version} - Updates";
         Font = UiTheme.BodyFont();
         AutoScaleMode = AutoScaleMode.Dpi;
-        MinimumSize = new Size(710, 510);
-        Size = new Size(825, 630);
+        MinimumSize = new Size(660, 510);
+        Size = new Size(890, 680);
+        BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+        Size = new Size(Math.Min(Size.Width, area.Width),
+            Math.Min(Size.Height, area.Height));
         StartPosition = FormStartPosition.CenterParent;
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true,
             Padding = new Padding(18), ColumnCount = 1, RowCount = 8 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int i = 0; i < 7; i++) root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var headerRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true,
+            ColumnCount = 2, Margin = new Padding(0, 0, 0, 8)
+        };
+        headerRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        headerRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         var header = UiTheme.Caption("Microsoft 365 Auth Repair", true);
         header.Font = new Font("Segoe UI", 16f, FontStyle.Bold);
-        root.Controls.Add(header, 0, 0);
+        headerRow.Controls.Add(header, 0, 0);
+        refresh.Text = UpdateUiText.T("Refresh", "Обновить проверку", "רענון");
+        refresh.AccessibleName = refresh.Text;
+        headerRow.Controls.Add(refresh, 1, 0);
+        root.Controls.Add(headerRow, 0, 0);
 
-        var top = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
+        var top = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true, WrapContents = true,
+            Margin = new Padding(0, 0, 0, 12)
+        };
         top.Controls.Add(UiTheme.Caption(UpdateUiText.T("Channel:", "Канал:", "ערוץ:")));
         channel.Items.AddRange([
             UpdateUiText.T("Stable", "Стабильная", "יציבה"),
@@ -132,8 +170,6 @@ internal sealed class UpdateCenter : Form
         ]);
         channel.SelectedIndex = includePreviews ? 1 : 0;
         top.Controls.Add(channel);
-        check.Text = UpdateUiText.T("Check now", "Проверить", "בדוק");
-        top.Controls.Add(check);
         root.Controls.Add(top, 0, 1);
 
         installed.Text = UpdateUiText.T(
@@ -169,9 +205,8 @@ internal sealed class UpdateCenter : Form
         root.Controls.Add(UiTheme.Caption(UpdateUiText.T("What's new", "Что нового", "מה חדש")), 0, 6);
         changes.Text = UpdateUiText.CurrentChangelog();
         root.Controls.Add(changes, 0, 7);
-        Controls.Add(root);
+        Controls.Add(ResponsiveLayout.Center(this, root, 940));
         UiIcons.SetWindowIcon(this);
-        UiIcons.Assign(check, UiGlyph.Search);
         UiIcons.Assign(download, UiGlyph.Updates, primary: true);
         download.UseMnemonic = false;
         UiIcons.Assign(page, UiGlyph.Link);
@@ -182,7 +217,7 @@ internal sealed class UpdateCenter : Form
         tips.SetToolTip(download, "One click: download, SHA-256 and architecture verification, safe install, health check and rollback.");
         tips.SetToolTip(channel, "Preview + Stable chooses the highest newer compatible version from both channels.");
         download.Enabled = page.Enabled = folder.Enabled = cancel.Enabled = false;
-        check.Click += async (_, _) => await CheckAsync();
+        refresh.LinkClicked += async (_, _) => await CheckAsync();
         download.Click += async (_, _) => await UpdateAsync();
         cancel.Click += (_, _) => active?.Cancel();
         channel.SelectedIndexChanged += async (_, _) =>
@@ -226,7 +261,7 @@ internal sealed class UpdateCenter : Form
     private void Busy(bool value)
     {
         busy = value;
-        check.Enabled = channel.Enabled = !value;
+        refresh.Enabled = channel.Enabled = !value;
         cancel.Enabled = value;
         download.Enabled = !value && release is not null && staged is null;
         page.Enabled = !value && release is not null;
