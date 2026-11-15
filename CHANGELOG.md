@@ -1,3 +1,10 @@
+## 1.0.1-preview.10 — 2026-11-15 — Preview
+
+1. Make local report capture asynchronous to avoid freezing the WinForms diagnostics screen during AppX or dsregcmd checks.
+2. Remove redundant inline raw JSON preview; Send anonymously remains the only exact JSON review screen.
+3. Rename saved-report action for clarity and prevent simultaneous collection via the report window controls.
+4. Preserve explicit user Send action, Google gateway contract, existing stable release and WAM repair paths.
+
 ## 1.0.1-preview.7 — 2026-11-15 — Preview
 
 1. Added EXE versus standalone PowerShell worker choice for scheduled WAM re-registration across existing profiles.

@@ -9,21 +9,16 @@ namespace Microsoft365AuthRepair;
 internal sealed class DiagnosticsCenter : Form
 {
     private const string Project = M365DiagnosticPayload.Project;
-    private readonly TextBox preview = new()
-    {
-        Dock = DockStyle.Fill, ReadOnly = true, Multiline = true,
-        ScrollBars = ScrollBars.Both, WordWrap = false,
-        Font = new Font("Consolas", 9f), BackColor = SystemColors.Window
-    };
     private readonly Label status = UiTheme.Caption(string.Empty);
     private readonly Button generate = UiTheme.CreateActionButton(
         UpdateUiText.T("Generate report", "Создать отчёт", "צור דוח"), true);
     private readonly Button load = UiTheme.CreateActionButton(
-        UpdateUiText.T("Load pending JSON", "Открыть ожидающий JSON", "טען דוח ממתין"));
+        UpdateUiText.T("Send saved report", "Отправить сохранённый отчёт", "שלח דוח שמור"));
     private readonly Button open = UiTheme.CreateActionButton(
         UpdateUiText.T("Open local queue", "Открыть очередь", "פתח תור מקומי"));
     private readonly Button close = UiTheme.CreateActionButton(
         UpdateUiText.T("Close", "Закрыть", "סגור"));
+    private bool collecting;
 
     internal DiagnosticsCenter(bool uiSelfTest = false)
     {
@@ -31,16 +26,16 @@ internal sealed class DiagnosticsCenter : Form
             UpdateUiText.T("Diagnostics & reports", "Диагностика и отчёты", "אבחון ודוחות");
         Font = UiTheme.BodyFont();
         AutoScaleMode = AutoScaleMode.Dpi;
-        Size = new Size(860, 610);
-        MinimumSize = new Size(660, 460);
+        Size = new Size(770, 390);
+        MinimumSize = new Size(560, 310);
         StartPosition = FormStartPosition.CenterParent;
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(18),
-            AutoScroll = true, ColumnCount = 1, RowCount = 5
+            AutoScroll = true, ColumnCount = 1, RowCount = 4
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 3; i++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
@@ -69,7 +64,6 @@ internal sealed class DiagnosticsCenter : Form
             "לא נשלח דבר. דוחות נשמרים מקומית עד לאישור GitHub.");
         status.MaximumSize = new Size(780, 0);
         root.Controls.Add(status, 0, 3);
-        root.Controls.Add(preview, 0, 4);
         Controls.Add(ResponsiveLayout.Center(this, root, 920));
 
         UiIcons.SetWindowIcon(this);
@@ -79,7 +73,7 @@ internal sealed class DiagnosticsCenter : Form
         UiIcons.Assign(close, UiGlyph.Reset);
         UiIcons.TrackDpi(this);
 
-        generate.Click += (_, _) => Generate();
+        generate.Click += async (_, _) => await GenerateAsync();
         load.Click += (_, _) => LoadPending();
         open.Click += (_, _) =>
         {
@@ -93,19 +87,15 @@ internal sealed class DiagnosticsCenter : Form
         };
         close.Click += (_, _) => Close();
 
-        preview.Text = uiSelfTest
-            ? "UI-only diagnostics self-test; no data collected or sent."
-            : UpdateUiText.T(
-                "Click Generate report or Load pending JSON. The outgoing allowlisted JSON will be shown here and in the review dialog.",
-                "Нажмите «Создать отчёт» или «Открыть ожидающий JSON». JSON для отправки появится здесь и в окне подтверждения.",
-                "לחץ על צור דוח או טען דוח ממתין. הדוח יופיע כאן ובחלון האישור.");
+        if (uiSelfTest)
+            status.Text = "UI-only diagnostics self-test; no data collected or sent.";
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
     }
 
     private void Review(PreparedDiagnostic payload, string? path)
     {
-        preview.Text = payload.Json;
+        if (IsDisposed || Disposing) return;
         status.Text = UpdateUiText.T("Review report in the confirmation dialog.",
             "Проверьте отчёт в окне подтверждения.", "בדוק דוח בחלון האישור.");
         using var confirmation = new ReportSendDialog(payload, path);
@@ -124,13 +114,22 @@ internal sealed class DiagnosticsCenter : Form
         }
     }
 
-    private void Generate()
+    private async Task GenerateAsync()
     {
-        generate.Enabled = false;
+        if (collecting || IsDisposed) return;
+        collecting = true;
+        generate.Enabled = load.Enabled = open.Enabled = false;
+        status.Text = UpdateUiText.T(
+            "Collecting local Entra/WAM diagnostics... No data is being uploaded.",
+            "Собираю локальную диагностику Entra/WAM... Данные не отправляются.",
+            "אוסף נתוני אבחון מקומיים. אין שליחה ברשת.");
         try
         {
-            // Read-only Windows diagnostics. The raw report is never uploaded.
-            var summary = M365DiagnosticPayload.SafeSummary(Repair.DiagnoseReport());
+            // AppX and dsregcmd can be slow. Keep the UI responsive.
+            // Only the sanitized allowlist can be offered for publication.
+            var summary = await Task.Run(
+                () => M365DiagnosticPayload.SafeSummary(Repair.DiagnoseReport()));
+            if (IsDisposed || Disposing) return;
             var capture = JsonSerializer.Serialize(new
             {
                 project = Project,
@@ -143,9 +142,15 @@ internal sealed class DiagnosticsCenter : Form
         }
         catch (Exception ex)
         {
-            status.Text = "Diagnostic capture failed: " + ex.GetType().Name;
+            if (!IsDisposed && !Disposing)
+                status.Text = "Diagnostic capture failed: " + ex.GetType().Name;
         }
-        finally { if (!IsDisposed) generate.Enabled = true; }
+        finally
+        {
+            collecting = false;
+            if (!IsDisposed && !Disposing)
+                generate.Enabled = load.Enabled = open.Enabled = true;
+        }
     }
 
     private void LoadPending()
