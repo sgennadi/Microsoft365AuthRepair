@@ -27,6 +27,8 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Native Windows WMI API; no ospp.vbs, slmgr.vbs or vnextdiag.ps1 needed. -->
+    <PackageReference Include="System.Management" Version="11.0.0" />
     <EmbeddedResource Include="Assets/Microsoft365AuthRepair.ico"
                       LogicalName="Microsoft365AuthRepair.BrandIcon" />
     <EmbeddedResource Include="Assets/WamReregisterWorker.ps1"
