@@ -2,8 +2,8 @@ using System.Text.Json;
 
 namespace Microsoft365AuthRepair;
 
-// Per-machine administration only. This is completely separate from
-// PortableSelfCleanup, which is restricted to the desktop user's own EXE.
+// Per-machine administration only. No portable EXE cleanup or user-cache
+// operations are part of scheduled task inspection or cleanup.
 // Never remove an outstanding logon task or its required ProgramData worker.
 internal sealed record ScheduledWorkerSnapshot(
     int Total, int Pending, int Running, int Completed, int Expired, int Attention, int Foreign,
