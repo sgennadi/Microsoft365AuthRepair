@@ -133,6 +133,12 @@ internal sealed class DiagnosticsCenter : Form
         RightToLeftLayout = UiStrings.Language == "he";
     }
 
+    internal bool HasLocalUtilities =>
+        open.Parent is FlowLayoutPanel &&
+        repairLogs.Parent == open.Parent &&
+        !string.IsNullOrWhiteSpace(open.Text) &&
+        !string.IsNullOrWhiteSpace(repairLogs.Text);
+
     private void Review(PreparedDiagnostic payload, string? path)
     {
         if (IsDisposed || Disposing) return;
