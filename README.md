@@ -1,3 +1,13 @@
+## Preview v1.0.1-preview.17 — transparent All users task status
+
+1. **View task status (read-only):** an administrator can review pending, running, worker-reported success, failure, attention and unconfirmed tasks. It does not execute, retry, delete or repair anything; a manual Refresh is available.
+2. **Truthful evidence:** an administrator-owned local history is recorded after each task is registered, with only task identity, SID, method, action, timestamp and start request. Worker receipts live in each user's LocalAppData; no credentials, tokens or keys are recorded. The disappearance of a one-time task does **not** mean repair success.
+3. **Safety:** errors are never silently grouped with successfully completed tasks for cleanup; no unknown worker is automatically deleted. A successful WAM registration/reset worker is **not** an Office application sign-in test.
+4. **Clear scope:** **Check this account only** in All users mode checks the account running the app, not all users. Bulk operations remain restricted to the existing three-step wizard and explicit UAC/confirmation.
+5. **Verification:** CI covers x64/ARM64, localized GUI initialization and status logic. A real Windows domain and 100/150/200% DPI/HE RTL pilot is required before any Stable promotion.
+
+[Preview.17 release notes](docs/releases/v1.0.1-preview.17.md)
+
 ## Preview v1.0.1-preview.16 — simplify Current user and make All users predictable
 
 1. **Current user needs no setup or cleanup:** Removed the duplicate Current user wizard and the entire portable EXE self-deletion helper/CLI. For the signed-in user, Check & Diagnose, Re-register WAM, and Reset Office sign-in are direct, separately confirmed main-screen actions; the app EXE remains in place.

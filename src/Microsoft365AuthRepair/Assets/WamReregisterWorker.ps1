@@ -87,6 +87,13 @@ try {
             [IO.File]::WriteAllText($path, $line)
         } catch { }
     }
+    if ($markerCreated -and $rc -ne 0) {
+        # Keep the result receipt independent of the optional repair log.
+        try {
+            [IO.File]::WriteAllText((Join-Path $markers ($RunId + '.failed')),
+                [DateTimeOffset]::UtcNow.ToString('O'))
+        } catch { }
+    }
     # A non-elevated task may lack permission to remove an admin-created task.
     # The attempt marker prevents repeat execution; Task Scheduler also expires.
     try {

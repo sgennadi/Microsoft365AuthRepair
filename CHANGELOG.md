@@ -1,3 +1,12 @@
+## 1.0.1-preview.17 — 2026-11-15 — Preview
+
+1. Added a localized read-only All users status viewer with refresh and wrapped HiDPI table.
+2. Record per-task metadata in protected local ProgramData and cross-check per-user attempted/success/failure markers against current Task Scheduler state.
+3. Treat absent tasks, missing receipts and scheduler-only completion as unconfirmed; a WAM worker success is never proof of Office sign-in.
+4. Do not auto-clean error/attention tasks. Preserve queued/running workers and existing administrator-only explicit cleanup.
+5. Rename the All users main check to “Check this account only” to avoid confusing account-scoped health diagnostics with bulk task tracking.
+6. Add UI/logic smoke tests. Stable 1.0.0 remains untouched; 200% DPI, RTL, and live domain task execution require a Windows pilot.
+
 ## 1.0.1-preview.16 — 2026-11-15 — Preview
 
 1. Removed unused Current user wizard, portable EXE self-deletion and cleanup helper command line; current-user repair stays direct.
