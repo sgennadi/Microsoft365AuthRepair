@@ -1,3 +1,11 @@
+## Preview v1.0.1-preview.9 — Settings, guided WAM diagnosis and one-step report review
+
+1. Replaces the almost-empty **Advanced** checkbox with a compact **Settings** dialog. All-users scheduling options (EXE / PowerShell, run now / next logon) and optional portable EXE deletion have clear descriptions; destructive reset stays visible on the main window.
+2. **Check & Diagnose** now explains read-only AAD BrokerPlugin, device authentication, Azure AD PRT and WAM account signals, their limitations and what to do next. It does not claim to test a real Office login or fix Entra registration.
+3. **Generate report** immediately opens a separate reviewed **Send anonymously** dialog. The user-requested **I approve** checkbox defaults checked; **Send anonymously must still be clicked explicitly**. No data is transmitted when opening or generating the report.
+4. Redundant **Check receiver** buttons have been removed. Report receipts are validated against GitHub Issues; a failed attempt remains in the local queue with a specific, nonsecret error category.
+5. EN / RU / HE UI, accessibility and HiDPI support are included. Stable v1.0.0, WAM repair algorithms, Google gateway and existing tokens are unchanged. [Preview.9 notes](docs/releases/v1.0.1-preview.9.md).
+
 ## Preview v1.0.1-preview.8 — clearer repair actions and Windows-style buttons
 
 1. The ambiguous `Repair sign-in` button is now `Re-register WAM`, explicitly separated from a read-only `Check Entra / WAM` action and a destructive `Reset Office sign-in` action.
