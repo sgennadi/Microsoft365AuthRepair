@@ -309,6 +309,12 @@ internal sealed class MainForm : Form
                     "Права администратора не нужны. Затрагивается только авторизация этого пользователя.",
                     "אין צורך בהרשאת מנהל. רק התחברות המשתמש הזה תושפע.");
 
+        privilege.Text = admin;
+        var target = everyone
+            ? UpdateUiText.T("All existing profiles on this PC",
+                "Все существующие профили на этом ПК",
+                "כל הפרופילים הקיימים במחשב זה")
+            : desktopUser.Name;
         reset.AccessibleDescription = $"Full identity reset, target: {target}. {admin}";
         repair.AccessibleDescription = $"Re-register WAM, target: {target}. {admin}";
     }
