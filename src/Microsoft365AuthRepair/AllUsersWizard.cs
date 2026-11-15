@@ -60,6 +60,12 @@ internal sealed class AllUsersWizard : Form
         Margin = new Padding(0, 12, 0, 8)
     };
     private readonly Label maintenanceStatus = UiTheme.Caption(string.Empty);
+    private readonly LinkLabel taskStatusLink = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(0, 12, 0, 5)
+    };
     private readonly CheckBox removeUnusedWorkers = new()
     {
         AutoSize = true, Checked = false, Visible = false,
@@ -185,6 +191,13 @@ internal sealed class AllUsersWizard : Form
             "Крайняя мера: удаляет кеши входа Office/WAM, требует повторного входа, только EXE. Перед запуском появится предупреждение.",
             "מוצא אחרון: מחיקת מטמון Office/WAM וכניסה מחדש; EXE בלבד. נדרשת אזהרה נוספת.")));
 
+        taskStatusLink.Text = UpdateUiText.T(
+            "View recent task statuses (read-only)",
+            "Последние задания и их состояние (только просмотр)",
+            "הצגת מצב משימות אחרונות (קריאה בלבד)");
+        taskStatusLink.AccessibleName = taskStatusLink.Text;
+        taskStatusLink.Enabled = elevated;
+        Add(actionPage, taskStatusLink);
         // Administrator-only, explicitly requested housekeeping. No cleanup
         // occurs when "Finish" is clicked. Pending or running tasks remain.
         maintenanceLink.Text = UpdateUiText.T(
@@ -273,6 +286,12 @@ internal sealed class AllUsersWizard : Form
         repairWam.CheckedChanged += (_, _) => RefreshSummary();
         resetOffice.CheckedChanged += (_, _) => RefreshSummary();
         maintenanceLink.LinkClicked += async (_, _) => await InspectMaintenanceAsync();
+        taskStatusLink.LinkClicked += (_, _) =>
+        {
+            if (maintenanceBusy || !elevated || !Identity.IsElevated()) return;
+            using var viewer = new AllUsersTaskStatusForm();
+            viewer.ShowDialog(this);
+        };
         cleanCompletedTasks.Click += async (_, _) => await CleanMaintenanceAsync();
         viewport.SizeChanged += (_, _) => WrapDescriptions();
         UiIcons.SetWindowIcon(this);
@@ -337,9 +356,9 @@ internal sealed class AllUsersWizard : Form
             if (IsDisposed || Disposing) return;
             maintenanceSnapshot = result;
             maintenanceStatus.Text = UpdateUiText.T(
-                $"Tasks: {result.Total}; pending: {result.Pending}; running: {result.Running}; completed: {result.Completed}; expired: {result.Expired}; unrelated: {result.Foreign}.",
-                $"Заданий: {result.Total}; ожидают: {result.Pending}; выполняются: {result.Running}; завершены: {result.Completed}; просрочены: {result.Expired}; другие: {result.Foreign}.",
-                $"משימות: {result.Total}; ממתינות: {result.Pending}; פעילות: {result.Running}; הושלמו: {result.Completed}; פגו: {result.Expired}; אחרות: {result.Foreign}.");
+                $"Tasks: {result.Total}; queued: {result.Pending}; running: {result.Running}; completed: {result.Completed}; expired: {result.Expired}; attention: {result.Attention}; unrelated: {result.Foreign}.",
+                $"Заданий: {result.Total}; ожидают: {result.Pending}; выполняются: {result.Running}; завершены: {result.Completed}; просрочены: {result.Expired}; требуют проверки: {result.Attention}; другие: {result.Foreign}.",
+                $"משימות: {result.Total}; ממתינות: {result.Pending}; פעילות: {result.Running}; הושלמו: {result.Completed}; פגו: {result.Expired}; דורשות בדיקה: {result.Attention}; אחרות: {result.Foreign}.");
             removeUnusedWorkers.Visible = result.PowerShellWorkerExists || result.ExeWorkerExists;
             removeUnusedWorkers.Checked = false;
             removeUnusedWorkers.Enabled = result.Total == 0;
@@ -534,6 +553,7 @@ internal sealed class AllUsersWizard : Form
             wizard.ScheduleOnly && wizard.SelectedAction == AllUsersWizardAction.RepairWam &&
             !wizard.cleanCompletedTasks.Visible &&
             !wizard.removeUnusedWorkers.Checked &&
+            !wizard.taskStatusLink.Enabled &&
             wizard.summary.Text.Contains("PowerShell", StringComparison.Ordinal) &&
             UiTheme.VerifyButtons(wizard, 3);
     }
