@@ -724,6 +724,40 @@ internal sealed class MainForm : Form
             return;
         }
 
+        // Preflight the exact list before confirmation. These are existing
+        // profile registry entries, not every possible future account.
+        // Freeze the reviewed profile list so new profiles cannot silently
+        // become targets between confirmation and scheduling.
+        List<WindowsProfile>? reviewedProfiles = null;
+        int onlineAtReview = 0;
+        if (everyone)
+        {
+            try
+            {
+                reviewedProfiles = UserProfiles.Enumerate();
+                var onlineSids = Native.FindExplorerSessions().Values
+                    .SelectMany(x => x).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                onlineAtReview = reviewedProfiles.Count(x => onlineSids.Contains(x.Sid));
+                if (reviewedProfiles.Count == 0)
+                {
+                    ShowStatus(UpdateUiText.T(
+                        "No existing Windows profiles found. No tasks were created.",
+                        "Существующие профили Windows не найдены. Задания не создавались.",
+                        "לא נמצאו פרופילים קיימים. לא נוצרו משימות."),
+                        UiGlyph.Info);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowStatus(UpdateUiText.T(
+                    "Unable to enumerate existing user profiles: ",
+                    "Не удалось получить список существующих профилей: ",
+                    "לא ניתן לקבל רשימת פרופילים: ") + ex.GetType().Name, UiGlyph.Error);
+                return;
+            }
+        }
+
         // Even the non-destructive current-user action makes changes to AppX
         // registration and may interrupt Microsoft apps. Require a clear consent.
         if (!everyone && !full)
@@ -751,11 +785,20 @@ internal sealed class MainForm : Form
                     "להריץ תיקון WAM לכל המשתמשים? ייתכן שיישומי Office ייסגרו.")
                 : target;
             if (everyone)
+            {
                 prompt += Environment.NewLine + UpdateUiText.T(
                     $"Method: {selectedMode}; " + (onlySchedule ? "next sign-in only" : "run now where online, otherwise next sign-in"),
                     $"Способ: {(selectedMode == ScheduledWorkerMode.PowerShell ? "PowerShell" : "EXE")}; " +
                         (onlySchedule ? "только при следующем входе" : "сразу у активных, у остальных при входе"),
                     $"שיטה: {selectedMode}; " + (onlySchedule ? "רק בכניסה הבאה" : "כעת למשתמשים פעילים"));
+                int count = reviewedProfiles!.Count;
+                int immediate = onlySchedule ? 0 : onlineAtReview;
+                int later = count - immediate;
+                prompt += Environment.NewLine + UpdateUiText.T(
+                    $"Existing profiles: {count}; start now: {immediate}; at next sign-in: {later}. No new-user profiles are enrolled.",
+                    $"Существующих профилей: {count}; запуск сейчас: {immediate}; при следующем входе: {later}. Новые профили не добавляются.",
+                    $"פרופילים קיימים: {count}; כעת: {immediate}; בכניסה הבאה: {later}. פרופילים חדשים לא נכללים.");
+            }
             if (!everyone)
                 prompt += Environment.NewLine + UpdateUiText.T(
                     "Selected desktop user: ", "Выбранный пользователь: ", "המשתמש שנבחר: ") + desktopUser.Name;
@@ -786,7 +829,7 @@ internal sealed class MainForm : Form
             {
                 if (!elevated) return full ? Repair.Run(quiet: true) == 0 ? "SUCCESS" : "FAILED" :
                     Repair.ReRegister(quiet: true) == 0 ? "SUCCESS" : "FAILED";
-                return ScheduleAdminRepair(everyone, full, selectedMode, onlySchedule);
+                return ScheduleAdminRepair(everyone, full, selectedMode, onlySchedule, reviewedProfiles);
             });
             detail.Text = result;
             detail.Visible = false;
@@ -822,9 +865,10 @@ internal sealed class MainForm : Form
     }
 
     private static string ScheduleAdminRepair(bool everyone, bool full,
-        ScheduledWorkerMode mode, bool onlySchedule)
+        ScheduledWorkerMode mode, bool onlySchedule,
+        List<WindowsProfile>? reviewedProfiles = null)
     {
-        var profiles = UserProfiles.Enumerate();
+        var profiles = reviewedProfiles ?? UserProfiles.Enumerate();
         var sessions = Native.FindExplorerSessions();
         var selected = profiles;
         if (!everyone)
