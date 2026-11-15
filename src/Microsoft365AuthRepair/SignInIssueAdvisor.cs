@@ -103,6 +103,36 @@ internal static class SignInIssueAdvisor
         };
     }
 
+    // Codes supported by the local guide. Do not suggest unknown codes as
+    // verified fixes, and never query a remote service as the user types.
+    private static readonly string[] KnownCodes =
+    [
+        "1001", "80090016",
+        "AADSTS50034", "AADSTS50055", "AADSTS50057", "AADSTS50058",
+        "AADSTS50072", "AADSTS50076", "AADSTS50079", "AADSTS500121",
+        "AADSTS50126", "AADSTS50127", "AADSTS50131", "AADSTS50155",
+        "AADSTS53000", "AADSTS53001", "AADSTS53003", "AADSTS70046"
+    ];
+
+    internal static IReadOnlyList<string> MatchingCodes(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return [];
+        var prefix = input.Trim().ToUpperInvariant();
+        if (prefix.StartsWith("AADSTS", StringComparison.Ordinal))
+            prefix = prefix["AADSTS".Length..];
+        else if (prefix.StartsWith("0X", StringComparison.Ordinal))
+            prefix = prefix[2..];
+        // Avoid echoing or retaining pasted account data, tokens or logs.
+        if (prefix.Length == 0 || prefix.Length > 8 ||
+            !Regex.IsMatch(prefix, @"^\d{1,8}$", RegexOptions.CultureInvariant))
+            return [];
+
+        return KnownCodes
+            .Where(x => (x.StartsWith("AADSTS", StringComparison.Ordinal)
+                    ? x["AADSTS".Length..] : x).StartsWith(prefix, StringComparison.Ordinal))
+            .Take(7).ToArray();
+    }
+
     internal static string ExtractCode(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
@@ -124,7 +154,13 @@ internal static class SignInIssueAdvisor
 
     internal static bool SelfTest()
     {
-        return ExtractCode("AADSTS53003: blocked") == "AADSTS53003" &&
+        return MatchingCodes("AADSTS530").Contains("AADSTS53003") &&
+            MatchingCodes("530").Count == 3 &&
+            MatchingCodes("AADSTS5007").Contains("AADSTS50076") &&
+            MatchingCodes("0x8009").Contains("80090016") &&
+            MatchingCodes("email@example.com").Count == 0 &&
+            MatchingCodes("").Count == 0 &&
+            ExtractCode("AADSTS53003: blocked") == "AADSTS53003" &&
             Explain("AADSTS53003: blocked").Scope == SignInIssueScope.Administrator &&
             Explain("AADSTS50076").Scope == SignInIssueScope.UserAction &&
             Explain("AADSTS50155").Scope == SignInIssueScope.Administrator &&
