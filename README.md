@@ -1,3 +1,12 @@
+## Preview v1.0.1-preview.12 — All users wizard, collapsible diagnosis and sign-in error guide
+
+1. **All users mini wizard:** Choosing All users opens a 3-step guide: protected EXE or PowerShell (WAM only), start for active sessions or defer to next sign-in, then Save only / Re-register WAM / Reset Office sign-in. The default is Save only; Reset is available with EXE only.
+2. **Explicit confirmation after UAC:** A user can continue directly to a repair from the wizard, including for existing domain/local profiles. Elevation carries only a validated request to show the confirmation dialog. Neither the wizard nor UAC auto-runs the repair. Profiles without any Windows profile on the machine are excluded.
+3. **Collapse Check & Diagnose:** Collapse results hides all six signal tiles and optional technical details while preserving a compact status line; Expand restores the result. No new diagnostics or uploads are performed when toggling.
+4. **Offline sign-in code guide:** Explain sign-in error accepts codes such as AADSTS53003, 1001, and 0x80090016. It distinguishes local repair suggestions from MFA, Conditional Access, tenant/device, and TPM scenarios; never requests credentials or uploads the pasted code.
+5. The existing updater, universal diagnostics gateway, scheduling, WAM re-registration and full-reset implementations are unchanged. **Stable v1.0.0** remains untouched.
+6. Windows x64/ARM64 CI and UI smoke tests are mandatory; real UAC, scheduling and 100/150/200% RTL/DPI pilot tests are still needed. [Preview.12 release notes](docs/releases/v1.0.1-preview.12.md).
+
 ## Preview v1.0.1-preview.11 — readable diagnostic signals and adaptive dialogs
 
 1. **Check & Diagnose:** six localized Entra/WAM signal tiles show AAD BrokerPlugin, Entra join, AD domain, device authentication, Azure AD PRT, and WAM default account. Positive, attention, neutral, and unknown states are visually distinguished and explicitly labeled.
