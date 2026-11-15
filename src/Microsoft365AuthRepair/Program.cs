@@ -48,6 +48,7 @@ internal static class Program
                     ("Send review icon", () => UiIcons.Verify(sendReview)),
                     ("Settings state", () => settings.TaskMethod == ScheduledWorkerMode.PowerShell &&
                         settings.ScheduleOnly && !settings.CleanupAfterRepair),
+                    ("Responsive geometry", ResponsiveLayout.SelfTest),
                     ("Review approval default", () => sendReview.ConsentInitiallyChecked &&
                         sendReview.ConfirmedIssue is null),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
@@ -59,7 +60,7 @@ internal static class Program
                     ("Legacy logon cleanup", FirstLogonDeployment.SelfTest),
                     ("Portable cleanup", PortableSelfCleanup.SelfTest),
                     ("Main buttons", () => UiTheme.VerifyButtons(form, 7)),
-                    ("Updater buttons", () => UiTheme.VerifyButtons(updater, 5)),
+                    ("Updater buttons", () => UiTheme.VerifyButtons(updater, 4)),
                     ("Reports buttons", () => UiTheme.VerifyButtons(reports, 4)),
                     ("Settings buttons", () => UiTheme.VerifyButtons(settings, 2)),
                     ("Review buttons", () => UiTheme.VerifyButtons(sendReview, 2))
