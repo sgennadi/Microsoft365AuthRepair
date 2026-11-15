@@ -16,6 +16,9 @@ internal sealed class MainForm : Form
     private readonly Label status = UiTheme.Caption(string.Empty);
     private readonly PictureBox statusGlyph = UiIcons.CreateStatus();
     private readonly DiagnosticResultCard diagnosticResult = new();
+    private readonly Label officeLicenseSummary = UiTheme.Caption(string.Empty);
+    private OfficeLicenseSnapshot? lastOfficeLicense;
+    private string? recommendedHelpKey;
     private readonly LinkLabel technicalToggle = new()
     {
         AutoSize = true,
@@ -94,12 +97,12 @@ internal sealed class MainForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(20), AutoScroll = true,
-            ColumnCount = 1, RowCount = 11,
+            ColumnCount = 1, RowCount = 12,
             BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas
         };
         mainLayout = root;
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var row = 0; row < 10; row++)
+        for (var row = 0; row < 11; row++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         // Only the canvas receives unused space on a maximized window.
         // Never stretch a read-only textbox into an empty grey rectangle.
@@ -182,8 +185,11 @@ internal sealed class MainForm : Form
 
         // Immediately visible diagnosis, before any optional raw details.
         root.Controls.Add(diagnosticResult, 0, 7);
-        root.Controls.Add(technicalToggle, 0, 8);
-        root.Controls.Add(detail, 0, 9);
+        officeLicenseSummary.Visible = false;
+        officeLicenseSummary.Margin = new Padding(4, 8, 0, 4);
+        root.Controls.Add(officeLicenseSummary, 0, 8);
+        root.Controls.Add(technicalToggle, 0, 9);
+        root.Controls.Add(detail, 0, 10);
         Controls.Add(ResponsiveLayout.Center(this, root, 1340));
         Controls.Add(progress);
         progress.BringToFront();
@@ -208,7 +214,9 @@ internal sealed class MainForm : Form
         diagnosticToggle.LinkClicked += (_, _) => SetDiagnosticsCollapsed(!diagnosticsCollapsed);
         root.SizeChanged += (_, _) =>
         {
-            status.MaximumSize = new Size(Math.Max(160, root.ClientSize.Width - 120), 0);
+            int available = Math.Max(180, root.ClientSize.Width - root.Padding.Horizontal - 25);
+            status.MaximumSize = new Size(Math.Max(160, available - 115), 0);
+            officeLicenseSummary.MaximumSize = new Size(available, 0);
         };
         var hints = new ToolTip { AutoPopDelay = 12000, InitialDelay = 500, ReshowDelay = 200 };
         hints.SetToolTip(repair, "Re-register Microsoft.AAD.BrokerPlugin for the selected user. No credentials or sign-in caches are deleted; apps may briefly close.");
@@ -283,7 +291,7 @@ internal sealed class MainForm : Form
         diagnose.Click += async (_, _) => await RunDiagnoseAsync();
         signInErrors.LinkClicked += (_, _) =>
         {
-            using var errorGuide = new SignInErrorDialog();
+            using var errorGuide = new SignInErrorDialog(recommendedHelpKey);
             errorGuide.ShowDialog(this);
         };
         diagnostics.Click += (_, _) => new DiagnosticsCenter().ShowDialog(this);
@@ -393,6 +401,8 @@ internal sealed class MainForm : Form
         // Evaluation uses current UI language and this exact user's context.
         // No network call or repeated AppX probe when the language changes.
         var report = WamHealthAnalysis.Evaluate(raw, !elevated || desktopUser.SameAsProcess);
+        recommendedHelpKey = SignInKnowledgeBase.Recommend(
+            report, !elevated || desktopUser.SameAsProcess).Key;
         if (scope.SelectedIndex == 1)
             report = report with
             {
@@ -404,18 +414,27 @@ internal sealed class MainForm : Form
             };
 
         detail.Text = report.Details;
+        if (lastOfficeLicense is not null)
+        {
+            officeLicenseSummary.Text = OfficeLicenseDiagnostics.Summary(lastOfficeLicense);
+            detail.Text += Environment.NewLine + Environment.NewLine +
+                OfficeLicenseDiagnostics.Details(lastOfficeLicense);
+        }
+        officeLicenseSummary.Visible = lastOfficeLicense is not null && !diagnosticsCollapsed;
         diagnosticResult.ShowResult(report);
         diagnosticToggle.Visible = true;
         statusBanner!.Visible = true;
         if (diagnosticsCollapsed)
         {
             diagnosticResult.Visible = false;
+            officeLicenseSummary.Visible = false;
             technicalToggle.Visible = false;
             detail.Visible = false;
         }
         else
         {
             diagnosticResult.Visible = true;
+            officeLicenseSummary.Visible = lastOfficeLicense is not null;
             technicalToggle.Visible = true;
             detail.Visible = technicalWasOpen;
         }
@@ -619,6 +638,9 @@ internal sealed class MainForm : Form
 
         // Capture WinForms checkbox state on UI thread before Task.Run.
         lastRawDiagnostic = null;
+        lastOfficeLicense = null;
+        recommendedHelpKey = null;
+        officeLicenseSummary.Visible = false;
         diagnosticsCollapsed = false;
         technicalWasOpen = false;
         diagnosticToggle.Visible = false;
@@ -713,6 +735,9 @@ internal sealed class MainForm : Form
     {
         if (busy) return;
         lastRawDiagnostic = null;
+        lastOfficeLicense = null;
+        recommendedHelpKey = null;
+        officeLicenseSummary.Visible = false;
         diagnosticsCollapsed = false;
         technicalWasOpen = false;
         detail.Visible = false;
@@ -725,11 +750,28 @@ internal sealed class MainForm : Form
         {
             // dsregcmd / WAM signals are account and session specific.
             // Never show another administrator's results as the desktop user's.
-            var raw = await Task.Run(Repair.DiagnoseReport);
+            var data = await Task.Run(() =>
+            {
+                var raw = Repair.DiagnoseReport();
+                OfficeLicenseSnapshot? license = null;
+                try
+                {
+                    license = OfficeLicenseDiagnostics.Capture(
+                        !elevated || desktopUser.SameAsProcess);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                    or System.Security.SecurityException or InvalidOperationException)
+                {
+                    // Licensing is a separate optional read-only probe. WAM
+                    // results must remain usable even if Office is absent.
+                }
+                return (raw, license);
+            });
             if (IsDisposed || Disposing) return;
-            lastRawDiagnostic = raw;
+            lastRawDiagnostic = data.raw;
+            lastOfficeLicense = data.license;
             detail.Visible = false;
-            DisplayDiagnosis(raw);
+            DisplayDiagnosis(data.raw);
             // Make the summary visible rather than scrolling to a textbox.
             mainLayout?.ScrollControlIntoView(diagnosticResult);
         }
@@ -737,6 +779,9 @@ internal sealed class MainForm : Form
         {
             if (IsDisposed || Disposing) return;
             lastRawDiagnostic = null;
+            lastOfficeLicense = null;
+            recommendedHelpKey = null;
+            officeLicenseSummary.Visible = false;
             diagnosticToggle.Visible = false;
             diagnosticResult.ClearResult();
             statusBanner!.Visible = true;
