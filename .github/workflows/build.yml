@@ -1,0 +1,80 @@
+name: Microsoft 365 Auth Repair - Build x64 ARM64
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'MODULES.lock'
+      - '.github/workflows/build.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'MODULES.lock'
+      - '.github/workflows/build.yml'
+permissions:
+  contents: read
+concurrency:
+  group: ms365-auth-repair-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows-publish:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@v4
+      - name: Validate private shared module access
+        shell: pwsh
+        env:
+          MODULES_READ_TOKEN: ${{ secrets.MODULES_READ_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:MODULES_READ_TOKEN)) {
+            throw 'Configure secret MODULES_READ_TOKEN (fine-grained PAT, Contents: Read) for the two private shared module repositories.'
+          }
+      - name: Checkout canonical UniversalUpdater
+        uses: actions/checkout@v4
+        with:
+          repository: sgennadi/UniversalUpdater
+          ref: a909a7dd033799f5e0783fb8085478c3e3b52c42
+          token: ${{ secrets.MODULES_READ_TOKEN }}
+          path: modules/UniversalUpdater
+          persist-credentials: false
+      - name: Checkout canonical UniversalDiagnostics
+        uses: actions/checkout@v4
+        with:
+          repository: sgennadi/UniversalDiagnocticsModule
+          ref: 16ce43a34fc99002f69bbf86673fb8e7c451c662
+          token: ${{ secrets.MODULES_READ_TOKEN }}
+          path: modules/UniversalDiagnocticsModule
+          persist-credentials: false
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build and archive both architectures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          foreach ($rid in @('win-x64','win-arm64')) {
+            dotnet publish src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj -c Release -r $rid --self-contained true -o "publish/$rid" -p:PublishSingleFile=true -p:PublishAot=false -p:PublishTrimmed=false
+            if ($LASTEXITCODE -ne 0) { throw "Publish failed: $rid" }
+            if (-not (Test-Path "publish/$rid/Microsoft365AuthRepair.exe")) { throw "Missing EXE: $rid" }
+            Compress-Archive -Path "publish/$rid/Microsoft365AuthRepair.exe" -DestinationPath "artifacts/Microsoft365AuthRepair-$rid.zip" -Force
+          }
+          Get-ChildItem artifacts -Filter '*.zip' | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content artifacts/SHA256SUMS.txt -Encoding ascii
+      - name: Smoke test x64 GUI
+        shell: pwsh
+        run: |
+          & "publish/win-x64/Microsoft365AuthRepair.exe" --ui-self-test
+          if ($LASTEXITCODE -ne 0) { throw 'x64 GUI smoke test failed' }
+      - name: Upload artifacts (not a stable release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Microsoft365AuthRepair-preview-x64-arm64
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14

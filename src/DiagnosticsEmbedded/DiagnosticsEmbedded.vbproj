@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Microsoft365AuthRepair.DiagnosticsEmbedded</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <OptionStrict>On</OptionStrict>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../modules/UniversalDiagnocticsModule/embedded/dotnet/UniversalDiagnosticsEmbedded.vb" Link="UniversalDiagnosticsEmbedded.vb" />
+  </ItemGroup>
+</Project>
