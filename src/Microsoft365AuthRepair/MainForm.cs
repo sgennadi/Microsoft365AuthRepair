@@ -16,11 +16,6 @@ internal sealed class MainForm : Form
     private readonly Label status = UiTheme.Caption(string.Empty);
     private readonly PictureBox statusGlyph = UiIcons.CreateStatus();
     private readonly Label advancedExplanation = UiTheme.Caption(string.Empty);
-    private readonly CheckBox includeFirstSignIn = new()
-    {
-        AutoSize = true, Checked = true, Visible = false,
-        Text = "Also prepare one-time repair for users who have NEVER signed in on this PC (runs at their first sign-in)"
-    };
     private readonly CheckBox deletePortableAfterRepair = new()
     {
         AutoSize = true, Checked = false, Visible = false,
@@ -96,7 +91,6 @@ internal sealed class MainForm : Form
         scope.SelectedIndex = preferAllUsers && elevated ? 1 : 0;
         scope.Enabled = true;
         target.Controls.Add(privilege);
-        root.Controls.Add(includeFirstSignIn);
         root.Controls.Add(target, 0, 3);
 
         var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
@@ -154,7 +148,6 @@ internal sealed class MainForm : Form
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
         hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
-        hints.SetToolTip(includeFirstSignIn, "Admin-approved first sign-in deployment. Uses a protected per-machine EXE and an HKLM Run entry for up to 90 days; users already scheduled are excluded.");
         hints.SetToolTip(deletePortableAfterRepair, "Optional: after a successful current-user operation, close this portable instance and delete only its own EXE. Never removes the protected all-users worker.");
 
         showAdvanced.CheckedChanged += (_, _) =>
@@ -207,10 +200,6 @@ internal sealed class MainForm : Form
         scope.Items.Add(UiStrings.T("all"));
         scope.SelectedIndex = Math.Min(previous, scope.Items.Count - 1);
         showAdvanced.Text = UpdateUiText.T("Advanced", "Дополнительно", "מתקדם");
-        includeFirstSignIn.Text = UpdateUiText.T(
-            "Include users who have never signed in (one-time repair at first sign-in; 90 days)",
-            "Включить тех, кто ещё не входил (один раз при первом входе; 90 дней)",
-            "גם משתמשים שלא התחברו עדיין (פעם אחת בכניסה הראשונה; 90 יום)");
         deletePortableAfterRepair.Text = UpdateUiText.T(
             "Delete this portable EXE after successful repair for current user",
             "Удалить этот переносной EXE после успешного восстановления текущего пользователя",
@@ -251,7 +240,6 @@ internal sealed class MainForm : Form
         busy = isBusy;
         repair.Enabled = reset.Enabled = diagnose.Enabled = diagnostics.Enabled = updates.Enabled = !isBusy;
         scope.Enabled = !isBusy;
-        includeFirstSignIn.Enabled = !isBusy && scope.SelectedIndex == 1;
         deletePortableAfterRepair.Enabled = !isBusy && scope.SelectedIndex == 0;
         progress.Visible = isBusy;
     }
@@ -263,8 +251,6 @@ internal sealed class MainForm : Form
     {
         if (scope.SelectedIndex < 0) return;
         bool everyone = scope.SelectedIndex == 1;
-        includeFirstSignIn.Visible = everyone;
-        includeFirstSignIn.Enabled = everyone && !busy;
         deletePortableAfterRepair.Visible = !everyone && showAdvanced.Checked &&
             PortableSelfCleanup.IsEligible();
         deletePortableAfterRepair.Enabled = !everyone && !busy;
@@ -358,18 +344,12 @@ internal sealed class MainForm : Form
             var caption = !full && everyone
                 ? UpdateUiText.T("Confirm repair for all users", "Подтвердите восстановление всех пользователей", "אישור תיקון לכל המשתמשים")
                 : UiStrings.T("confirmTitle");
-            if (everyone && includeFirstSignIn.Checked)
-                prompt += Environment.NewLine + UpdateUiText.T(
-                    "Also includes users with NO Windows profile yet: runs once at their first sign-in for up to 90 days.",
-                    "Включая пользователей БЕЗ профиля Windows: одноразовое выполнение при первом входе в течение 90 дней.",
-                    "כולל משתמשים ללא פרופיל Windows: פעולה חד-פעמית בכניסה הראשונה במשך 90 יום.");
             if (MessageBox.Show(this, prompt, caption, MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
                 return;
         }
 
         // Capture WinForms checkbox state on UI thread before Task.Run.
-        var includeNeverLoggedIn = everyone && includeFirstSignIn.Checked;
         SetBusy(true);
         ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
@@ -378,7 +358,7 @@ internal sealed class MainForm : Form
             {
                 if (!elevated) return full ? Repair.Run(quiet: true) == 0 ? "SUCCESS" : "FAILED" :
                     Repair.ReRegister(quiet: true) == 0 ? "SUCCESS" : "FAILED";
-                return ScheduleAdminRepair(everyone, full, includeNeverLoggedIn);
+                return ScheduleAdminRepair(everyone, full);
             });
             detail.AppendText(result + Environment.NewLine);
             var failed = result.Contains("FAILED", StringComparison.Ordinal);
@@ -401,7 +381,7 @@ internal sealed class MainForm : Form
         finally { SetBusy(false); }
     }
 
-    private static string ScheduleAdminRepair(bool everyone, bool full, bool includeNeverLoggedIn)
+    private static string ScheduleAdminRepair(bool everyone, bool full)
     {
         var profiles = UserProfiles.Enumerate();
         var sessions = Native.FindExplorerSessions();
@@ -417,12 +397,20 @@ internal sealed class MainForm : Form
         Scheduling.PrepareProtectedExe();
         var onlineSids = sessions.Values.SelectMany(s => s).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var results = new List<string>();
-        // Register before dispatching online users: another running worker
-        // might lock the shared EXE while an installer refreshes its copy.
-        if (everyone && includeNeverLoggedIn)
+        // Preview.5 mistakenly enrolled accounts with NO existing profile.
+        // Only actual entries in Windows ProfileList should be processed.
+        // Remove our own legacy machine-wide first-logon trigger, if present.
+        if (everyone)
         {
-            try { results.Add(FirstLogonDeployment.Register(full ? "full" : "reregister")); }
-            catch (Exception ex) { results.Add("FAILED first-sign-in campaign: " + ex.GetType().Name); }
+            try
+            {
+                if (FirstLogonDeployment.DisableLegacyIfPresent())
+                    results.Add("Legacy new-user auto-run was disabled.");
+            }
+            catch (Exception ex)
+            {
+                results.Add("FAILED to remove legacy new-user trigger: " + ex.GetType().Name);
+            }
         }
         foreach (var profile in selected)
         {

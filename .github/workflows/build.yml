@@ -110,7 +110,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $exe = (Resolve-Path "publish/win-x64/Microsoft365AuthRepair.exe").Path
-          foreach ($arguments in @('--first-logon INVALID', '--cleanup-helper INVALID')) {
+          foreach ($arguments in @('--first-logon INVALID', '--first-logon aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '--cleanup-helper INVALID')) {
             $test = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru -Wait
             if ($test.ExitCode -ne 2) {
               throw "Background worker accepted invalid input: $arguments ($($test.ExitCode))"
@@ -184,7 +184,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj | head -1)"
-          test "$version" = "1.0.1-preview.5"
+          test "$version" = "1.0.1-preview.6"
           tag="v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag already exists; refusing to overwrite a published preview."
@@ -196,5 +196,5 @@ jobs:
             release-assets/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Microsoft 365 Auth Repair $version (Preview)" \
-            --notes-file docs/releases/v1.0.1-preview.5.md \
+            --notes-file docs/releases/v1.0.1-preview.6.md \
             --prerelease

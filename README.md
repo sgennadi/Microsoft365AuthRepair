@@ -1,3 +1,13 @@
+## Preview v1.0.1-preview.6 — existing Windows profiles only
+
+1. **All users** now targets **only real profiles already registered on this PC**, including offline local/domain accounts with a present user profile directory. New accounts that have never signed in have no old user WAM/Office cache to repair.
+2. Preview.5's optional machine-wide first-sign-in campaign is removed. The program no longer accepts `--first-logon`, and an elevated All users run safely deletes its own legacy HKLM Run entry if installed, without touching unrelated startup entries.
+3. Already present users get SID-specific Task Scheduler jobs. If online, an interactive user job starts immediately; if offline, their task runs at the next sign-in. The job runs in the **actual user's Windows token**, not SYSTEM/admin, and requires no password.
+4. Existing tasks point to a protected worker at `%ProgramData%\Microsoft365AuthRepair\Microsoft365AuthRepair.exe`, **not** a user Downloads copy. Removing the portable app therefore does not break pending jobs. If the *protected worker itself* is deleted, no scheduled task can work without restoring a trusted copy; a GPO-managed deployment can provide that recovery path.
+5. A standalone PowerShell script is **not** the recommended fallback for this project because AppX repair already requires the AppX cmdlet and some environments block PowerShell. A dedicated, signed .NET worker plus a managed recovery policy is preferable if stronger resilience is required.
+6. The separate checkbox for opt-in deletion of a current user's portable EXE remains available. This must never delete the protected worker while jobs are queued.
+7. Stable v1.0.0 remains untouched. Before broad deployment verify actual per-user scheduled tasks on controlled x64/ARM64 workstations, including an offline domain user.
+
 ## Preview v1.0.1-preview.5 — automatic EXE update and first-sign-in user support
 
 1. **Update** now performs end-to-end EXE replacement for same-user writable installs, with SHA-256 and PE architecture validation, a trusted out-of-process helper, `.bak` rollback, post-replacement GUI health test and automatic restart. Does not require the operator to extract or copy the EXE manually.

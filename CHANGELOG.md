@@ -1,3 +1,11 @@
+## 1.0.1-preview.6 — 2026-11-15 — Preview
+
+1. Restricted All users processing to Windows profiles already present on this PC; no first-ever sign-in repair.
+2. Removed the unnecessary new-profile HKLM Run deployment and the --first-logon worker path.
+3. Added safe legacy HKLM Run cleanup for administrator-initiated all-users operations.
+4. Retained protected ProgramData worker EXE and SID-specific scheduled logon tasks, independent of the user's portable EXE path.
+5. Extended CI to verify valid-looking legacy first-logon commands cannot run.
+
 ## 1.0.1-preview.5 — 2026-11-15 — Preview
 
 1. Update replaces the EXE automatically with the canonical UniversalUpdater transaction, rollback and health-check before restart.

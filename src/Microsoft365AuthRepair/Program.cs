@@ -14,8 +14,8 @@ internal static class Program
                 return Scheduling.Worker(args[1], args[2], args[3], args[4]);
             if (args.Length == 2 && args[0] == "--update-helper")
                 return UpdateHandoff.RunHelper(args[1]);
-            if (args.Length == 2 && args[0] == "--first-logon")
-                return FirstLogonDeployment.Worker(args[1]);
+            // First-logon auto-repair was removed: users without an existing
+            // Windows profile have no previous WAM cache to recover.
             if (args.Length == 2 && args[0] == "--cleanup-helper")
                 return PortableSelfCleanup.RunHelper(args[1]);
             if (args.Length == 1 && args[0] == "--ui-self-test")
