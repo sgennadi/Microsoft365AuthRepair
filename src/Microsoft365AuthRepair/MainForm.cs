@@ -159,11 +159,11 @@ internal sealed class MainForm : Form
         hints.SetToolTip(repair, "Re-register Microsoft.AAD.BrokerPlugin for the selected user. No credentials or sign-in caches are deleted; apps may briefly close.");
         hints.SetToolTip(reset, "Destructive: remove Office/WAM identity and sign-in caches for the selected users. Re-authentication required; explicit confirmation.");
         hints.SetToolTip(diagnose, "Read-only health check with plain-language findings and next steps. It does not prove Office sign-in works.");
-        hints.SetToolTip(diagnostics, "Review a sanitized diagnostic report before saving it locally.");
+        hints.SetToolTip(diagnostics, "Generate a sanitized report, review the exact JSON and explicitly choose whether to send.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
         hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
-        hints.SetToolTip(settings, "All-users task mode, optional portable cleanup and diagnostic receiver.");
+        hints.SetToolTip(settings, "All-users task options and optional cleanup of your own portable EXE.");
 
         scope.SelectedIndexChanged += (_, _) => UpdateScopeExplanation();
         settings.Click += (_, _) =>
@@ -226,9 +226,9 @@ internal sealed class MainForm : Form
         repair.Text = UiStrings.T("repair");
         reset.Text = UiStrings.T("full");
         repairExplanation.Text = UpdateUiText.T(
-            "1. Check Entra/WAM: read-only. 2. Re-register WAM: restores the broker registration without deleting cached sign-in data.",
-            "1. Проверить Entra/WAM: без изменений. 2. Перерегистрировать WAM: восстановить регистрацию без удаления данных входа.",
-            "1. בדיקת Entra/WAM: ללא שינויים. 2. רישום WAM מחדש: ללא מחיקת נתוני התחברות.");
+            "1. Check & Diagnose: read-only, explains what to do next. 2. Re-register WAM: repairs broker registration without clearing sign-in caches.",
+            "1. Проверить и объяснить: диагностика и следующие действия. 2. Перерегистрировать WAM: восстановление без очистки кеша входа.",
+            "1. בדוק ואבחן: בדיקה והמלצות ללא שינויים. 2. רישום WAM מחדש: ללא ניקוי מטמון התחברות.");
         resetExplanation.Text = UpdateUiText.T(
             "3. If sign-in still fails: reset Office/WAM sign-in caches. This signs users out and requires explicit confirmation.",
             "3. Если вход всё ещё не работает: сбросить кеши входа Office/WAM. Потребуется повторный вход и подтверждение.",
