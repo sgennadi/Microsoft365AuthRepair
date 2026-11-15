@@ -4,12 +4,15 @@ using System.Text.RegularExpressions;
 namespace Microsoft365AuthRepair;
 
 internal enum WamHealthLevel { Healthy, AttentionRequired, RepairRecommended }
+internal enum WamSignalState { Good, Attention, Neutral, Unknown }
+internal sealed record WamHealthSignal(string Key, string Label, string Value, WamSignalState State);
 
 // Short on-screen findings are separate from the complete technical report.
 internal sealed record WamHealthResult(WamHealthLevel Level, string Summary, string Details)
 {
     internal IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
     internal IReadOnlyList<string> NextSteps { get; init; } = Array.Empty<string>();
+    internal IReadOnlyList<WamHealthSignal> Signals { get; init; } = Array.Empty<WamHealthSignal>();
 }
 
 internal static class WamHealthAnalysis
@@ -206,10 +209,42 @@ internal static class WamHealthAnalysis
             "Проверка без изменений. Данные авторизации не изменены и никуда не отправлены.",
             "בדיקה לקריאה בלבד. לא בוצעו שינויים ולא נשלח מידע."));
 
+        // Six explicitly categorized, localized values for an immediately
+        // readable dashboard. No tenant, user, device identity or raw dsregcmd
+        // data appears in these signals. Not joined is neutral: it can be
+        // intentional for on-premises or personal computers.
+        var unknown = T("Unknown", "Неизвестно", "לא ידוע");
+        var yes = T("Yes", "Да", "כן");
+        var no = T("No", "Нет", "לא");
+        var signals = new WamHealthSignal[]
+        {
+            new("BrokerPlugin", "AAD BrokerPlugin",
+                brokerPresent ? T("Present", "Есть", "קיים") :
+                brokerMissing ? T("Missing", "Отсутствует", "חסר") : unknown,
+                brokerPresent ? WamSignalState.Good : brokerMissing ? WamSignalState.Attention : WamSignalState.Unknown),
+            new("AzureAdJoined", T("Entra join", "Entra ID", "צירוף Entra"),
+                joined == "YES" ? yes : joined == "NO" ? no : unknown,
+                joined == "YES" ? WamSignalState.Good : joined == "NO" ? WamSignalState.Neutral : WamSignalState.Unknown),
+            new("DomainJoined", T("AD domain", "Домен AD", "דומיין AD"),
+                domain == "YES" ? yes : domain == "NO" ? no : unknown,
+                domain == "YES" ? WamSignalState.Good : domain == "NO" ? WamSignalState.Neutral : WamSignalState.Unknown),
+            new("DeviceAuthStatus", T("Device auth", "Доверие устройства", "אימות מכשיר"),
+                auth == "SUCCESS" ? T("Success", "Успешно", "תקין") :
+                Begins(auth, "FAILED") ? T("Failed", "Ошибка", "נכשל") : unknown,
+                auth == "SUCCESS" ? WamSignalState.Good : Begins(auth, "FAILED") ? WamSignalState.Attention : WamSignalState.Unknown),
+            new("AzureAdPrt", "Azure AD PRT",
+                prt == "YES" ? yes : prt == "NO" ? no : unknown,
+                prt == "YES" ? WamSignalState.Good : prt == "NO" ? WamSignalState.Attention : WamSignalState.Unknown),
+            new("WamDefaultSet", T("WAM account", "Учётная запись WAM", "חשבון WAM"),
+                wam == "YES" ? T("Set", "Настроена", "מוגדר") :
+                wam == "NO" ? T("Not set", "Не настроена", "לא מוגדר") : unknown,
+                wam == "YES" ? WamSignalState.Good : wam == "NO" ? WamSignalState.Attention : WamSignalState.Unknown)
+        };
         return new WamHealthResult(level, summary, sb.ToString())
         {
             Findings = findings.ToArray(),
-            NextSteps = advice.ToArray()
+            NextSteps = advice.ToArray(),
+            Signals = signals
         };
     }
 
@@ -221,7 +256,15 @@ internal static class WamHealthAnalysis
             "DeviceAuthStatus : SUCCESS\nAzureAdPrt : YES\nWamDefaultSet : YES";
         const string rejected = "BrokerPlugin: PRESENT\nAzureAdJoined : YES\n" +
             "DeviceAuthStatus : FAILED\nAzureAdPrt : NO\nWamDefaultSet : YES\nAADSTS50155";
-        return Evaluate(healthy, true).Level == WamHealthLevel.Healthy &&
+        var known = Evaluate(healthy, true);
+        var noJoin = Evaluate(healthy.Replace("AzureAdJoined : YES", "AzureAdJoined : NO"), true);
+        var unknown = Evaluate("", true);
+        return known.Signals.Count == 6 &&
+            known.Signals[0].State == WamSignalState.Good &&
+            known.Signals[3].State == WamSignalState.Good &&
+            noJoin.Signals[1].State == WamSignalState.Neutral &&
+            unknown.Signals.All(x => x.State == WamSignalState.Unknown) &&
+            known.Level == WamHealthLevel.Healthy &&
             Evaluate(healthy, true).NextSteps.Count > 0 &&
             Evaluate(healthy, true).Findings.Count > 0 &&
             Evaluate(missing, true).Level == WamHealthLevel.RepairRecommended &&
