@@ -26,9 +26,13 @@ internal static class Program
                 using var form = new MainForm();
                 using var updater = new UpdateCenter();
                 using var reports = new DiagnosticsCenter(uiSelfTest: true);
+                using var settings = new SettingsForm(ScheduledWorkerMode.PowerShell,
+                    initialScheduleOnly: true, initialCleanup: true, canCleanup: false,
+                    target: "Test desktop user", elevated: false);
                 form.CreateControl();
                 updater.CreateControl();
                 reports.CreateControl();
+                settings.CreateControl();
                 // On a headless Windows CI runner the GUI has no console.
                 // Record boolean test names only; never log user identities.
                 var tests = new (string Name, Func<bool> Run)[]
@@ -37,6 +41,9 @@ internal static class Program
                     ("Main icon", () => UiIcons.Verify(form)),
                     ("Updater icon", () => UiIcons.Verify(updater)),
                     ("Reports icon", () => UiIcons.Verify(reports)),
+                    ("Settings icon", () => UiIcons.Verify(settings)),
+                    ("Settings state", () => settings.TaskMethod == ScheduledWorkerMode.PowerShell &&
+                        settings.ScheduleOnly && !settings.CleanupAfterRepair),
                     ("What's New format", UpdateUiText.SelfTest),
                     ("Diagnostic payload", M365DiagnosticPayload.SelfTest),
                     ("Updater helper", UpdateHandoff.SelfTest),
@@ -44,9 +51,10 @@ internal static class Program
                     ("Scheduled worker resource", Scheduling.SelfTest),
                     ("Legacy logon cleanup", FirstLogonDeployment.SelfTest),
                     ("Portable cleanup", PortableSelfCleanup.SelfTest),
-                    ("Main buttons", () => UiTheme.VerifyButtons(form, 6)),
+                    ("Main buttons", () => UiTheme.VerifyButtons(form, 7)),
                     ("Updater buttons", () => UiTheme.VerifyButtons(updater, 5)),
-                    ("Reports buttons", () => UiTheme.VerifyButtons(reports, 5))
+                    ("Reports buttons", () => UiTheme.VerifyButtons(reports, 5)),
+                    ("Settings buttons", () => UiTheme.VerifyButtons(settings, 5))
                 };
                 var outcomes = new List<string>();
                 bool passed = true;
