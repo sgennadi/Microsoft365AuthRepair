@@ -102,9 +102,9 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. Microsoft Learn guides for WAM, Entra, MFA, licensing and network issues.\n2. Native read-only Office vNext and shared activation checks.\n3. Office/Visio/Project 2024 Volume key and KMS diagnostics.\n4. Verified 2024 Preview key removal before separately confirmed KMS/MAK activation.",
-        "1. Рекомендации Microsoft Learn: WAM, Entra, MFA, лицензии и сеть.\n2. Собственная проверка vNext и Shared Activation на C#, без VBS.\n3. Диагностика KMS и ключей Office, Visio и Project 2024.\n4. Удаление проверенного Preview-ключа ДО KMS/MAK с отдельным подтверждением.",
-        "1. מדריכי Microsoft Learn ל-WAM, Entra, MFA, רישוי ורשת.\n2. בדיקות vNext ו-Shared Activation ללא VBS.\n3. בדיקת רישיונות KMS ל-Office, Visio ו-Project 2024.\n4. הסרת Preview מזוהה לפני הפעלת KMS/MAK באישור נפרד.");
+        "1. Automatically suggest the official KMS client key for each verified Office/Project/Visio 2024 Volume edition.\n2. Show the suggested GVLK as copyable read-only text; no extra selection button.\n3. Use the matching key automatically for KMS activation after confirmation.\n4. Unsupported Preview, Retail and subscription editions remain protected.",
+        "1. При выборе Office/Project/Visio 2024 Volume автоматически предлагается официальный KMS-ключ.\n2. GVLK виден в поле для копирования, без лишней кнопки выбора.\n3. При подтверждённой KMS-активации ключ подставляется автоматически.\n4. Preview неизвестной редакции, Retail и подписочные версии защищены.",
+        "1. מפתח KMS רשמי מוצע אוטומטית עבור Office/Project/Visio 2024 Volume.\n2. המפתח מוצג בשדה לקריאה ולהעתקה, בלי כפתור נוסף.\n3. בעת הפעלת KMS באישור, המפתח המתאים נבחר אוטומטית.\n4. גרסאות Preview לא מזוהות, Retail ומנוי מוגנות.");
 
     internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
 
