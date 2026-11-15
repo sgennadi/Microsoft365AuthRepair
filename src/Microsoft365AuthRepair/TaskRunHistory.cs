@@ -39,6 +39,24 @@ internal static class TaskRunHistory
             throw new IOException("Refusing redirected status path.");
     }
 
+    // The repair EXE/script must be readable by ordinary users, but task
+    // history contains SIDs and must not inherit that worker-folder RX grant.
+    // Run again after Scheduling.ProtectDirectory() resets ACLs recursively.
+    internal static void ProtectRootIfPresent()
+    {
+        RejectReparse(Scheduling.ProtectedRoot);
+        RejectReparse(Root);
+        if (!Directory.Exists(Root)) return;
+        var icacls = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            "System32", "icacls.exe");
+        var response = ExternalCommand.Run(icacls,
+            [Root, "/inheritance:r", "/remove:g", "*S-1-5-32-545",
+             "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F",
+             "/T", "/L"], 60);
+        if (response.ExitCode != 0)
+            throw new IOException("Could not restrict private task status folder ACL.");
+    }
+
     internal static void Record(TrackedTaskRun entry)
     {
         if (!Identity.IsElevated())
@@ -48,7 +66,8 @@ internal static class TaskRunHistory
 
         RejectReparse(Scheduling.ProtectedRoot);
         RejectReparse(Root);
-        Directory.CreateDirectory(Root); // ProtectedRoot already has admin-only write ACL.
+        Directory.CreateDirectory(Root);
+        ProtectRootIfPresent(); // Restrict history to SYSTEM/Administrators before writing.
         RejectReparse(Root);
 
         var path = Path.Combine(Root, entry.TaskName + ".json");
