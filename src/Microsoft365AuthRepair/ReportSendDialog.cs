@@ -114,7 +114,7 @@ internal sealed class ReportSendDialog : Form
         actions.Controls.Add(send);
         actions.Controls.Add(keepLocal);
         root.Controls.Add(actions, 0, 5);
-        Controls.Add(root);
+        Controls.Add(ResponsiveLayout.Center(this, root, 920));
         CancelButton = keepLocal;
 
         UiIcons.SetWindowIcon(this);
