@@ -8,10 +8,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Microsoft365AuthRepair</AssemblyName>
     <RootNamespace>Microsoft365AuthRepair</RootNamespace>
-    <Version>1.0.1-preview.12</Version>
+    <Version>1.0.1-preview.13</Version>
     <AssemblyVersion>1.0.1.0</AssemblyVersion>
-    <FileVersion>1.0.1.12</FileVersion>
-    <InformationalVersion>1.0.1-preview.12</InformationalVersion>
+    <FileVersion>1.0.1.13</FileVersion>
+    <InformationalVersion>1.0.1-preview.13</InformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/Microsoft365AuthRepair.ico</ApplicationIcon>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
