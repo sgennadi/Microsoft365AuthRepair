@@ -47,6 +47,17 @@ internal static class OfficeVolumeLicensing
             ["VisioStd2024Volume"] = "JMMVY-XFNQC-KK4HK-9H7R3-WQQTV"
         };
 
+    // Last five characters of Microsoft 2024 commercial-preview KMS keys
+    // (Office/Project/Visio respectively). Partial keys are never secret.
+    // Do NOT infer Preview status only from the Office build number.
+    private static readonly IReadOnlyDictionary<string, string> PreviewSuffixes =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProPlus2024Volume"] = "TX3T2",
+            ["ProjectPro2024Volume"] = "JB89R",
+            ["VisioPro2024Volume"] = "WXGKQ"
+        };
+
     private static string? ReadConfigValue(string key)
     {
         foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
@@ -98,6 +109,19 @@ internal static class OfficeVolumeLicensing
         Regex.IsMatch(label, @"(?i)(?<!\d)2026(?!\d)",
             RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
+    internal static bool IsKnownPreviewKey(string? sku, string? partial)
+    {
+        if (sku is null || partial is null) return false;
+        return PreviewSuffixes.TryGetValue(sku, out var expected) &&
+            expected.Equals(partial, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Exact 2024 Volume edition must be present. A previous Preview key does
+    // not make a retail/Microsoft 365 subscription suitable for KMS activation.
+    private static bool ProductReleaseMatches(string sku, IReadOnlyList<string> releaseIds) =>
+        releaseIds.Any(x => x.Equals(sku, StringComparison.OrdinalIgnoreCase) ||
+            x.Equals(sku + "-Preview", StringComparison.OrdinalIgnoreCase));
+
     private static string ProductStatus(string status) => status switch
     {
         "1" => "Licensed",
@@ -139,13 +163,19 @@ internal static class OfficeVolumeLicensing
                         (x.Length == sku.Length || x[sku.Length] == '-')) ?? "";
                     var combinedLabel = name + " " + Str(entry, "Description") + " " + foundRelease;
                     var partial = Str(entry, "PartialProductKey");
+                    var knownPreviewKey = IsKnownPreviewKey(sku, partial);
+                    // An exact published Preview GVLK suffix is a much more
+                    // reliable identifier than a label containing "Preview".
                     rows.Add(new OfficeVolumeProduct(
                         id, name.Length > 0 ? name : "Unknown Office product",
                         Str(entry, "Description"), sku, partial.Length == 5 ? partial : "",
                         ProductStatus(Str(entry, "LicenseStatus")),
-                        IsPreviewLabel(combinedLabel) || IsUnverified2026(combinedLabel),
-                        Gvlk.ContainsKey(sku) && foundRelease.Equals(sku, StringComparison.OrdinalIgnoreCase) &&
-                        !IsUnverified2026(combinedLabel) && !IsPreviewLabel(combinedLabel),
+                        IsPreviewLabel(combinedLabel) || knownPreviewKey ||
+                            IsUnverified2026(combinedLabel),
+                        Gvlk.ContainsKey(sku) &&
+                            foundRelease.Equals(sku, StringComparison.OrdinalIgnoreCase) &&
+                            !IsUnverified2026(combinedLabel) &&
+                            !IsPreviewLabel(combinedLabel) && !knownPreviewKey,
                         Str(entry, "KeyManagementServiceMachine") is { Length: > 0 } configured ? configured : null,
                         Port(entry, "KeyManagementServicePort"),
                         Str(entry, "DiscoveredKeyManagementServiceMachineName") is { Length: > 0 } discovered ? discovered : null,
@@ -170,13 +200,26 @@ internal static class OfficeVolumeLicensing
             IsUnverified2026(product.Name + " " + product.Description))
             return false;
         var sku = DetectSku(product.Name + " " + product.Description);
-        if (sku is null || !Gvlk.ContainsKey(sku)) return false;
-        return inventory.ProductReleaseIds.Any(x =>
-            x.Equals(sku + "-Preview", StringComparison.OrdinalIgnoreCase));
+        if (sku is null || !Gvlk.ContainsKey(sku) ||
+            !ProductReleaseMatches(sku, inventory.ProductReleaseIds))
+            return false;
+
+        // Preview names are not consistent across old WMI/C2R builds.
+        // Accept a well-known Preview KMS suffix, or an explicit "-Preview"
+        // product release with a Preview-labeled product. Never guess from
+        // merely having a non-GVLK partial key (it may be a valid MAK).
+        return IsKnownPreviewKey(sku, product.PartialKey) ||
+            IsPreviewLabel(product.Name + " " + product.Description) &&
+            inventory.ProductReleaseIds.Contains(sku + "-Preview", StringComparer.OrdinalIgnoreCase);
     }
 
     internal static bool CanApply(OfficeVolumeProduct product, OfficeVolumeInventory inventory) =>
         product.CanChange || CanReplacePreview(product, inventory);
+
+    // Preflight must be conservative: we will not remove the target product's
+    // only key if its exact Preview identity is not independently verified.
+    internal static bool ShouldRemoveOldKey(OfficeVolumeProduct product, OfficeVolumeInventory inventory) =>
+        CanReplacePreview(product, inventory);
 
     internal static string? GvlkFor(OfficeVolumeProduct product) =>
         DetectSku(product.Name + " " + product.Description) is { } key &&
@@ -297,12 +340,6 @@ internal static class OfficeVolumeLicensing
         OfficeVolumeProduct product, OfficeVolumeInventory oldInventory,
         bool mak, string? inputKey, OfficeKmsEndpoint? kms)
     {
-        if (!System.Security.Principal.WindowsIdentity.GetCurrent().Owner!.IsWellKnown(
-            System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid))
-        {
-            // Actual UAC elevation is checked independently; membership isn't
-            // sufficient on its own for a filtered admin token.
-        }
         if (!Identity.IsElevated())
             return new(false, "Privileges", "Run as administrator and confirm the selected product.", false, false);
         if (!CanApply(product, oldInventory))
@@ -327,8 +364,37 @@ internal static class OfficeVolumeLicensing
 
         try
         {
-            // Install first. If installation fails, keep the preview key.
-            // No arbitrary key is ever removed to make way for an unknown SKU.
+            // The original Preview key must be removed before attempting to
+            // activate the final 2024 license. Only the selected Office
+            // ApplicationID + exact ActivationId + last-five may be removed.
+            // This cannot be rolled back without the full old key. The UI
+            // therefore requires a separate destructive consent beforehand.
+            if (removeOldPreview)
+            {
+                using (var old = LoadOfficeProduct(oldRow.ActivationId))
+                {
+                    var directSku = DetectSku(Str(old, "Name") + " " + Str(old, "Description"));
+                    if (!Str(old, "ApplicationID").Equals(OfficeApplicationId, StringComparison.OrdinalIgnoreCase) ||
+                        !Str(old, "PartialProductKey").Equals(oldRow.PartialKey, StringComparison.OrdinalIgnoreCase) ||
+                        directSku != DetectSku(oldRow.Name + " " + oldRow.Description) ||
+                        !IsKnownPreviewKey(directSku, oldRow.PartialKey) &&
+                            !(IsPreviewLabel(Str(old, "Name") + " " + Str(old, "Description")) &&
+                                fresh.ProductReleaseIds.Contains(directSku + "-Preview", StringComparer.OrdinalIgnoreCase)))
+                        return new(false, "Recheck Preview key",
+                            "Preview identity could not be independently verified. No keys removed.",
+                            false, false);
+                    Invoke(old, "UninstallProductKey", null, null);
+                    oldRemoved = true;
+                }
+                // Confirm the Preview key is actually absent before replacing.
+                var afterRemoval = Read().Products.FirstOrDefault(x => x.ActivationId == oldRow.ActivationId);
+                if (afterRemoval is not null && afterRemoval.HasKey &&
+                    afterRemoval.PartialKey.Equals(oldRow.PartialKey, StringComparison.OrdinalIgnoreCase))
+                    return new(false, "Remove Preview key",
+                        "Preview key removal could not be verified. Check Office status before retrying.",
+                        oldRemoved, false);
+            }
+
             using var serviceSearch = new ManagementObjectSearcher(WmiPath,
                 "SELECT * FROM SoftwareLicensingService");
             using var services = serviceSearch.Get();
@@ -343,14 +409,16 @@ internal static class OfficeVolumeLicensing
             var sku = DetectSku(oldRow.Name + " " + oldRow.Description);
             var expectedSuffix = key[^5..];
             var target = now.Products.FirstOrDefault(x =>
-                x.ActivationId != (removeOldPreview ? oldRow.ActivationId : "") &&
+                (!removeOldPreview || x.ActivationId != oldRow.ActivationId) &&
                 x.PartialKey.Equals(expectedSuffix, StringComparison.OrdinalIgnoreCase) &&
                 DetectSku(x.Name + " " + x.Description) == sku &&
                 !x.IsPreview);
             if (target is null)
                 return new(false, "Verify new key",
-                    "New key was submitted but no matching non-Preview Office license was verified. Old key was retained; recheck product configuration.",
-                    false, false);
+                    oldRemoved
+                        ? "New 2024 key was submitted but not verified. Preview key was removed. Check Office licensing status before retrying."
+                        : "New key was submitted but no matching 2024 Volume license was verified. Check product configuration.",
+                    oldRemoved, false);
 
             // All KMS settings are applied to the Office SKU ONLY, never to
             // SoftwareLicensingService global KMS settings used by Windows.
@@ -363,23 +431,6 @@ internal static class OfficeVolumeLicensing
                 }
                 // Activation is part of the separately confirmed action.
                 Invoke(selected, "Activate", null, null);
-            }
-
-            if (removeOldPreview &&
-                oldRow.ActivationId != target.ActivationId &&
-                oldRow.IsPreview && oldRow.HasKey)
-            {
-                // Remove only the previously identified Office Preview key
-                // after a supported replacement was installed and activated.
-                using var old = LoadOfficeProduct(oldRow.ActivationId);
-                if (Str(old, "PartialProductKey") == oldRow.PartialKey &&
-                    Str(old, "ApplicationID").Equals(OfficeApplicationId,
-                        StringComparison.OrdinalIgnoreCase) &&
-                    IsPreviewLabel(Str(old, "Name") + " " + Str(old, "Description")))
-                {
-                    Invoke(old, "UninstallProductKey", null, null);
-                    oldRemoved = true;
-                }
             }
 
             var verified = Read().Products.Any(x =>
@@ -397,7 +448,9 @@ internal static class OfficeVolumeLicensing
             // No secret key or raw WMI output is returned to the UI.
             return new(false, "Licensing operation",
                 "Office activation was not completed: " + ex.GetType().Name +
-                ". Refresh inventory and check the product state.", oldRemoved, false);
+                (oldRemoved ? ". Preview key was removed; repair or install the correct 2024 key." :
+                    ". Original key was not removed.") +
+                " Refresh inventory and check the product state.", oldRemoved, false);
         }
         finally
         {
@@ -419,10 +472,20 @@ internal static class OfficeVolumeLicensing
         };
         var inv = new OfficeVolumeInventory([preview], ["VisioPro2024Volume-Preview"], null);
         var safe = new OfficeVolumeInventory([valid], ["VisioPro2024Volume"], null);
+        var realPreview = preview with { PartialKey = "WXGKQ",
+            Name = "Office 24, Office24VisioPro2024VL_KMS_Client edition" };
+        var realPreviewInventory = new OfficeVolumeInventory([realPreview], ["VisioPro2024Volume"], null);
+        var unrelated = preview with { PartialKey = "QWERT" };
         var invalid = preview with { Name = "Office 2026 Preview", ProductId = "" };
         return DetectSku(preview.Name) == "VisioPro2024Volume" &&
             IsPreviewLabel(preview.Name) && IsUnverified2026(invalid.Name) &&
             CanReplacePreview(preview, inv) && !CanReplacePreview(invalid, inv) &&
+            IsKnownPreviewKey("ProPlus2024Volume", "TX3T2") &&
+            IsKnownPreviewKey("ProjectPro2024Volume", "JB89R") &&
+            IsKnownPreviewKey("VisioPro2024Volume", "WXGKQ") &&
+            !IsKnownPreviewKey("VisioPro2024Volume", "GCVGB") &&
+            CanReplacePreview(realPreview with { IsPreview = true }, realPreviewInventory) &&
+            !CanReplacePreview(unrelated, realPreviewInventory) &&
             CanApply(valid, safe) && !CanApply(invalid, inv) &&
             GvlkFor(valid) == "B7TN8-FJ8V3-7QYCP-HQPMV-YY89G" &&
             ValidateHost("kms.example.com") == "kms.example.com" &&
