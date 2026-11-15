@@ -1,3 +1,13 @@
+## 1.0.1-preview.18 — 2026-11-16 — Preview
+
+1. Introduced an evidence-based Smart Repair recommendation and read-only preflight (running apps, Microsoft HTTPS transport, clock and AppX policy hints).
+2. Added separate 2024 Volume and Microsoft 365 subscription activation health. Optional Microsoft-supplied vnextdiag remains read-only and raw identity/license output is never kept.
+3. Explicitly confirmed retry of a selected, verified failed WAM task only at the next sign-in; never auto-retry an Office identity reset.
+4. Optional Entra sign-in audit via Graph Correlation ID, Device Code or certificate, adapted from BitKeyBridge. Enforces audit-only Graph permissions and memory-only session reuse.
+5. Post-repair local recheck and distinct user-reported application sign-in verification, without claiming a cloud sign-in was proven.
+6. Compact localized EN/RU/HE UI, DPI-aware Smart Repair and verification controls.
+7. Added pure decision and security-policy self-tests. Stable 1.0.0 unchanged; live Microsoft 365/Entra and 100/150/200% DPI pilot still required.
+
 ## 1.0.1-preview.17 — 2026-11-15 — Preview
 
 1. Added a localized read-only All users status viewer with refresh and wrapped HiDPI table.
