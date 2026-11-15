@@ -6,12 +6,15 @@ namespace Microsoft365AuthRepair;
 // PortableSelfCleanup, which is restricted to the desktop user's own EXE.
 // Never remove an outstanding logon task or its required ProgramData worker.
 internal sealed record ScheduledWorkerSnapshot(
-    int Total, int Pending, int Running, int Completed, int Expired, int Foreign,
+    int Total, int Pending, int Running, int Completed, int Expired, int Attention, int Foreign,
     bool PowerShellWorkerExists, bool ExeWorkerExists)
 {
     internal int Removable => Completed + Expired;
     internal bool CanRemoveWorkers => Total == 0;
 }
+
+internal sealed record ScheduledTaskRuntime(string Name, string UserSid,
+    string Kind, string Mode, string Action, int LastResult);
 
 internal static class ScheduledWorkerMaintenance
 {
@@ -92,13 +95,22 @@ internal static class ScheduledWorkerMaintenance
                     } catch { }
                 }
                 $hasRun = ([datetime]$t.LastRunTime).Year -gt 2000
-                $completed = -not $isRunning -and $hasRun -and
-                    [int]$t.LastTaskResult -eq 0
+                $lastCode = [int]$t.LastTaskResult
+                $completed = -not $isRunning -and $hasRun -and $lastCode -eq 0
+                $attention = -not $isRunning -and $hasRun -and $lastCode -ne 0
                 $kind = if ($isRunning) { 'Running' }
+                    elseif ($attention) { 'Attention' }
                     elseif ($completed) { 'Completed' }
                     elseif ($expired) { 'Expired' }
                     else { 'Pending' }
-                $owned += [pscustomobject]@{ Name = $name; Kind = $kind }
+                $workerMode = if ($validPs1) { 'PowerShell' } else { 'EXE' }
+                $workerAction = if ($validPs1) { 'reregister' }
+                    elseif ($arguments.EndsWith(' full')) { 'full' }
+                    else { 'reregister' }
+                $owned += [pscustomobject]@{
+                    Name = $name; UserSid = $principalSid; Kind = $kind
+                    Mode = $workerMode; Action = $workerAction; LastResult = $lastCode
+                }
             } catch {
                 $foreign++
             }
@@ -124,17 +136,57 @@ internal static class ScheduledWorkerMaintenance
                 Running = @($owned | Where-Object { $_.Kind -eq 'Running' }).Count
                 Completed = @($owned | Where-Object { $_.Kind -eq 'Completed' }).Count
                 Expired = @($owned | Where-Object { $_.Kind -eq 'Expired' }).Count
+                Attention = @($owned | Where-Object { $_.Kind -eq 'Attention' }).Count
                 Foreign = $foreign
             } | ConvertTo-Json -Compress
             """);
 
-    private static JsonDocument Execute(string script)
+    private static string ToStatusJsonScript() => BaseScript + """
+            
+            [pscustomobject]@{
+                Tasks = @($owned | ForEach-Object {
+                    [pscustomobject]@{
+                        Name = $_.Name; UserSid = $_.UserSid; Kind = $_.Kind
+                        Mode = $_.Mode; Action = $_.Action; LastResult = $_.LastResult
+                    }
+                })
+            } | ConvertTo-Json -Compress -Depth 5
+            """;
+
+    // Read-only: same strict task-name, principal and action checks as cleanup.
+    // No repair, task deletion or WAM action can be triggered from this query.
+    internal static IReadOnlyList<ScheduledTaskRuntime> InspectTaskStates()
+    {
+        if (!Identity.IsElevated())
+            throw new UnauthorizedAccessException("Administrator access required to inspect all-user tasks.");
+        using var json = Execute(ToStatusJsonScript(), maxLength: 262144);
+        var tasks = json.RootElement.GetProperty("Tasks");
+        var results = new List<ScheduledTaskRuntime>();
+        foreach (var item in tasks.EnumerateArray())
+        {
+            var name = item.GetProperty("Name").GetString() ?? "";
+            var sid = item.GetProperty("UserSid").GetString() ?? "";
+            var kind = item.GetProperty("Kind").GetString() ?? "";
+            var mode = item.GetProperty("Mode").GetString() ?? "";
+            var action = item.GetProperty("Action").GetString() ?? "";
+            var code = item.GetProperty("LastResult").GetInt32();
+            if (name.Length < 30 || sid.Length < 15 ||
+                kind is not ("Pending" or "Running" or "Completed" or "Expired" or "Attention") ||
+                mode is not ("EXE" or "PowerShell") ||
+                action is not ("reregister" or "full"))
+                continue;
+            results.Add(new ScheduledTaskRuntime(name, sid, kind, mode, action, code));
+        }
+        return results;
+    }
+
+    private static JsonDocument Execute(string script, int maxLength = 8192)
     {
         var response = ExternalCommand.RunPowerShell(script, 35);
         if (response.ExitCode != 0)
             throw new IOException("Could not inspect our scheduled tasks (exit code " + response.ExitCode + ").");
         var json = response.StdOut.Trim();
-        if (json.Length == 0 || json.Length > 8192)
+        if (json.Length == 0 || json.Length > maxLength)
             throw new IOException("Unexpected Task Scheduler response.");
         return JsonDocument.Parse(json);
     }
@@ -160,7 +212,7 @@ internal static class ScheduledWorkerMaintenance
         var item = json.RootElement;
         int Int(string key) => item.GetProperty(key).GetInt32();
         return new ScheduledWorkerSnapshot(Int("Total"), Int("Pending"),
-            Int("Running"), Int("Completed"), Int("Expired"), Int("Foreign"),
+            Int("Running"), Int("Completed"), Int("Expired"), Int("Attention"), Int("Foreign"),
             ExistsSafe(Ps1), ExistsSafe(Exe));
     }
 
@@ -198,16 +250,18 @@ internal static class ScheduledWorkerMaintenance
         }
         return "Removed old tasks: " + removed + ". Removed unused workers: " + filesRemoved +
             ". Remaining tasks: " + after.Total + " (" + after.Pending +
-            " pending, " + after.Running + " running, " + after.Foreign + " other).";
+            " pending, " + after.Running + " running, " + after.Attention +
+            " attention, " + after.Foreign + " other).";
     }
 
     internal static bool SelfTest()
     {
-        var safe = new ScheduledWorkerSnapshot(0, 0, 0, 0, 0, 0, true, true);
+        var safe = new ScheduledWorkerSnapshot(0, 0, 0, 0, 0, 0, 0, true, true);
         var waiting = safe with { Total = 1, Pending = 1 };
         var running = safe with { Total = 1, Running = 1 };
         return safe.CanRemoveWorkers && !waiting.CanRemoveWorkers &&
             !running.CanRemoveWorkers && waiting.Removable == 0 &&
+            (safe with { Total = 1, Attention = 1 }).Removable == 0 &&
             (safe with { Total = 2, Completed = 1, Expired = 1 }).Removable == 2 &&
             Ps1.EndsWith(@"Microsoft365AuthRepair\WamReregisterWorker.ps1",
                 StringComparison.OrdinalIgnoreCase) &&
