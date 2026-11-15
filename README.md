@@ -1,6 +1,7 @@
 ## Preview v1.0.1-preview.10 — responsive local report capture and single review
 
-1. **Generate report** performs the read-only Entra/WAM collection outside the UI thread, keeping the report window responsive even when AppX or dsregcmd are slow.
+1. **Check & Diagnose** now displays an immediately visible diagnostic summary card in the main window: condition, key findings and clear next steps. Technical details are collapsed, not stretched into a giant empty textbox. The initial main-window height also adapts to the monitor.
+2. **Generate report** performs the read-only Entra/WAM collection outside the UI thread, keeping the report window responsive even when AppX or dsregcmd are slow.
 2. The redundant raw JSON text panel is removed from **Diagnostics & reports**. The exact allowlisted JSON appears only in the separate **Send anonymously** confirmation dialog.
 3. **Send saved report** opens a previously saved report for review. Report creation still never sends anything automatically. The approval checkbox remains initially checked, but explicit **Send anonymously** is required.
 4. The compact report window preserves its local queue and status messaging. EN/RU/HE, responsive layout, x64/ARM64 build checks, and the same Google gateway remain in place.
