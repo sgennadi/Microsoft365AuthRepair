@@ -40,8 +40,8 @@ internal sealed class MainForm : Form
         Text = $"Microsoft 365 Auth Repair v{Repair.Version}";
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
-        MinimumSize = new Size(610, 460);
-        Size = new Size(795, 655);
+        MinimumSize = new Size(785, 520);
+        Size = new Size(1030, 715);
         Font = UiTheme.BodyFont();
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
@@ -135,7 +135,7 @@ internal sealed class MainForm : Form
         hints.SetToolTip(reset, "Advanced: remove Office and WAM identity caches for the selected user scope.");
         hints.SetToolTip(diagnose, "Check Hybrid Join, device authentication, PRT and WAM status.");
         hints.SetToolTip(diagnostics, "Review a sanitized diagnostic report before saving it locally.");
-        hints.SetToolTip(updates, "Check Stable / Preview releases and verify downloaded packages.");
+        hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
 
         showAdvanced.CheckedChanged += (_, _) => advancedPanel.Visible = showAdvanced.Checked;
@@ -163,6 +163,9 @@ internal sealed class MainForm : Form
             await CheckForUpdatesAsync();
         };
         ApplyText();
+        var lastUpdate = UpdateHandoff.ConsumeResult();
+        if (lastUpdate is not null) ShowStatus(lastUpdate, lastUpdate.StartsWith("Updated successfully", StringComparison.Ordinal)
+            ? UiGlyph.Success : UiGlyph.Error);
     }
 
     private void ApplyText()
@@ -186,12 +189,16 @@ internal sealed class MainForm : Form
         updates.AccessibleDescription = availableUpdate is null
             ? "Check for Stable and Preview updates"
             : $"Update available: {availableUpdate.Version}";
-        if (!SystemInformation.HighContrast)
+        if (!SystemInformation.HighContrast && updates is ModernButton modern)
         {
-            updates.BackColor = availableUpdate is null ? SystemColors.Control
-                : Color.FromArgb(216, 242, 227);
+            // Soft green notification is visible without garish badge colors.
+            modern.BackColor = availableUpdate is null
+                ? Color.White : Color.FromArgb(221, 245, 230);
+            modern.Invalidate();
         }
         logs.Text = UiStrings.T("logs");
+        foreach (var button in new[] { repair, reset, diagnose, diagnostics, updates, logs })
+            button.AccessibleName = button.Text;
         advancedExplanation.Text = UiStrings.T("advanced");
         if (string.IsNullOrWhiteSpace(status.Text)) ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;

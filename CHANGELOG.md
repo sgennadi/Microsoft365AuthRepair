@@ -1,3 +1,11 @@
+## 1.0.1-preview.3 — 2026-11-15 — Preview
+
+1. Replaced Download & verify with a one-click Update and same-user transactional updater helper.
+2. Added post-update GUI health check, automatic relaunch and .bak rollback on failure.
+3. Unified 16 modern rounded buttons across Main, Updates and Diagnostics, with HiDPI and keyboard accessibility.
+4. Simplified channel switching and update checks; current-version changelog is available even without a new update.
+5. No change to Stable v1.0.0, WAM recovery, or the consent requirement for diagnostics.
+
 ## 1.0.1-preview.2 — 2026-11-15
 
 1. Moved Diagnostics & Reports beside Repair and fixed literal button ampersands.

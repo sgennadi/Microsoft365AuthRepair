@@ -71,6 +71,11 @@ internal static class UpdateUiText
             string.Join(Environment.NewLine, list.Take(8).Select((x, i) => $"{i + 1}. {x}"));
     }
 
+    internal static string CurrentChangelog() => T(
+        "1. Modern buttons across all three windows.\n2. One-click Update: verified download and safe replace with .bak rollback.\n3. Real progress, restart and short What's New.\n4. WAM diagnostics and anonymous report preview.",
+        "1. Современные кнопки во всех окнах.\n2. Update: проверка, замена EXE и откат при ошибке.\n3. Прогресс, перезапуск и краткий список изменений.\n4. Диагностика WAM и предпросмотр отчёта.",
+        "1. כפתורים מודרניים בכל החלונות.\n2. עדכון מאומת עם גיבוי ושחזור.\n3. התקדמות והפעלה מחדש.\n4. אבחון WAM ודוח לבדיקה.");
+    
     internal static bool SelfTest() => FormatWhatsNew(
         "## What's new\n1. Alpha\n2. Beta\n## Limitations\n- Private") ==
         $"1. Alpha{Environment.NewLine}2. Beta";
@@ -92,8 +97,8 @@ internal sealed class UpdateCenter : Form
     {
         Dock = DockStyle.Fill, Minimum = 0, Maximum = 100, Height = 20
     };
-    private readonly Button check = UiTheme.CreateActionButton("Check now", true);
-    private readonly Button download = UiTheme.CreateActionButton("Download & verify");
+    private readonly Button check = UiTheme.CreateActionButton("Check now");
+    private readonly Button download = UiTheme.CreateActionButton("Update", true);
     private readonly Button page = UiTheme.CreateActionButton("Release page");
     private readonly Button folder = UiTheme.CreateActionButton("Open folder");
     private readonly Button cancel = UiTheme.CreateActionButton("Cancel");
@@ -107,15 +112,17 @@ internal sealed class UpdateCenter : Form
         Text = $"Microsoft 365 Auth Repair v{Repair.Version} - Updates";
         Font = UiTheme.BodyFont();
         AutoScaleMode = AutoScaleMode.Dpi;
-        MinimumSize = new Size(625, 460);
-        Size = new Size(760, 600);
+        MinimumSize = new Size(710, 510);
+        Size = new Size(825, 630);
         StartPosition = FormStartPosition.CenterParent;
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true,
             Padding = new Padding(18), ColumnCount = 1, RowCount = 8 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int i = 0; i < 7; i++) root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.Controls.Add(UiTheme.Caption("Microsoft 365 Auth Repair", true), 0, 0);
+        var header = UiTheme.Caption("Microsoft 365 Auth Repair", true);
+        header.Font = new Font("Segoe UI", 16f, FontStyle.Bold);
+        root.Controls.Add(header, 0, 0);
 
         var top = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
         top.Controls.Add(UiTheme.Caption(UpdateUiText.T("Channel:", "Канал:", "ערוץ:")));
@@ -150,7 +157,7 @@ internal sealed class UpdateCenter : Form
         root.Controls.Add(transfer, 0, 4);
 
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
-        download.Text = UpdateUiText.T("Download & verify", "Скачать и проверить", "הורד ואמת");
+        download.Text = UpdateUiText.T("Update", "Обновить", "עדכן");
         page.Text = UpdateUiText.T("Release page", "Страница релиза", "דף גרסה");
         folder.Text = UpdateUiText.T("Open folder", "Открыть папку", "פתח תיקייה");
         cancel.Text = UpdateUiText.T("Cancel", "Отмена", "ביטול");
@@ -160,27 +167,29 @@ internal sealed class UpdateCenter : Form
         actions.Controls.Add(cancel);
         root.Controls.Add(actions, 0, 5);
         root.Controls.Add(UiTheme.Caption(UpdateUiText.T("What's new", "Что нового", "מה חדש")), 0, 6);
-        changes.Text = UpdateUiText.T("Check for updates to see a short numbered changelog.",
-            "Нажмите «Проверить», чтобы увидеть краткий список изменений.",
-            "בדוק עדכונים כדי לראות רשימת שינויים.");
+        changes.Text = UpdateUiText.CurrentChangelog();
         root.Controls.Add(changes, 0, 7);
         Controls.Add(root);
         UiIcons.SetWindowIcon(this);
-        UiIcons.Assign(check, UiGlyph.Updates, primary: true);
-        UiIcons.Assign(download, UiGlyph.Download);
-        download.UseMnemonic = false; // display literal Download & verify
+        UiIcons.Assign(check, UiGlyph.Search);
+        UiIcons.Assign(download, UiGlyph.Updates, primary: true);
+        download.UseMnemonic = false;
         UiIcons.Assign(page, UiGlyph.Link);
         UiIcons.Assign(folder, UiGlyph.Folder);
         UiIcons.Assign(cancel, UiGlyph.Reset);
         UiIcons.TrackDpi(this);
         var tips = new ToolTip { AutoPopDelay = 12000, InitialDelay = 500, ReshowDelay = 200 };
-        tips.SetToolTip(download, "Download with visible progress. Verify SHA-256, ZIP and EXE architecture.");
+        tips.SetToolTip(download, "One click: download, SHA-256 and architecture verification, safe install, health check and rollback.");
         tips.SetToolTip(channel, "Preview + Stable chooses the highest newer compatible version from both channels.");
         download.Enabled = page.Enabled = folder.Enabled = cancel.Enabled = false;
         check.Click += async (_, _) => await CheckAsync();
-        download.Click += async (_, _) => await DownloadAsync();
+        download.Click += async (_, _) => await UpdateAsync();
         cancel.Click += (_, _) => active?.Cancel();
-        channel.SelectedIndexChanged += (_, _) => { if (!busy) Clear(); };
+        channel.SelectedIndexChanged += async (_, _) =>
+        {
+            // Selecting Stable or Preview+Stable immediately performs a check.
+            if (!busy) await CheckAsync();
+        };
         page.Click += (_, _) =>
         {
             if (release is not null)
@@ -193,6 +202,7 @@ internal sealed class UpdateCenter : Form
                     $"/select,\"{staged.ArchivePath}\"") { UseShellExecute = true });
         };
         FormClosing += (_, _) => active?.Cancel();
+        Shown += async (_, _) => await CheckAsync(); // One check immediately on opening, no second Check click.
     }
 
     private void Clear()
@@ -231,6 +241,7 @@ internal sealed class UpdateCenter : Form
             {
                 available.Text = UpdateUiText.T("Available: none", "Доступно: нет", "זמין: אין");
                 status.Text = UpdateUiText.T("You're up to date.", "Установлена актуальная версия.", "הגרסה מעודכנת.");
+                changes.Text = UpdateUiText.CurrentChangelog();
             }
             else
             {
@@ -238,10 +249,11 @@ internal sealed class UpdateCenter : Form
                     $"Доступна: v{release.Version} ({release.Rule.Architecture})",
                     $"זמין: v{release.Version} ({release.Rule.Architecture})");
                 changes.Text = UpdateUiText.FormatWhatsNew(release.ReleaseNotes);
+                download.Focus(); // Keyboard users can update directly after release discovery.
                 status.Text = UpdateUiText.T("Update available.", "Есть обновление.", "עדכון זמין.");
-                bytesText.Text = UpdateUiText.T("Verified download only; installation is manual in this preview.",
-                    "Скачивание с проверкой; установка пока вручную.",
-                    "הורדה מאומתת; ההתקנה בשלב זה ידנית.");
+                bytesText.Text = UpdateUiText.T("Update will verify, install and restart (same-user writable installs).",
+                    "Update проверит файл, установит и перезапустит программу (без UAC).",
+                    "העדכון ייבדק ויותקן ללא העלאת הרשאות.");
             }
         }
         catch (OperationCanceledException) { status.Text = UpdateUiText.T("Cancelled.", "Отменено.", "בוטל."); }
@@ -260,7 +272,7 @@ internal sealed class UpdateCenter : Form
         }
     }
 
-    private async Task DownloadAsync()
+    private async Task UpdateAsync()
     {
         if (busy || release is null) return;
         var chosen = release;
@@ -268,7 +280,7 @@ internal sealed class UpdateCenter : Form
         progress.Style = ProgressBarStyle.Continuous;
         progress.Value = 0;
         bytesText.Text = "0%";
-        status.Text = UpdateUiText.T("Downloading...", "Загрузка...", "מוריד...");
+        status.Text = UpdateUiText.T("Updating: downloading...", "Обновление: загрузка...", "מעדכן: מוריד...");
         active = new CancellationTokenSource(TimeSpan.FromMinutes(8));
         var receiver = new Progress<UpdateProgress>(p =>
         {
@@ -292,20 +304,27 @@ internal sealed class UpdateCenter : Form
                 UpdaterIntegration.Options(UpdaterIntegration.ChannelFor(chosen)),
                 chosen, receiver, active.Token);
             progress.Value = 100;
-            bytesText.Text = "100% • SHA-256 and PE architecture verified";
-            status.Text = UpdateUiText.T("Download verified. Manual installation is ready.",
-                "Скачано и проверено. Можно установить вручную.",
-                "ההורדה אומתה. ההתקנה ידנית.");
+            bytesText.Text = "100% - SHA-256 and architecture verified";
+            status.Text = UpdateUiText.T("Installing verified update...", "Установка проверенного обновления...", "מתקין עדכון מאומת...");
+            // A same-user helper runs outside the application, after it exits.
+            // The helper calls PortableExeTransaction for atomic replacement,
+            // health probe and rollback. Never silently elevate.
+            UpdateHandoff.Queue(staged);
+            status.Text = UpdateUiText.T("Restarting to complete update...", "Перезапуск для завершения обновления...", "מפעיל מחדש לסיום העדכון...");
+            Application.Exit();
         }
         catch (OperationCanceledException)
         {
-            status.Text = UpdateUiText.T("Download cancelled.", "Загрузка отменена.", "ההורדה בוטלה.");
+            status.Text = UpdateUiText.T("Update cancelled.", "Обновление отменено.", "העדכון בוטל.");
             progress.Value = 0;
             bytesText.Text = string.Empty;
         }
         catch (Exception ex)
         {
-            status.Text = $"Download failed ({ex.GetType().Name}).";
+            status.Text = UpdateUiText.T(
+                "Update not installed: " + ex.Message + " Verified ZIP remains available under Open folder.",
+                "Обновление не установлено: " + ex.Message + " Проверенный ZIP доступен через «Открыть папку».",
+                "העדכון לא הותקן: " + ex.GetType().Name + ". הקובץ המאומת זמין בתיקייה.");
             progress.Value = 0;
             bytesText.Text = string.Empty;
         }

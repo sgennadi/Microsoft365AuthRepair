@@ -1,3 +1,12 @@
+## Preview 1.0.1-preview.3
+
+1. **Update** replaces "Download & verify": one click downloads the matching x64/ARM64 release with live progress, validates SHA-256/ZIP/architecture, hands off to a copy of the app, waits for the original process to exit, installs with a .bak rollback checkpoint, runs a GUI health check, and restarts.
+2. Auto-install **never silently elevates**. When running elevated, from a network location, or from a protected directory, automatic replacement is blocked with an actionable message; the already verified package remains available in Open folder.
+3. New consistent rounded Windows buttons for the main app, updater and diagnostics (16 actions), with accessible focus/hover/pressed states, keyboard use, High Contrast fallback and DPI-aware sizing. All three windows verify button styling in CI.
+4. Larger main and updater window defaults, Update as the prominent primary action, current-version What's New shown even when there is no newer release, and automatic release checks when opening the dialog or changing channels.
+5. Report delivery remains user-approved only. GitHub Issues must confirm delivery; if no issue exists there is no confirmed report.
+6. The **Stable v1.0.0** release remains unchanged. This is a preview requiring real-world Windows testing, particularly elevated/protected installs and ARM64.
+
 ## Preview 1.0.1-preview.2
 
 1. Fix the Diagnostics & Reports button text (& is no longer interpreted as a mnemonic).

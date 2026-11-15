@@ -12,6 +12,8 @@ internal static class Program
             if (!OperatingSystem.IsWindows()) return 2;
             if (args.Length == 5 && args[0] == "--worker")
                 return Scheduling.Worker(args[1], args[2], args[3], args[4]);
+            if (args.Length == 2 && args[0] == "--update-helper")
+                return UpdateHandoff.RunHelper(args[1]);
             if (args.Length == 1 && args[0] == "--ui-self-test")
             {
                 Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
@@ -29,12 +31,17 @@ internal static class Program
                     && UiIcons.Verify(reports)
                     && UpdateUiText.SelfTest()
                     && M365DiagnosticPayload.SelfTest()
+                    && UpdateHandoff.SelfTest()
+                    && UiTheme.VerifyButtons(form, 6)
+                    && UiTheme.VerifyButtons(updater, 5)
+                    && UiTheme.VerifyButtons(reports, 5)
                     ? 0 : 2;
             }
             if (args.Length > 0) return 2;
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            UpdateHandoff.CleanupOldHelpers();
             Application.Run(new MainForm());
             return 0;
         }

@@ -13,27 +13,35 @@ internal static class UiTheme
     internal static readonly Color Border = Color.FromArgb(216, 226, 237);
     internal static Font BodyFont() => SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont;
 
-    internal static Button CreateActionButton(string title, bool primary = false, bool destructive = false)
-    {
-        var button = new Button
+    // The ONLY button factory for all application dialogs. Styles, focus,
+    // accessibility, DPI and hover feedback stay consistent project-wide.
+    internal static Button CreateActionButton(string title, bool primary = false, bool destructive = false) =>
+        new ModernButton(destructive ? ModernButton.Kind.Destructive
+            : primary ? ModernButton.Kind.Primary : ModernButton.Kind.Secondary)
         {
-            Text = title, UseMnemonic = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowOnly,
-            MinimumSize = new Size(92, 34), Padding = new Padding(12, 5, 12, 5),
-            Margin = new Padding(0, 4, 9, 4), FlatStyle = FlatStyle.Flat,
-            Cursor = Cursors.Hand, UseVisualStyleBackColor = false
+            Text = title,
+            AccessibleName = title
         };
-        if (SystemInformation.HighContrast)
+
+    // CI smoke-tests all action buttons for a coherent layout/keyboard theme.
+    internal static bool VerifyButtons(Control root, int minimumCount)
+    {
+        int count = 0;
+        bool valid = true;
+        void Walk(Control node)
         {
-            button.BackColor = SystemColors.Control;
-            button.ForeColor = SystemColors.ControlText;
+            if (node is Button b)
+            {
+                count++;
+                if (b is not ModernButton || b.UseMnemonic ||
+                    b.MinimumSize.Height < 42 || b.Font.Size < 9f ||
+                    b.GetPreferredSize(Size.Empty).Height < 42)
+                    valid = false;
+            }
+            foreach (Control child in node.Controls) Walk(child);
         }
-        else
-        {
-            button.BackColor = destructive ? Color.FromArgb(255, 238, 237) : primary ? Positive : Color.White;
-            button.ForeColor = primary ? Color.White : destructive ? Color.FromArgb(155, 34, 34) : Navy;
-            button.FlatAppearance.BorderColor = primary ? Positive : Border;
-        }
-        return button;
+        Walk(root);
+        return valid && count >= minimumCount;
     }
 
     internal static Label Caption(string text, bool heading = false)
