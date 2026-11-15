@@ -1,3 +1,11 @@
+## 1.0.1-preview.15 — 2026-11-15 — Preview
+
+1. Live, offline error-code and problem-name search removes the oversized Explain button.
+2. Show full copyable Office 2024 GVLK in its own row and surface hidden WMI Preview entries, with safe review/cleanup only for strictly identified Preview keys.
+3. Replace Settings with scope-aware Setup: Current user includes opt-in portable cleanup; All users retains method, schedule and action in its mini wizard.
+4. Add optional administrator-only review and cleanup of verified completed/expired per-user Task Scheduler jobs. Shared PS1/EXE workers can be removed only when no tasks remain; pending and running users stay protected.
+5. Preserve independent repair/UAC/destructive-action approvals and Stable v1.0.0.
+
 ## 1.0.1-preview.14 — 2026-11-15 — Preview
 
 1. Automatically suggest the official Microsoft KMS Client Setup Key (GVLK) for six verified Office, Visio and Project 2024 Volume editions.
