@@ -1,3 +1,11 @@
+## 1.0.1-preview.13 — 2026-11-15 — Preview
+
+1. Added source-linked Microsoft Learn troubleshooting paths with a local sign-in-code and symptom browser.
+2. Implemented C# read-only vNext, SCA and Click-to-Run licensing checks without VBS/PS1.
+3. Added Office/Project/Visio 2024 Volume licensing inventory, optional DNS-based KMS discovery and manual KMS/MAK entry.
+4. Added a strict Office-only identity gate, last-five Preview key recognition, explicit removal approval and second confirmation before removing a verified Preview key before KMS/MAK replacement.
+5. Protected unrelated Office/Windows products, unsupported 2026 Preview and Microsoft 365 subscriptions from automatic key changes. Stable unchanged.
+
 ## 1.0.1-preview.12 — 2026-11-15 — Preview
 
 1. Added a three-step All users setup wizard opened on scope selection, with EXE vs PowerShell, task timing, and a safe optional follow-on action for existing Windows profiles.
