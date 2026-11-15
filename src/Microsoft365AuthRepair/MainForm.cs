@@ -503,6 +503,15 @@ internal sealed class MainForm : Form
             // Never label an administrator's token as another user's healthy login.
             var raw = await Task.Run(Repair.DiagnoseReport);
             var report = WamHealthAnalysis.Evaluate(raw, !elevated || desktopUser.SameAsProcess);
+            if (scope.SelectedIndex == 1)
+                report = report with
+                {
+                    Details = report.Details + Environment.NewLine + Environment.NewLine +
+                        UpdateUiText.T(
+                            "Note: this check reflects only the current Windows session, NOT all user profiles.",
+                            "Примечание: проверен только текущий сеанс Windows, а НЕ все пользовательские профили.",
+                            "הערה: הבדיקה מתייחסת רק להפעלה הנוכחית, ולא לכל הפרופילים.")
+                };
             detail.Text = report.Details;
             ShowStatus(report.Summary, report.Level switch
             {
