@@ -26,9 +26,16 @@ internal static class Program
                 using var form = new MainForm();
                 using var updater = new UpdateCenter();
                 using var reports = new DiagnosticsCenter(uiSelfTest: true);
+                using var settings = new SettingsForm(ScheduledWorkerMode.PowerShell,
+                    initialScheduleOnly: true, initialCleanup: true, canCleanup: false,
+                    target: "Test desktop user", elevated: false);
+                using var sendReview = new ReportSendDialog(
+                    new PreparedDiagnostic("00000000-0000-4000-8000-000000000001", "{}"), null);
                 form.CreateControl();
                 updater.CreateControl();
                 reports.CreateControl();
+                settings.CreateControl();
+                sendReview.CreateControl();
                 // On a headless Windows CI runner the GUI has no console.
                 // Record boolean test names only; never log user identities.
                 var tests = new (string Name, Func<bool> Run)[]
@@ -37,6 +44,14 @@ internal static class Program
                     ("Main icon", () => UiIcons.Verify(form)),
                     ("Updater icon", () => UiIcons.Verify(updater)),
                     ("Reports icon", () => UiIcons.Verify(reports)),
+                    ("Settings icon", () => UiIcons.Verify(settings)),
+                    ("Send review icon", () => UiIcons.Verify(sendReview)),
+                    ("Settings state", () => settings.TaskMethod == ScheduledWorkerMode.PowerShell &&
+                        settings.ScheduleOnly && !settings.CleanupAfterRepair),
+                    ("Responsive geometry", ResponsiveLayout.SelfTest),
+                    ("Review approval default", () => sendReview.ConsentInitiallyChecked &&
+                        sendReview.ConfirmedIssue is null),
+                    ("WAM health analysis", WamHealthAnalysis.SelfTest),
                     ("What's New format", UpdateUiText.SelfTest),
                     ("Diagnostic payload", M365DiagnosticPayload.SelfTest),
                     ("Updater helper", UpdateHandoff.SelfTest),
@@ -44,9 +59,11 @@ internal static class Program
                     ("Scheduled worker resource", Scheduling.SelfTest),
                     ("Legacy logon cleanup", FirstLogonDeployment.SelfTest),
                     ("Portable cleanup", PortableSelfCleanup.SelfTest),
-                    ("Main buttons", () => UiTheme.VerifyButtons(form, 6)),
-                    ("Updater buttons", () => UiTheme.VerifyButtons(updater, 5)),
-                    ("Reports buttons", () => UiTheme.VerifyButtons(reports, 5))
+                    ("Main buttons", () => UiTheme.VerifyButtons(form, 7)),
+                    ("Updater buttons", () => UiTheme.VerifyButtons(updater, 4)),
+                    ("Reports buttons", () => UiTheme.VerifyButtons(reports, 4)),
+                    ("Settings buttons", () => UiTheme.VerifyButtons(settings, 2)),
+                    ("Review buttons", () => UiTheme.VerifyButtons(sendReview, 2))
                 };
                 var outcomes = new List<string>();
                 bool passed = true;
