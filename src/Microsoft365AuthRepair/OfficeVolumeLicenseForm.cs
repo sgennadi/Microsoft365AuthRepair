@@ -289,9 +289,13 @@ internal sealed class OfficeVolumeLicenseForm : Form
         bool canChange = HasSelectedSupportedProduct && Identity.IsElevated();
         bool isPreview = selected is not null && inventory is not null &&
             OfficeVolumeLicensing.ShouldRemoveOldKey(selected, inventory);
+        host.Visible = hostLabel.Visible = portCaption.Visible =
+            port.Visible = kmsLookupLink.Visible = kms.Checked;
+        makKey.Visible = makCaption.Visible = mak.Checked;
         host.Enabled = port.Enabled = kms.Checked && !busy;
-        discover.Enabled = kms.Checked && selected is not null && !busy;
+        kmsLookupLink.Enabled = kms.Checked && selected is not null && !busy;
         makKey.Enabled = mak.Checked && !busy;
+        removePreview.Visible = isPreview;
         removePreview.Enabled = isPreview && !busy;
         // No extra "Choose key" button: only an exact 2024 Volume match
         // exposes the public GVLK, which is used by ReplaceKey automatically.
@@ -301,7 +305,17 @@ internal sealed class OfficeVolumeLicenseForm : Form
         gvlkRow.Visible = kms.Checked && suggestion is not null;
         apply.Enabled = canChange && !busy && (!isPreview || removePreview.Checked) &&
             (!kms.Checked || suggestion is not null);
-        if (selected is not null && !Identity.IsElevated())
+        gvlkHelp.Text = selected is not null && OfficeVolumeLicensing.IsActive(selected)
+            ? UpdateUiText.T(
+                "Already activated. Public KMS key shown for reference only; replacement is disabled.",
+                "Уже активирован. Публичный KMS-ключ показан для справки; замена отключена.",
+                "הרישיון פעיל. המפתח מוצג לעיון בלבד.")
+            : UpdateUiText.T(
+                "The Microsoft GVLK is selected automatically. A KMS server is still required.",
+                "Ключ Microsoft GVLK выбирается автоматически. Сервер KMS всё равно необходим.",
+                "מפתח Microsoft GVLK נבחר אוטומטית. עדיין נדרש שרת KMS.");
+        if (selected is not null && !Identity.IsElevated() &&
+            !OfficeVolumeLicensing.IsActive(selected))
             outcome.Text = UpdateUiText.T(
                 "Changes require elevation. Read-only inventory is available without administrator rights.",
                 "Изменение ключа требует прав администратора. Просмотр доступен без повышения прав.",
@@ -311,16 +325,17 @@ internal sealed class OfficeVolumeLicenseForm : Form
     private void SetBusy(bool flag)
     {
         busy = flag;
-        productList.Enabled = refresh.Enabled = kms.Enabled = mak.Enabled = !flag;
+        productList.Enabled = refreshLink.Enabled = otherRecordsLink.Enabled =
+            kms.Enabled = mak.Enabled = !flag;
         UpdateControls();
         UseWaitCursor = flag;
     }
 
     private void SelectProduct()
     {
-        selected = inventory is not null && productList.SelectedIndex >= 0 &&
-            productList.SelectedIndex < inventory.Products.Count
-            ? inventory.Products[productList.SelectedIndex] : null;
+        selected = productList.SelectedIndex >= 0 &&
+            productList.SelectedIndex < displayedProducts.Count
+            ? displayedProducts[productList.SelectedIndex] : null;
         removePreview.Checked = false;
         if (selected is null)
         {
@@ -334,23 +349,80 @@ internal sealed class OfficeVolumeLicenseForm : Form
         var product = selected;
         bool isPreview = inventory is not null &&
             OfficeVolumeLicensing.ShouldRemoveOldKey(product, inventory);
-        selectedStatus.Text = product.Name + Environment.NewLine +
-            "License: " + product.Status +
-            (product.HasKey ? "  ·  *****-" + product.PartialKey : "  ·  no key") +
+        selectedStatus.Text = OfficeVolumeLicensing.FriendlyName(product.ProductId) +
+            "  ·  " + product.Status +
+            (product.HasKey ? "  ·  *****-" + product.PartialKey : "") +
             (product.IsPreview ? "  ·  Preview" : "") + Environment.NewLine +
-            (isPreview
-                ? UpdateUiText.T("Verified Office LTSC 2024 Preview key. It must be removed first for replacement.",
-                    "Подтверждён ключ Office LTSC 2024 Preview. Для замены сначала требуется его удалить.",
-                    "זוהה מפתח Preview 2024. יש להסיר אותו לפני החלפה.")
-                : HasSelectedSupportedProduct
-                    ? UpdateUiText.T("Supported Office LTSC 2024 Volume key",
-                        "Поддерживаемая корпоративная лицензия Office LTSC 2024",
-                        "רישיון Volume 2024 נתמך")
-                    : UpdateUiText.T(
-                        "Read-only: product/Preview cannot be verified as a supported Volume 2024 SKU.",
-                        "Только просмотр: продукт/Preview не подтверждён как поддерживаемый Volume 2024.",
-                        "קריאה בלבד: המוצר לא אומת."));
+            (OfficeVolumeLicensing.IsActive(product)
+                ? UpdateUiText.T(
+                    "Office is already activated. No license change is needed.",
+                    "Office уже активирован. Менять лицензию не требуется.",
+                    "Office כבר מופעל. אין צורך להחליף רישיון.")
+                : isPreview
+                    ? UpdateUiText.T(
+                        "Verified 2024 Preview key: separate approval required before replacement.",
+                        "Обнаружен Preview-ключ 2024: для замены потребуется отдельное подтверждение.",
+                        "זוהה מפתח Preview 2024; נדרש אישור נפרד.")
+                    : HasSelectedSupportedProduct
+                        ? UpdateUiText.T(
+                            "Installed 2024 Volume edition: review KMS or MAK activation.",
+                            "Установлена Volume-редакция 2024: можно проверить KMS/MAK-активацию.",
+                            "זוהתה מהדורת Volume 2024; ניתן לבדוק KMS או MAK.")
+                        : UpdateUiText.T(
+                            "Read-only: installed edition or license identity could not be verified.",
+                            "Только просмотр: не удалось подтвердить установленную редакцию или лицензию.",
+                            "מידע בלבד: לא ניתן לאמת רישיון או מהדורה."));
         UpdateControls();
+    }
+
+    private string DisplayName(OfficeVolumeProduct product)
+    {
+        var productName = OfficeVolumeLicensing.FriendlyName(product.ProductId);
+        if (productName == "Unrecognized Office edition") productName = product.Name;
+        var current = OfficeVolumeLicensing.IsActive(product)
+            ? UpdateUiText.T("Activated", "Активирован", "מופעל")
+            : product.Status == "Unlicensed"
+                ? UpdateUiText.T("Not activated", "Не активирован", "לא מופעל")
+                : product.Status;
+        return productName + " — " + current +
+            (product.HasKey ? " · *****-" + product.PartialKey : "") +
+            (product.IsPreview ? " · Preview" : "");
+    }
+
+    private void PopulateProductList(string? preferredId)
+    {
+        if (inventory is null) return;
+        var preferred = OfficeVolumeLicensing.PreferredProducts(inventory);
+        displayedProducts = showTechnicalRows
+            ? OfficeVolumeLicensing.AllProductRecords(inventory)
+            : preferred;
+        populatingProducts = true;
+        try
+        {
+            productList.BeginUpdate();
+            productList.Items.Clear();
+            foreach (var item in displayedProducts)
+                productList.Items.Add(DisplayName(item));
+            int ix = string.IsNullOrEmpty(preferredId) ? -1 :
+                displayedProducts.ToList().FindIndex(x =>
+                    x.ActivationId.Equals(preferredId, StringComparison.OrdinalIgnoreCase));
+            productList.SelectedIndex = ix >= 0 ? ix :
+                displayedProducts.Count > 0 ? 0 : -1;
+        }
+        finally
+        {
+            productList.EndUpdate();
+            populatingProducts = false;
+        }
+        int hidden = Math.Max(0, inventory.Products.Count - preferred.Count);
+        otherRecordsLink.Visible = hidden > 0;
+        otherRecordsLink.Text = showTechnicalRows
+            ? UpdateUiText.T("Hide extra WMI records", "Скрыть дополнительные записи WMI",
+                "הסתר רשומות WMI נוספות")
+            : UpdateUiText.T("Show other WMI records", "Показать остальные записи WMI",
+                "הצג רשומות WMI נוספות") + " (" + hidden + ")";
+        otherRecordsLink.AccessibleName = otherRecordsLink.Text;
+        SelectProduct();
     }
 
     private async Task RefreshAsync()
