@@ -226,7 +226,7 @@ internal static class OfficeLicenseDiagnostics
         var missing = good with { VNextSelected = false, VNextLicenseFiles = 0, SharedLicenseFiles = 0 };
         return good.HasLocalLicensingHints && !otherAdmin.HasLocalLicensingHints &&
             !missing.HasLocalLicensingHints &&
-            Summary(good).Length > 25 && Summary(good).Contains("NOT verified", StringComparison.OrdinalIgnoreCase) == false &&
+            Summary(good).Length > 25 && Summary(good).Contains("NOT verified", StringComparison.OrdinalIgnoreCase) &&
             Summary(missing).Length > 20 &&
             Details(otherAdmin).Contains("LicensingNext vNext selected:", StringComparison.Ordinal) == false &&
             VersionOrUnknown("16.0.19725.20170") == "16.0.19725.20170" &&
