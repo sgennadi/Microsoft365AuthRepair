@@ -197,7 +197,11 @@ internal sealed class MainForm : Form
         hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
         hints.SetToolTip(settings, "All-users task options and optional cleanup of your own portable EXE.");
 
-        scope.SelectedIndexChanged += (_, _) => UpdateScopeExplanation();
+        scope.SelectedIndexChanged += (_, _) =>
+        {
+            UpdateScopeExplanation();
+            if (lastRawDiagnostic is not null) DisplayDiagnosis(lastRawDiagnostic);
+        };
         settings.Click += (_, _) =>
         {
             using var window = new SettingsForm(
@@ -259,13 +263,13 @@ internal sealed class MainForm : Form
         repair.Text = UiStrings.T("repair");
         reset.Text = UiStrings.T("full");
         repairExplanation.Text = UpdateUiText.T(
-            "1. Check & Diagnose: read-only, explains what to do next. 2. Re-register WAM: repairs broker registration without clearing sign-in caches.",
-            "1. Проверить и объяснить: диагностика и следующие действия. 2. Перерегистрировать WAM: восстановление без очистки кеша входа.",
-            "1. בדוק ואבחן: בדיקה והמלצות ללא שינויים. 2. רישום WAM מחדש: ללא ניקוי מטמון התחברות.");
+            "Check & Diagnose only checks sign-in health. Re-register WAM fixes broker registration without deleting Office sign-in caches.",
+            "Диагностика проверяет авторизацию без изменений. Re-register WAM восстанавливает регистрацию без удаления кеша входа Office.",
+            "האבחון בודק את מצב הכניסה ללא שינוי. רישום WAM מחדש אינו מוחק מטמוני כניסה של Office.");
         resetExplanation.Text = UpdateUiText.T(
-            "3. If sign-in still fails: reset Office/WAM sign-in caches. This signs users out and requires explicit confirmation.",
-            "3. Если вход всё ещё не работает: сбросить кеши входа Office/WAM. Потребуется повторный вход и подтверждение.",
-            "3. אם הכניסה עדיין נכשלת: איפוס מטמון ההתחברות של Office/WAM. נדרש אישור וכניסה מחדש.");
+            "Last resort: Reset Office sign-in deletes saved identity caches and requires signing in again.",
+            "Крайняя мера: Reset Office sign-in удаляет кеш авторизации и потребует повторного входа.",
+            "מוצא אחרון: איפוס Office מוחק מטמוני זהות ומחייב כניסה מחדש.");
         diagnose.Text = UpdateUiText.T("Check & Diagnose", "Проверить и объяснить", "בדוק ואבחן");
         diagnostics.Text = UiStrings.T("debug");
         updates.Text = availableUpdate is null ? UiStrings.T("updater") :
