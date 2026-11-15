@@ -1,3 +1,12 @@
+## Preview v1.0.1-preview.7 — scheduled-task execution choice
+
+- Choose between **EXE** (default, Repair + Full reset) and an independent **PowerShell script** (WAM re-registration only) when the scope is All users on this PC.
+- Select **Only create tasks — run at next sign-in** to defer even currently logged-on users; uncheck to run immediately for active profiles and queue offline profiles.
+- The protected standalone `WamReregisterWorker.ps1` is embedded inside the self-contained app, staged under `%ProgramData%\Microsoft365AuthRepair` with an administrator-owned ACL and run under the actual user's InteractiveToken. It does not require the copied worker EXE to remain present. Script execution policy and availability of AppX cmdlets still apply.
+- UAC elevation preserves both chosen task options and never starts an operation without a second explicit confirmation.
+- Tasks are only for existing Windows profiles; no first-logon trigger is created for nonexistent users.
+- Stable v1.0.0 is unchanged. See [Preview.7 release notes](docs/releases/v1.0.1-preview.7.md).
+
 ## Preview v1.0.1-preview.6 — existing Windows profiles only
 
 1. **All users** now targets **only real profiles already registered on this PC**, including offline local/domain accounts with a present user profile directory. New accounts that have never signed in have no old user WAM/Office cache to repair.

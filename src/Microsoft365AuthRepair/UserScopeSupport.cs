@@ -46,7 +46,7 @@ internal static class UserScopeSupport
     internal static bool CanRunCurrent(bool elevated, DesktopUser desktop) =>
         !elevated || desktop.Verified;
 
-    internal static bool TryElevateForAll(out string? error)
+    internal static bool TryElevateForAll(bool usePowerShell, bool scheduleOnly, out string? error)
     {
         error = null;
         try
@@ -62,6 +62,8 @@ internal static class UserScopeSupport
             // Only selects the scope after elevation. Never executes an
             // identity reset or other repair automatically after UAC.
             psi.ArgumentList.Add("--all-users");
+            if (usePowerShell) psi.ArgumentList.Add("--powershell-tasks");
+            if (scheduleOnly) psi.ArgumentList.Add("--schedule-only");
             using var p = Process.Start(psi) ??
                 throw new InvalidOperationException("Windows did not open the administrator window.");
             return true;

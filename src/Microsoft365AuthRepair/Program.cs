@@ -37,6 +37,7 @@ internal static class Program
                     && M365DiagnosticPayload.SelfTest()
                     && UpdateHandoff.SelfTest()
                     && UserScopeSupport.SelfTest()
+                    && Scheduling.SelfTest()
                     && FirstLogonDeployment.SelfTest()
                     && PortableSelfCleanup.SelfTest()
                     && UiTheme.VerifyButtons(form, 6)
@@ -46,7 +47,16 @@ internal static class Program
             }
             // Post-UAC launch selects All users only. It never starts repair
             // or full reset automatically; the operator must confirm again.
-            bool adminAll = args.Length == 1 && args[0] == "--all-users";
+            // UAC option propagation is restricted to these literal flags;
+            // no arbitrary command line is accepted for bulk user actions.
+            var allOptions = args.Length >= 1 && args[0] == "--all-users"
+                ? args.Skip(1).ToArray() : [];
+            bool adminAll = args.Length >= 1 && args[0] == "--all-users"
+                && allOptions.Length <= 2
+                && allOptions.All(x => x is "--powershell-tasks" or "--schedule-only")
+                && allOptions.Distinct(StringComparer.Ordinal).Count() == allOptions.Length;
+            bool usePsTask = adminAll && allOptions.Contains("--powershell-tasks", StringComparer.Ordinal);
+            bool onlySchedule = adminAll && allOptions.Contains("--schedule-only", StringComparer.Ordinal);
             bool privilegedUpdate = args.Length == 1 && args[0] is
                 ("--update-elevated-stable" or "--update-elevated-preview");
             if (args.Length > 0 && !adminAll && !privilegedUpdate) return 2;
@@ -59,7 +69,10 @@ internal static class Program
                 Application.Run(new UpdateCenter(autoUpdate: true,
                     includePreviews: args[0] == "--update-elevated-preview"));
             else
-                Application.Run(new MainForm(preferAllUsers: adminAll && Identity.IsElevated()));
+                Application.Run(new MainForm(
+                    preferAllUsers: adminAll && Identity.IsElevated(),
+                    usePowerShellTasks: usePsTask,
+                    scheduleOnlyAtLogon: onlySchedule));
             return 0;
         }
         catch (Exception ex)

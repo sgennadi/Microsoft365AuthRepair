@@ -1,3 +1,11 @@
+## 1.0.1-preview.7 — 2026-11-15 — Preview
+
+1. Added EXE versus standalone PowerShell worker choice for scheduled WAM re-registration across existing profiles.
+2. Added "Only create tasks — run at next sign-in" mode so active users are not disturbed immediately.
+3. PowerShell worker remains functional after deletion of the original EXE, supports only non-destructive re-registration and respects execution policy.
+4. UAC handoff preserves task mode and deferred scheduling selection without auto-running.
+5. Extended x64 GUI self-test and Windows CI with protected PowerShell resource/syntax checks; stable release unchanged.
+
 ## 1.0.1-preview.6 — 2026-11-15 — Preview
 
 1. Restricted All users processing to Windows profiles already present on this PC; no first-ever sign-in repair.

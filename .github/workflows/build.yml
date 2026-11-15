@@ -97,6 +97,23 @@ jobs:
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
           } | Set-Content artifacts/SHA256SUMS.txt -Encoding ascii
+      - name: Parse protected PowerShell fallback without executing it
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = (Resolve-Path 'src/Microsoft365AuthRepair/Assets/WamReregisterWorker.ps1').Path
+          $tokens = $null
+          $problems = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$problems)
+          if ($problems.Count -gt 0) {
+            $problems | ForEach-Object { Write-Error $_.Message }
+            throw "The PowerShell fallback has parser errors."
+          }
+          $source = Get-Content -LiteralPath $path -Raw
+          if ($source -notmatch 'Add-AppxPackage' -or $source -match 'ExecutionPolicy Bypass' -or $source -match 'Remove-Item -Recurse') {
+            throw 'The fallback script did not pass safe-mode source inspection.'
+          }
+          Write-Host 'PowerShell re-registration script syntax/intent checks passed (no WAM changes made).'
       - name: Smoke-test x64 GUI initialization
         shell: pwsh
         run: |
@@ -184,7 +201,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj | head -1)"
-          test "$version" = "1.0.1-preview.6"
+          test "$version" = "1.0.1-preview.7"
           tag="v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag already exists; refusing to overwrite a published preview."
@@ -196,5 +213,5 @@ jobs:
             release-assets/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Microsoft 365 Auth Repair $version (Preview)" \
-            --notes-file docs/releases/v1.0.1-preview.6.md \
+            --notes-file docs/releases/v1.0.1-preview.7.md \
             --prerelease

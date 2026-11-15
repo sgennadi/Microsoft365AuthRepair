@@ -22,6 +22,17 @@ internal sealed class MainForm : Form
         Text = "Remove this portable EXE after a successful current-user repair"
     };
     private readonly ComboBox scope = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 420, Margin = new Padding(0, 4, 0, 8) };
+    private readonly Label taskMethodLabel = UiTheme.Caption(string.Empty);
+    private readonly ComboBox taskMethod = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList, Width = 340,
+        Margin = new Padding(0, 4, 10, 6)
+    };
+    private readonly CheckBox scheduleOnly = new()
+    {
+        AutoSize = true, Checked = false,
+        Margin = new Padding(4, 8, 0, 7)
+    };
     private readonly ComboBox language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 115, Margin = new Padding(10, 2, 0, 0) };
     private readonly Button repair = UiTheme.CreateActionButton(string.Empty, primary: true);
     private readonly Button reset = UiTheme.CreateActionButton(string.Empty, destructive: true);
@@ -41,7 +52,8 @@ internal sealed class MainForm : Form
     private bool busy;
     private UniversalUpdater.UpdateRelease? availableUpdate;
 
-    internal MainForm(bool preferAllUsers = false)
+    internal MainForm(bool preferAllUsers = false,
+        bool usePowerShellTasks = false, bool scheduleOnlyAtLogon = false)
     {
         Text = $"Microsoft 365 Auth Repair v{Repair.Version}";
         StartPosition = FormStartPosition.CenterScreen;
@@ -91,6 +103,14 @@ internal sealed class MainForm : Form
         scope.SelectedIndex = preferAllUsers && elevated ? 1 : 0;
         scope.Enabled = true;
         target.Controls.Add(privilege);
+        target.Controls.Add(taskMethodLabel);
+        target.Controls.Add(taskMethod);
+        target.Controls.Add(scheduleOnly);
+        // Defaults are EXE + start-now for online users. The alternate
+        // choices are shown only for users with existing Windows profiles.
+        taskMethod.Items.AddRange(["EXE (recommended)", "PowerShell script (WAM only)"]);
+        taskMethod.SelectedIndex = usePowerShellTasks ? 1 : 0;
+        scheduleOnly.Checked = scheduleOnlyAtLogon;
         root.Controls.Add(target, 0, 3);
 
         var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
@@ -148,6 +168,8 @@ internal sealed class MainForm : Form
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(logs, "Open local repair logs without sending any data.");
         hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
+        hints.SetToolTip(taskMethod, "EXE handles re-registration and Full reset. PowerShell is a standalone WAM re-register script, can work even if the EXE is deleted, but may be blocked by enterprise policy.");
+        hints.SetToolTip(scheduleOnly, "Register per-user tasks only; even users logged in right now will run when they next sign in.");
         hints.SetToolTip(deletePortableAfterRepair, "Optional: after a successful current-user operation, close this portable instance and delete only its own EXE. Never removes the protected all-users worker.");
 
         showAdvanced.CheckedChanged += (_, _) =>
@@ -156,6 +178,8 @@ internal sealed class MainForm : Form
             UpdateScopeExplanation();
         };
         scope.SelectedIndexChanged += (_, _) => UpdateScopeExplanation();
+        taskMethod.SelectedIndexChanged += (_, _) => UpdateScopeExplanation();
+        scheduleOnly.CheckedChanged += (_, _) => UpdateScopeExplanation();
         repair.Click += async (_, _) => await RunRepairAsync(false);
         reset.Click += async (_, _) => await RunRepairAsync(true);
         diagnose.Click += async (_, _) => await RunDiagnoseAsync();
@@ -199,6 +223,20 @@ internal sealed class MainForm : Form
         scope.Items.Add(CurrentUserOption());
         scope.Items.Add(UiStrings.T("all"));
         scope.SelectedIndex = Math.Min(previous, scope.Items.Count - 1);
+        int previousTaskMethod = taskMethod.SelectedIndex < 0 ? 0 : taskMethod.SelectedIndex;
+        taskMethod.Items.Clear();
+        taskMethod.Items.AddRange([
+            UpdateUiText.T("EXE (recommended)", "EXE (рекомендуется)", "EXE (מומלץ)"),
+            UpdateUiText.T("PowerShell script (WAM re-register only)",
+                "Скрипт PowerShell (только восстановление WAM)",
+                "PowerShell (רישום WAM בלבד)")
+        ]);
+        taskMethod.SelectedIndex = previousTaskMethod;
+        taskMethodLabel.Text = UpdateUiText.T("Scheduled task:", "Задание в планировщике:", "משימה מתוזמנת:");
+        scheduleOnly.Text = UpdateUiText.T(
+            "Only create tasks — run at each user's next sign-in",
+            "Только создать задания — запуск при следующем входе пользователя",
+            "רק ליצור משימות — להפעיל בכניסה הבאה של כל משתמש");
         showAdvanced.Text = UpdateUiText.T("Advanced", "Дополнительно", "מתקדם");
         deletePortableAfterRepair.Text = UpdateUiText.T(
             "Delete this portable EXE after successful repair for current user",
@@ -240,6 +278,8 @@ internal sealed class MainForm : Form
         busy = isBusy;
         repair.Enabled = reset.Enabled = diagnose.Enabled = diagnostics.Enabled = updates.Enabled = !isBusy;
         scope.Enabled = !isBusy;
+        taskMethod.Enabled = !isBusy && scope.SelectedIndex == 1;
+        scheduleOnly.Enabled = !isBusy && scope.SelectedIndex == 1;
         deletePortableAfterRepair.Enabled = !isBusy && scope.SelectedIndex == 0;
         progress.Visible = isBusy;
     }
@@ -251,6 +291,19 @@ internal sealed class MainForm : Form
     {
         if (scope.SelectedIndex < 0) return;
         bool everyone = scope.SelectedIndex == 1;
+        repair.Text = everyone && scheduleOnly.Checked
+            ? UpdateUiText.T("Create repair tasks", "Создать задания восстановления", "צור משימות תיקון")
+            : UiStrings.T("repair");
+        reset.Text = everyone && scheduleOnly.Checked
+            ? UpdateUiText.T("Schedule full reset", "Назначить полный сброс", "תזמן איפוס מלא")
+            : UiStrings.T("full");
+        repair.AccessibleName = repair.Text;
+        reset.AccessibleName = reset.Text;
+        taskMethodLabel.Visible = everyone;
+        taskMethod.Visible = everyone;
+        taskMethod.Enabled = everyone && !busy;
+        scheduleOnly.Visible = everyone;
+        scheduleOnly.Enabled = everyone && !busy;
         deletePortableAfterRepair.Visible = !everyone && showAdvanced.Checked &&
             PortableSelfCleanup.IsEligible();
         deletePortableAfterRepair.Enabled = !everyone && !busy;
@@ -280,6 +333,11 @@ internal sealed class MainForm : Form
             $"Target: {target}. Full reset clears Office/WAM sign-in caches; affected users may need to sign in again.",
             $"Для кого: {target}. Полный сброс очистит кеши Office/WAM; потребуется повторный вход.",
             $"יעד: {target}. איפוס מלא מוחק מטמון כניסה של Office/WAM; ייתכן שתידרש התחברות מחדש.");
+        if (everyone && taskMethod.SelectedIndex == 1)
+            advancedExplanation.Text += Environment.NewLine + UpdateUiText.T(
+                "PowerShell script supports Repair sign-in only; choose EXE for Full identity reset.",
+                "Скрипт PowerShell поддерживает только Repair sign-in. Для полного сброса выберите EXE.",
+                "סקריפט PowerShell תומך רק בתיקון כניסה. לאיפוס מלא בחר EXE.");
         advancedExplanation.AccessibleDescription = admin;
         reset.AccessibleDescription = $"Full identity reset, target: {target}. {admin}";
         repair.AccessibleDescription = $"Re-register WAM, target: {target}. {admin}";
@@ -289,6 +347,18 @@ internal sealed class MainForm : Form
     {
         if (busy) return;
         var everyone = scope.SelectedIndex == 1;
+        var selectedMode = everyone && taskMethod.SelectedIndex == 1
+            ? ScheduledWorkerMode.PowerShell : ScheduledWorkerMode.Exe;
+        var onlySchedule = everyone && scheduleOnly.Checked;
+
+        if (everyone && full && selectedMode == ScheduledWorkerMode.PowerShell)
+        {
+            ShowStatus(UpdateUiText.T(
+                "Full identity reset requires EXE mode. PowerShell mode only re-registers WAM.",
+                "Полный сброс требует режим EXE. PowerShell только регистрирует WAM.",
+                "איפוס מלא דורש EXE. מצב PowerShell רושם רק WAM."), UiGlyph.Error);
+            return;
+        }
 
         // A normal user never needs UAC for their own WAM/Office caches.
         // Elevation is ONLY offered when they explicitly choose all profiles.
@@ -302,7 +372,8 @@ internal sealed class MainForm : Form
                     UpdateUiText.T("Administrator required", "Требуются права администратора", "דרושה הרשאת מנהל"),
                     MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
                 return;
-            if (UserScopeSupport.TryElevateForAll(out var reason))
+            if (UserScopeSupport.TryElevateForAll(
+                selectedMode == ScheduledWorkerMode.PowerShell, onlySchedule, out var reason))
             {
                 Close(); // Only after Windows confirms the new process started.
             }
@@ -338,6 +409,12 @@ internal sealed class MainForm : Form
                     "Запустить восстановление WAM у ВСЕХ пользователей с профилями на этом ПК? У активных пользователей могут закрыться приложения Office; у остальных — при следующем входе.",
                     "להריץ תיקון WAM לכל המשתמשים? ייתכן שיישומי Office ייסגרו.")
                 : target;
+            if (everyone)
+                prompt += Environment.NewLine + UpdateUiText.T(
+                    $"Method: {selectedMode}; " + (onlySchedule ? "next sign-in only" : "run now where online, otherwise next sign-in"),
+                    $"Способ: {(selectedMode == ScheduledWorkerMode.PowerShell ? "PowerShell" : "EXE")}; " +
+                        (onlySchedule ? "только при следующем входе" : "сразу у активных, у остальных при входе"),
+                    $"שיטה: {selectedMode}; " + (onlySchedule ? "רק בכניסה הבאה" : "כעת למשתמשים פעילים"));
             if (!everyone)
                 prompt += Environment.NewLine + UpdateUiText.T(
                     "Selected desktop user: ", "Выбранный пользователь: ", "המשתמש שנבחר: ") + desktopUser.Name;
@@ -358,7 +435,7 @@ internal sealed class MainForm : Form
             {
                 if (!elevated) return full ? Repair.Run(quiet: true) == 0 ? "SUCCESS" : "FAILED" :
                     Repair.ReRegister(quiet: true) == 0 ? "SUCCESS" : "FAILED";
-                return ScheduleAdminRepair(everyone, full);
+                return ScheduleAdminRepair(everyone, full, selectedMode, onlySchedule);
             });
             detail.AppendText(result + Environment.NewLine);
             var failed = result.Contains("FAILED", StringComparison.Ordinal);
@@ -381,7 +458,8 @@ internal sealed class MainForm : Form
         finally { SetBusy(false); }
     }
 
-    private static string ScheduleAdminRepair(bool everyone, bool full)
+    private static string ScheduleAdminRepair(bool everyone, bool full,
+        ScheduledWorkerMode mode, bool onlySchedule)
     {
         var profiles = UserProfiles.Enumerate();
         var sessions = Native.FindExplorerSessions();
@@ -394,7 +472,10 @@ internal sealed class MainForm : Form
             if (selected.Count != 1) throw new InvalidOperationException("The desktop user profile could not be matched.");
         }
         if (selected.Count == 0) throw new InvalidOperationException("No suitable user profiles found.");
-        Scheduling.PrepareProtectedExe();
+        if (mode == ScheduledWorkerMode.PowerShell)
+            Scheduling.PrepareProtectedPowerShell();
+        else
+            Scheduling.PrepareProtectedExe();
         var onlineSids = sessions.Values.SelectMany(s => s).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var results = new List<string>();
         // Preview.5 mistakenly enrolled accounts with NO existing profile.
@@ -414,7 +495,11 @@ internal sealed class MainForm : Form
         }
         foreach (var profile in selected)
         {
-            try { results.Add(Scheduling.QueueForSid(profile, onlineSids.Contains(profile.Sid), full ? "full" : "reregister")); }
+            try
+            {
+                results.Add(Scheduling.QueueForSid(profile, onlineSids.Contains(profile.Sid),
+                    full ? "full" : "reregister", mode, onlySchedule));
+            }
             catch (Exception ex) { results.Add("FAILED to queue " + profile.Account + ": " + ex.GetType().Name); }
         }
         return string.Join(Environment.NewLine, results);

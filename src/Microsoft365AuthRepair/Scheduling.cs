@@ -4,12 +4,15 @@ using System.Text.RegularExpressions;
 
 namespace Microsoft365AuthRepair;
 
+internal enum ScheduledWorkerMode { Exe, PowerShell }
+
 internal static class Scheduling
 {
     private static readonly Regex SidPattern = new(@"^S-1-5-21-(?:\d+-){3}\d+$", RegexOptions.CultureInvariant);
     private const string FolderName = "Microsoft365AuthRepair";
     private static readonly string SharedRoot = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), FolderName);
     private static readonly string SharedExe = System.IO.Path.Combine(SharedRoot, "Microsoft365AuthRepair.exe");
+    private static readonly string SharedScript = System.IO.Path.Combine(SharedRoot, "WamReregisterWorker.ps1");
 
     internal static string ProtectedRoot => SharedRoot;
 
@@ -43,6 +46,53 @@ internal static class Scheduling
         Console.WriteLine("Verified protected worker EXE: " + SharedExe);
     }
 
+    // A real standalone PowerShell fallback for WAM re-registration only.
+    // The embedded script is materialized under administrator-owned ProgramData.
+    // It does NOT call the EXE, so it remains usable if someone deletes the
+    // protected worker binary. Machine/group policy still governs PS execution.
+    internal static void PrepareProtectedPowerShell()
+    {
+        EnsureProtectedRoot();
+        const string embeddedName = "Microsoft365AuthRepair.WamReregisterWorker";
+        using var source = typeof(Scheduling).Assembly.GetManifestResourceStream(embeddedName)
+            ?? throw new IOException("Embedded WAM PowerShell worker was not found.");
+        using var memory = new MemoryStream();
+        source.CopyTo(memory);
+        var expected = memory.ToArray();
+        if (expected.Length < 1000 || expected.Length > 100_000)
+            throw new InvalidDataException("Unexpected embedded worker size.");
+
+        CheckNotReparse(SharedScript);
+        if (File.Exists(SharedScript))
+        {
+            using var stream = File.OpenRead(SharedScript);
+            if (CryptographicOperations.FixedTimeEquals(
+                SHA256.HashData(stream), SHA256.HashData(expected)))
+            {
+                ProtectDirectory();
+                return;
+            }
+        }
+
+        var temporary = SharedScript + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                output.Write(expected);
+            File.Move(temporary, SharedScript, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+        ProtectDirectory();
+        CheckNotReparse(SharedScript);
+        using var verify = File.OpenRead(SharedScript);
+        if (!CryptographicOperations.FixedTimeEquals(
+            SHA256.HashData(verify), SHA256.HashData(expected)))
+            throw new IOException("PowerShell worker did not pass SHA-256 verification.");
+    }
+
     private static void CheckNotReparse(string path)
     {
         if ((File.Exists(path) || Directory.Exists(path)) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
@@ -57,13 +107,21 @@ internal static class Scheduling
         if (result.ExitCode != 0) throw new IOException("Could not lock down worker folder ACL: " + result.StdErr.Trim() + " " + result.StdOut.Trim());
     }
 
-    internal static string QueueForSid(WindowsProfile profile, bool userOnline, string repairAction)
+    internal static string QueueForSid(WindowsProfile profile, bool userOnline, string repairAction,
+        ScheduledWorkerMode mode = ScheduledWorkerMode.Exe, bool scheduleOnly = false)
     {
         if (!SidPattern.IsMatch(profile.Sid)) throw new ArgumentException("Invalid profile SID.");
         if (repairAction is not ("reregister" or "full")) throw new ArgumentException("Invalid repair action.");
+        if (!Enum.IsDefined(mode)) throw new ArgumentException("Invalid scheduled worker mode.");
+        if (repairAction == "full" && mode == ScheduledWorkerMode.PowerShell)
+            throw new NotSupportedException("PowerShell only supports non-destructive WAM re-registration. Use EXE for full reset.");
         var runId = Guid.NewGuid().ToString("N");
         var taskName = "WAM_" + profile.Sid.Replace('-', '_') + "_" + runId[..8];
-        var args = $"--worker {runId} {profile.Sid} {taskName} {repairAction}";
+        var targetExe = mode == ScheduledWorkerMode.PowerShell ? ExternalCommand.PowerShellPath() : SharedExe;
+        var args = mode == ScheduledWorkerMode.PowerShell
+            ? $"-NoLogo -NoProfile -NonInteractive -File \"{SharedScript}\" -RunId {runId} -ExpectedSid {profile.Sid} -TaskName {taskName}"
+            : $"--worker {runId} {profile.Sid} {taskName} {repairAction}";
+        var startImmediately = userOnline && !scheduleOnly;
         static string Q(string value) => value.Replace("'", "''", StringComparison.Ordinal);
 
         // PowerShell is only used as a COM bridge to Windows Task Scheduler.
@@ -75,7 +133,7 @@ internal static class Scheduling
             try { $folder = $service.GetFolder('\Microsoft365AuthRepair') }
             catch { $folder = $service.GetFolder('\').CreateFolder('Microsoft365AuthRepair', $null) }
             $d = $service.NewTask(0)
-            $d.RegistrationInfo.Description = 'One-time per-user WAM reset by Microsoft365AuthRepair.exe'
+            $d.RegistrationInfo.Description = '{{(mode == ScheduledWorkerMode.PowerShell ? "One-time WAM re-register via protected PowerShell script" : "One-time WAM repair by protected Microsoft365AuthRepair.exe")}}'
             $d.Principal.UserId = '{{Q(profile.Sid)}}'
             $d.Principal.LogonType = 3
             $d.Principal.RunLevel = 0
@@ -90,16 +148,35 @@ internal static class Scheduling
             $tr.StartBoundary = (Get-Date).AddMinutes(-1).ToString('s')
             $tr.EndBoundary = (Get-Date).AddDays(90).ToString('s')
             $a = $d.Actions.Create(0)
-            $a.Path = '{{Q(SharedExe)}}'
+            $a.Path = '{{Q(targetExe)}}'
             $a.Arguments = '{{Q(args)}}'
             $t = $folder.RegisterTaskDefinition('{{Q(taskName)}}', $d, 6, '{{Q(profile.Sid)}}', $null, 3, $null)
-            if ({{(userOnline ? "$true" : "$false")}}) { $null = $t.Run($null) }
+            if ({{(startImmediately ? "$true" : "$false")}}) { $null = $t.Run($null) }
             Write-Output 'TASK_REGISTERED'
             """;
         var response = ExternalCommand.RunPowerShell(script, 60);
         if (response.ExitCode != 0 || !response.StdOut.Contains("TASK_REGISTERED", StringComparison.Ordinal))
             throw new IOException("Task Scheduler could not register " + profile.Account + ": " + response.StdErr.Trim() + " " + response.StdOut.Trim());
-        return $"{profile.Account}: {(userOnline ? "STARTED" : "QUEUED FOR NEXT SIGN-IN")} | {taskName}";
+        var state = startImmediately ? "STARTED" : "QUEUED FOR NEXT SIGN-IN";
+        var engine = mode == ScheduledWorkerMode.PowerShell ? "PowerShell" : "EXE";
+        return $"{profile.Account}: {state} [{engine}] | {taskName}";
+    }
+
+    internal static bool SelfTest()
+    {
+        // Ensures the independent PowerShell worker is truly embedded in
+        // the single-file EXE rather than fetched from the original folder.
+        using var stream = typeof(Scheduling).Assembly.GetManifestResourceStream(
+            "Microsoft365AuthRepair.WamReregisterWorker");
+        if (stream is null) return false;
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        var script = reader.ReadToEnd();
+        return script.Length is > 1000 and < 100_000
+            && script.Contains("Add-AppxPackage @arguments", StringComparison.Ordinal)
+            && script.Contains("ExpectedSid", StringComparison.Ordinal)
+            && !script.Contains("ExecutionPolicy Bypass", StringComparison.OrdinalIgnoreCase)
+            && Enum.IsDefined(ScheduledWorkerMode.Exe)
+            && Enum.IsDefined(ScheduledWorkerMode.PowerShell);
     }
 
     internal static int Worker(string runId, string expectedSid, string taskName, string repairAction)
