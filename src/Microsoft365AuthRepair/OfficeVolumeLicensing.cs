@@ -139,7 +139,7 @@ internal static class OfficeVolumeLicensing
     internal static OfficeVolumeInventory Read()
     {
         var releases = (ReadConfigValue("ProductReleaseIds") ?? "")
-            .Split(',', ';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Split(new[] { ',', ';' }, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase).Take(48).ToArray();
         var rows = new List<OfficeVolumeProduct>();
         string? warning = null;
