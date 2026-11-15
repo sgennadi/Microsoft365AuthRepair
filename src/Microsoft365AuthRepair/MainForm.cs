@@ -15,6 +15,17 @@ internal sealed class MainForm : Form
     private readonly Label scopeLabel = UiTheme.Caption(string.Empty);
     private readonly Label status = UiTheme.Caption(string.Empty);
     private readonly PictureBox statusGlyph = UiIcons.CreateStatus();
+    private readonly DiagnosticResultCard diagnosticResult = new();
+    private readonly LinkLabel technicalToggle = new()
+    {
+        AutoSize = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(4, 5, 0, 4),
+        Visible = false,
+        TabStop = true
+    };
+    private string? lastRawDiagnostic;
+    private FlowLayoutPanel? statusBanner;
     private readonly Label repairExplanation = UiTheme.Caption(string.Empty);
     private readonly Label resetExplanation = UiTheme.Caption(string.Empty);
     private readonly Label allUsersSettingsSummary = UiTheme.Caption(string.Empty);
@@ -34,9 +45,11 @@ internal sealed class MainForm : Form
     private readonly Button settings = UiTheme.CreateActionButton(string.Empty);
     private readonly TextBox detail = new()
     {
-        Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical,
-        WordWrap = true, Margin = new Padding(0, 6, 0, 0), Font = new Font("Segoe UI", 10f),
-        MinimumSize = new Size(0, 170)
+        Multiline = true, ReadOnly = true, Dock = DockStyle.Top, Height = 210,
+        ScrollBars = ScrollBars.Vertical, WordWrap = true,
+        Margin = new Padding(0, 6, 0, 0), Font = new Font("Segoe UI", 9.5f),
+        BorderStyle = BorderStyle.FixedSingle, BackColor = SystemColors.Window,
+        Visible = false
     };
     private readonly ProgressBar progress = new() { Dock = DockStyle.Top, Height = 5, Visible = false, Style = ProgressBarStyle.Marquee };
     private TableLayoutPanel? mainLayout;
@@ -52,27 +65,25 @@ internal sealed class MainForm : Form
         Text = $"Microsoft 365 Auth Repair v{Repair.Version}";
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
-        MinimumSize = new Size(820, 540);
-        Size = new Size(1120, 800);
+        MinimumSize = new Size(820, 560);
+        Size = new Size(1120, 760);
         Font = UiTheme.BodyFont();
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
-        ResponsiveLayout.FitInitialWindow(this, new Size(1120, 800),
-            new Size(1460, 1060), widthFraction: 0.90, heightFraction: 0.92);
+        ResponsiveLayout.FitInitialWindow(this, new Size(1120, 760),
+            new Size(1460, 920), widthFraction: 0.90, heightFraction: 0.70);
 
         var root = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, Padding = new Padding(18), AutoScroll = true,
-            ColumnCount = 1, RowCount = 8
+            Dock = DockStyle.Fill, Padding = new Padding(20), AutoScroll = true,
+            ColumnCount = 1, RowCount = 11,
+            BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas
         };
         mainLayout = root;
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        for (var row = 0; row < 10; row++)
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        // Only the canvas receives unused space on a maximized window.
+        // Never stretch a read-only textbox into an empty grey rectangle.
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var top = new TableLayoutPanel { ColumnCount = 4, Dock = DockStyle.Fill, AutoSize = true };
@@ -135,12 +146,23 @@ internal sealed class MainForm : Form
         allUsersSettingsSummary.MaximumSize = new Size(850, 0);
         root.Controls.Add(allUsersSettingsSummary, 0, 5);
 
-        var banner = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true, Padding = new Padding(10, 8, 10, 8) };
-        if (!SystemInformation.HighContrast) banner.BackColor = Color.FromArgb(231, 239, 248);
+        var banner = new FlowLayoutPanel
+        {
+            AutoSize = true, Dock = DockStyle.Fill, WrapContents = true,
+            Padding = new Padding(12, 9, 12, 9),
+            Margin = new Padding(0, 10, 0, 4)
+        };
+        if (!SystemInformation.HighContrast)
+            banner.BackColor = Color.FromArgb(236, 242, 249);
+        statusBanner = banner;
         banner.Controls.Add(statusGlyph);
         banner.Controls.Add(status);
         root.Controls.Add(banner, 0, 6);
-        root.Controls.Add(detail, 0, 7);
+
+        // Immediately visible diagnosis, before any optional raw details.
+        root.Controls.Add(diagnosticResult, 0, 7);
+        root.Controls.Add(technicalToggle, 0, 8);
+        root.Controls.Add(detail, 0, 9);
         Controls.Add(ResponsiveLayout.Center(this, root, 1340));
         Controls.Add(progress);
         progress.BringToFront();
@@ -155,6 +177,16 @@ internal sealed class MainForm : Form
         UiIcons.Assign(logs, UiGlyph.Logs);
         UiIcons.Assign(settings, UiGlyph.Settings);
         UiIcons.TrackDpi(this);
+        technicalToggle.LinkClicked += (_, _) =>
+        {
+            detail.Visible = !detail.Visible;
+            UpdateTechnicalLink();
+            if (detail.Visible) mainLayout?.ScrollControlIntoView(detail);
+        };
+        root.SizeChanged += (_, _) =>
+        {
+            status.MaximumSize = new Size(Math.Max(160, root.ClientSize.Width - 120), 0);
+        };
         var hints = new ToolTip { AutoPopDelay = 12000, InitialDelay = 500, ReshowDelay = 200 };
         hints.SetToolTip(repair, "Re-register Microsoft.AAD.BrokerPlugin for the selected user. No credentials or sign-in caches are deleted; apps may briefly close.");
         hints.SetToolTip(reset, "Destructive: remove Office/WAM identity and sign-in caches for the selected users. Re-authentication required; explicit confirmation.");
@@ -210,8 +242,9 @@ internal sealed class MainForm : Form
 
     private void ApplyText()
     {
-        title.Text = $"{UiStrings.T("title")}  v{Repair.Version}";
-        subtitle.Text = UiStrings.T("subtitle");
+        title.Text = UiStrings.T("title");
+        subtitle.Text = $"{UiStrings.T("subtitle")}  ·  v{Repair.Version}";
+        UpdateTechnicalLink();
         account.Text = UpdateUiText.T(
             $"Desktop user: {desktopUser.Name}  |  Session {Identity.SessionId()}  |  {(elevated ? "Administrator" : "Standard")}",
             $"Пользователь сеанса: {desktopUser.Name}  |  Сеанс {Identity.SessionId()}  |  {(elevated ? "Администратор" : "Обычный доступ")}",
@@ -254,6 +287,43 @@ internal sealed class MainForm : Form
         if (string.IsNullOrWhiteSpace(status.Text)) ShowStatus(UiStrings.T("statusReady"), UiGlyph.Info);
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
+        if (lastRawDiagnostic is not null) DisplayDiagnosis(lastRawDiagnostic);
+    }
+
+    private void UpdateTechnicalLink()
+    {
+        technicalToggle.Text = detail.Visible
+            ? UpdateUiText.T("Hide technical details", "Скрыть технические подробности", "הסתר פרטים טכניים")
+            : UpdateUiText.T("Show technical details", "Показать технические подробности", "הצג פרטים טכניים");
+        technicalToggle.AccessibleName = technicalToggle.Text;
+    }
+
+    private void DisplayDiagnosis(string raw)
+    {
+        // Evaluation uses current UI language and this exact user's context.
+        // No network call or repeated AppX probe when the language changes.
+        var report = WamHealthAnalysis.Evaluate(raw, !elevated || desktopUser.SameAsProcess);
+        if (scope.SelectedIndex == 1)
+            report = report with
+            {
+                Details = report.Details + Environment.NewLine + Environment.NewLine +
+                    UpdateUiText.T(
+                        "Note: this check reflects only the current Windows session, NOT all user profiles.",
+                        "Примечание: проверен только текущий сеанс Windows, а НЕ все пользовательские профили.",
+                        "הבדיקה מתייחסת רק להפעלה הנוכחית, ולא לכל הפרופילים.")
+            };
+
+        detail.Text = report.Details;
+        diagnosticResult.ShowResult(report);
+        technicalToggle.Visible = true;
+        statusBanner!.Visible = false;
+        ShowStatus(report.Summary, report.Level switch
+        {
+            WamHealthLevel.Healthy => UiGlyph.Success,
+            WamHealthLevel.RepairRecommended => UiGlyph.Error,
+            _ => UiGlyph.Info
+        });
+        UpdateTechnicalLink();
     }
 
     private void ShowStatus(string message, UiGlyph glyph)
@@ -419,6 +489,9 @@ internal sealed class MainForm : Form
         }
 
         // Capture WinForms checkbox state on UI thread before Task.Run.
+        lastRawDiagnostic = null;
+        diagnosticResult.ClearResult();
+        statusBanner!.Visible = true;
         SetBusy(true);
         ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
@@ -429,7 +502,10 @@ internal sealed class MainForm : Form
                     Repair.ReRegister(quiet: true) == 0 ? "SUCCESS" : "FAILED";
                 return ScheduleAdminRepair(everyone, full, selectedMode, onlySchedule);
             });
-            detail.AppendText(result + Environment.NewLine);
+            detail.Text = result;
+            detail.Visible = false;
+            technicalToggle.Visible = true;
+            UpdateTechnicalLink();
             var failed = result.Contains("FAILED", StringComparison.Ordinal);
             ShowStatus(failed ? UiStrings.T("failed") : elevated
                 ? UpdateUiText.T("Per-user tasks queued; check user logs for completion.",
@@ -446,7 +522,10 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             ShowStatus(UiStrings.T("failed"), UiGlyph.Error);
-            detail.AppendText(ex.GetType().Name + ": " + ex.Message + Environment.NewLine);
+            detail.Text = ex.GetType().Name + ": " + ex.Message;
+            detail.Visible = false;
+            technicalToggle.Visible = true;
+            UpdateTechnicalLink();
         }
         finally { SetBusy(false); }
     }
@@ -501,44 +580,35 @@ internal sealed class MainForm : Form
     private async Task RunDiagnoseAsync()
     {
         if (busy) return;
+        statusBanner!.Visible = true;
         SetBusy(true);
         ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
         {
-            // dsregcmd/WAM information is account- and session-sensitive.
-            // Never label an administrator's token as another user's healthy login.
+            // dsregcmd / WAM signals are account and session specific.
+            // Never show another administrator's results as the desktop user's.
             var raw = await Task.Run(Repair.DiagnoseReport);
-            var report = WamHealthAnalysis.Evaluate(raw, !elevated || desktopUser.SameAsProcess);
-            if (scope.SelectedIndex == 1)
-                report = report with
-                {
-                    Details = report.Details + Environment.NewLine + Environment.NewLine +
-                        UpdateUiText.T(
-                            "Note: this check reflects only the current Windows session, NOT all user profiles.",
-                            "Примечание: проверен только текущий сеанс Windows, а НЕ все пользовательские профили.",
-                            "הערה: הבדיקה מתייחסת רק להפעלה הנוכחית, ולא לכל הפרופילים.")
-                };
-            detail.Text = report.Details;
-            ShowStatus(report.Summary, report.Level switch
-            {
-                WamHealthLevel.Healthy => UiGlyph.Success,
-                WamHealthLevel.RepairRecommended => UiGlyph.Error,
-                _ => UiGlyph.Info
-            });
-            // Short screens must still reveal the result without manual scrolling.
-            mainLayout?.ScrollControlIntoView(detail);
-            detail.SelectionStart = 0;
-            detail.ScrollToCaret();
+            if (IsDisposed || Disposing) return;
+            lastRawDiagnostic = raw;
+            detail.Visible = false;
+            DisplayDiagnosis(raw);
+            // Make the summary visible rather than scrolling to a textbox.
+            mainLayout?.ScrollControlIntoView(diagnosticResult);
         }
         catch (Exception ex)
         {
-            ShowStatus(UiStrings.T("failed"), UiGlyph.Error);
-            detail.Text = UpdateUiText.T(
-                "Check could not complete: ", "Проверка не завершена: ", "הבדיקה לא הושלמה: ") +
-                ex.GetType().Name;
-            mainLayout?.ScrollControlIntoView(detail);
+            if (IsDisposed || Disposing) return;
+            lastRawDiagnostic = null;
+            diagnosticResult.ClearResult();
+            statusBanner!.Visible = true;
+            ShowStatus(UpdateUiText.T(
+                "Check could not complete", "Проверка не завершена", "הבדיקה לא הושלמה"), UiGlyph.Error);
+            detail.Text = ex.GetType().Name;
+            detail.Visible = false;
+            technicalToggle.Visible = true;
+            UpdateTechnicalLink();
         }
-        finally { SetBusy(false); }
+        finally { if (!IsDisposed && !Disposing) SetBusy(false); }
     }
 
     private async Task CheckForUpdatesAsync()
