@@ -1,7 +1,5 @@
-using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
-using Microsoft365AuthRepair.DiagnosticsEmbedded;
 
 namespace Microsoft365AuthRepair;
 
@@ -29,15 +27,7 @@ internal sealed class SettingsForm : Form
         UpdateUiText.T("Save settings", "Сохранить настройки", "שמור הגדרות"), primary: true);
     private readonly Button cancel = UiTheme.CreateActionButton(
         UpdateUiText.T("Cancel", "Отмена", "ביטול"));
-    private readonly Button checkReceiver = UiTheme.CreateActionButton(
-        UpdateUiText.T("Check receiver", "Проверить приёмник", "בדוק שרת דיווח"));
-    private readonly Button openQueue = UiTheme.CreateActionButton(
-        UpdateUiText.T("Open report queue", "Открыть очередь отчётов", "פתח תור דוחות"));
-    private readonly Button openReports = UiTheme.CreateActionButton(
-        UpdateUiText.T("Diagnostics & reports", "Диагностика и отчёты", "אבחון ודוחות"));
-    private readonly Label receiverStatus = UiTheme.Caption(string.Empty);
     private readonly bool cleanupEligible;
-    private CancellationTokenSource? activeCheck;
 
     internal ScheduledWorkerMode TaskMethod =>
         taskMethod.SelectedIndex == 1 ? ScheduledWorkerMode.PowerShell : ScheduledWorkerMode.Exe;
@@ -79,14 +69,13 @@ internal sealed class SettingsForm : Form
         var tabs = new TabControl { Dock = DockStyle.Fill, Margin = new Padding(0, 12, 0, 8) };
         var tasksPage = NewPage(UpdateUiText.T("All users", "Все пользователи", "כל המשתמשים"));
         var cleanupPage = NewPage(UpdateUiText.T("Cleanup", "Очистка", "ניקוי"));
-        var reportsPage = NewPage(UpdateUiText.T("Diagnostics", "Диагностика", "אבחון"));
-        tabs.TabPages.AddRange([tasksPage, cleanupPage, reportsPage]);
+        tabs.TabPages.AddRange([tasksPage, cleanupPage]);
 
         var tasksBody = PageBody(tasksPage);
         tasksBody.Controls.Add(Paragraph(UpdateUiText.T(
-            "These settings apply only when User scope is All users on this PC. Existing user profiles are handled through per-user tasks. No task is created until you confirm a repair on the main window.",
-            "Эти параметры действуют только для режима «Все пользователи». Для существующих профилей создаются индивидуальные задания. До подтверждения на главном экране ничего не запускается.",
-            "הגדרות אלו חלות רק על כל המשתמשים במחשב. משימות נוצרות רק לאחר אישור במסך הראשי.")));
+            $"Target: {target}. These settings apply only when User scope is All users on this PC. No task is created until you confirm a repair on the main window.",
+            $"Выбрано: {target}. Эти параметры действуют только для режима «Все пользователи». До подтверждения на главном экране ничего не запускается.",
+            $"יעד: {target}. ההגדרות חלות רק על כל המשתמשים. משימות ייווצרו רק לאחר אישור.")));
         tasksBody.Controls.Add(Paragraph(UpdateUiText.T(
             "Scheduled task method", "Способ выполнения задания", "שיטת הפעלת המשימה")));
         taskMethod.Items.AddRange([
@@ -136,29 +125,6 @@ internal sealed class SettingsForm : Form
                     : "Недоступно для всех пользователей, установленного или защищённого EXE. Выберите текущего пользователя и переносную копию.",
                 "אפשרות זו זמינה רק למשתמש רגיל המפעיל עותק נייד משלו.")));
 
-        var reportsBody = PageBody(reportsPage);
-        reportsBody.Controls.Add(Paragraph(UpdateUiText.T(
-            "Receiver check is read-only. It verifies gateway schema v3, not the GitHub token. Reports are sent only after explicit review and consent in Diagnostics & reports.",
-            "Проверка приёмника не отправляет данные. Она подтверждает схему v3, но не проверяет GitHub-токен. Отчёты отправляются только после просмотра и согласия.",
-            "בדיקת השרת היא לקריאה בלבד ומאמתת את סכמת v3, לא את אסימון GitHub. דוחות נשלחים רק לאחר אישור.")));
-        var diagnosticActions = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            WrapContents = true,
-            Margin = new Padding(0, 8, 0, 8)
-        };
-        diagnosticActions.Controls.Add(checkReceiver);
-        diagnosticActions.Controls.Add(openQueue);
-        diagnosticActions.Controls.Add(openReports);
-        reportsBody.Controls.Add(diagnosticActions);
-        receiverStatus.Text = UpdateUiText.T(
-            "No report has been sent from Settings.",
-            "Из настроек отчёты не отправляются.",
-            "לא נשלחו דוחות מההגדרות.");
-        receiverStatus.MaximumSize = new Size(640, 0);
-        reportsBody.Controls.Add(receiverStatus);
-
         var footer = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -179,19 +145,7 @@ internal sealed class SettingsForm : Form
 
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(save, UiGlyph.Save, primary: true);
-        UiIcons.Assign(checkReceiver, UiGlyph.Search);
-        UiIcons.Assign(openQueue, UiGlyph.Folder);
-        UiIcons.Assign(openReports, UiGlyph.Reports);
         UiIcons.TrackDpi(this);
-
-        checkReceiver.Click += async (_, _) => await CheckReceiverAsync();
-        openQueue.Click += (_, _) => OpenQueue();
-        openReports.Click += (_, _) =>
-        {
-            using var reports = new DiagnosticsCenter();
-            reports.ShowDialog(this);
-        };
-        FormClosing += (_, _) => activeCheck?.Cancel();
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
     }
@@ -222,62 +176,4 @@ internal sealed class SettingsForm : Form
         return paragraph;
     }
 
-    private async Task CheckReceiverAsync()
-    {
-        if (activeCheck is not null) return;
-        checkReceiver.Enabled = false;
-        receiverStatus.Text = UpdateUiText.T(
-            "Checking deployed receiver...", "Проверяю приёмник...", "בודק שרת...");
-        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(18));
-        activeCheck = cts;
-        try
-        {
-            using var gateway = new GoogleDiagnosticsGateway();
-            var result = await gateway.CheckReceiverAsync(cts.Token);
-            if (IsDisposed) return;
-            receiverStatus.Text = result.Code switch
-            {
-                "GATEWAY_V3_ONLINE" => UpdateUiText.T(
-                    "Gateway v3 is online. GitHub Issues write permission is NOT verified by this check.",
-                    "Приёмник v3 работает. Эта проверка НЕ подтверждает право создавать GitHub Issues.",
-                    "שרת v3 פעיל. הרשאות GitHub עדיין לא אומתו."),
-                "DEPLOY_GATEWAY_V3" or "GATEWAY_SCHEMA_UNAVAILABLE" => UpdateUiText.T(
-                    "Deploy the updated Code.gs as a new version of the EXISTING Google web app.",
-                    "Опубликуйте новую версию Code.gs в СУЩЕСТВУЮЩЕМ Google Web App.",
-                    "יש לפרסם גרסה חדשה של Code.gs ביישום הקיים."),
-                _ => "Receiver: " + result.Code
-            };
-        }
-        catch (OperationCanceledException)
-        {
-            if (!IsDisposed) receiverStatus.Text = UpdateUiText.T(
-                "Receiver check cancelled or timed out.",
-                "Проверка отменена или превышено время ожидания.",
-                "הבדיקה בוטלה או הסתיימה בזמן קצוב.");
-        }
-        catch (Exception ex)
-        {
-            if (!IsDisposed) receiverStatus.Text = "Receiver check failed: " + ex.GetType().Name;
-        }
-        finally
-        {
-            activeCheck = null;
-            cts.Dispose();
-            if (!IsDisposed) checkReceiver.Enabled = true;
-        }
-    }
-
-    private void OpenQueue()
-    {
-        try
-        {
-            var folder = UniversalDiagnosticsEmbedded.QueueDirectory(M365DiagnosticPayload.Project);
-            Directory.CreateDirectory(folder);
-            Process.Start(new ProcessStartInfo("explorer.exe", folder) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            receiverStatus.Text = "Unable to open queue: " + ex.GetType().Name;
-        }
-    }
 }
