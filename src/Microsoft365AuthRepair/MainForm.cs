@@ -23,6 +23,37 @@ internal sealed class MainForm : Form
         Margin = new Padding(7, 4, 0, 8)
     };
     private OfficeLicenseSnapshot? lastOfficeLicense;
+    private OfficeActivationHealth? lastOfficeActivation;
+    private RepairPreflight? lastPreflight;
+    private SmartRepairDecision? lastSmartDecision;
+    private bool awaitingAppSignInCheck;
+    private bool appSignInReportedWorking;
+    private bool appSignInReportedFailed;
+    private readonly TableLayoutPanel smartPanel = new()
+    {
+        AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1,
+        RowCount = 5, Margin = new Padding(0, 7, 0, 3),
+        Padding = new Padding(10, 8, 10, 8), Visible = false,
+        BackColor = SystemInformation.HighContrast ? SystemColors.Window : Color.FromArgb(240, 246, 252)
+    };
+    private readonly Label smartHeading = UiTheme.Caption(string.Empty, heading: true);
+    private readonly Label smartExplanation = UiTheme.Caption(string.Empty);
+    private readonly Label preflightSummary = UiTheme.Caption(string.Empty);
+    private readonly Label activationDetail = UiTheme.Caption(string.Empty);
+    private readonly Button applyRecommendation = UiTheme.CreateActionButton(string.Empty, primary: true);
+    private readonly LinkLabel entraReview = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 6, 0, 6)
+    };
+    private readonly FlowLayoutPanel verificationPanel = new()
+    {
+        AutoSize = true, Dock = DockStyle.Fill, WrapContents = true,
+        Visible = false, Margin = new Padding(0, 8, 0, 6)
+    };
+    private readonly Label verificationSummary = UiTheme.Caption(string.Empty);
+    private readonly Button signInWorks = UiTheme.CreateActionButton(string.Empty, primary: true);
+    private readonly Button signInFailed = UiTheme.CreateActionButton(string.Empty);
     private string? recommendedHelpKey;
     private readonly LinkLabel technicalToggle = new()
     {
@@ -120,12 +151,12 @@ internal sealed class MainForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(20), AutoScroll = true,
-            ColumnCount = 1, RowCount = 13,
+            ColumnCount = 1, RowCount = 16,
             BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas
         };
         mainLayout = root;
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var row = 0; row < 12; row++)
+        for (var row = 0; row < 15; row++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         // Only the canvas receives unused space on a maximized window.
         // Never stretch a read-only textbox into an empty grey rectangle.
@@ -272,6 +303,36 @@ internal sealed class MainForm : Form
         root.Controls.Add(officeVolumeLink, 0, 9);
         root.Controls.Add(technicalToggle, 0, 10);
         root.Controls.Add(detail, 0, 11);
+        smartPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < 5; i++)
+            smartPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        smartPanel.Controls.Add(smartHeading, 0, 0);
+        smartPanel.Controls.Add(smartExplanation, 0, 1);
+        smartPanel.Controls.Add(preflightSummary, 0, 2);
+        var recommendationRow = new FlowLayoutPanel
+        {
+            AutoSize = true, Dock = DockStyle.Fill, WrapContents = true
+        };
+        recommendationRow.Controls.Add(applyRecommendation);
+        smartPanel.Controls.Add(recommendationRow, 0, 3);
+        smartPanel.Controls.Add(entraReview, 0, 4);
+        root.Controls.Add(smartPanel, 0, 12);
+        activationDetail.Visible = false;
+        activationDetail.Margin = new Padding(6, 8, 0, 4);
+        root.Controls.Add(activationDetail, 0, 13);
+        verificationPanel.Controls.Add(verificationSummary);
+        verificationPanel.Controls.Add(signInWorks);
+        verificationPanel.Controls.Add(signInFailed);
+        root.Controls.Add(verificationPanel, 0, 14);
+        root.SizeChanged += (_, _) =>
+        {
+            int available = Math.Max(190, root.ClientSize.Width - root.Padding.Horizontal - 45);
+            smartHeading.MaximumSize = new Size(available, 0);
+            smartExplanation.MaximumSize = new Size(available, 0);
+            preflightSummary.MaximumSize = new Size(available, 0);
+            activationDetail.MaximumSize = new Size(available, 0);
+            verificationSummary.MaximumSize = new Size(available, 0);
+        };
         Controls.Add(ResponsiveLayout.Center(this, root, 1340));
         Controls.Add(progress);
         progress.BringToFront();
@@ -280,6 +341,9 @@ internal sealed class MainForm : Form
         UiIcons.Assign(repair, UiGlyph.Repair, primary: true);
         UiIcons.Assign(reset, UiGlyph.Reset, destructive: true);
         UiIcons.Assign(diagnose, UiGlyph.Search);
+        UiIcons.Assign(applyRecommendation, UiGlyph.Repair, primary: true);
+        UiIcons.Assign(signInWorks, UiGlyph.Success, primary: true);
+        UiIcons.Assign(signInFailed, UiGlyph.Search);
         UiIcons.Assign(diagnostics, UiGlyph.Reports);
         diagnostics.UseMnemonic = false; // show literal & instead of treating it as accelerator
         UiIcons.Assign(updates, UiGlyph.Updates);
@@ -312,6 +376,10 @@ internal sealed class MainForm : Form
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
         hints.SetToolTip(scope, "Current user never requires UAC. All users needs UAC and per-user tasks.");
         hints.SetToolTip(settings, "Configure all-users repair tasks and review old scheduled workers.");
+        hints.SetToolTip(applyRecommendation, "Start only the specifically recommended WAM action with the existing independent confirmation.");
+        hints.SetToolTip(entraReview, "Optional read-only Microsoft Graph sign-in audit using Device Code or an approved certificate.");
+        hints.SetToolTip(signInWorks, "You confirm that an actual Microsoft 365 application completed sign-in; this is not independently tested.");
+        hints.SetToolTip(signInFailed, "App sign-in still failed. Review the error and optional Entra audit.");
 
         scope.SelectedIndexChanged += async (_, _) =>
         {
@@ -347,6 +415,33 @@ internal sealed class MainForm : Form
         repair.Click += async (_, _) => await RunRepairAsync(false);
         reset.Click += async (_, _) => await RunRepairAsync(true);
         diagnose.Click += async (_, _) => await RunDiagnoseAsync();
+        applyRecommendation.Click += async (_, _) =>
+        {
+            if (!busy && scope.SelectedIndex == 0 &&
+                lastSmartDecision?.Action == SmartRepairAction.ReRegisterWam &&
+                lastSmartDecision.SafeToOfferRepair)
+                await RunRepairAsync(false);
+        };
+        entraReview.LinkClicked += (_, _) =>
+        {
+            if (busy) return;
+            using var reviewer = new EntraSignInReviewDialog();
+            reviewer.ShowDialog(this);
+        };
+        signInWorks.Click += (_, _) =>
+        {
+            if (busy || lastRawDiagnostic is null) return;
+            appSignInReportedWorking = true;
+            appSignInReportedFailed = false;
+            UpdateVerificationSummary();
+        };
+        signInFailed.Click += (_, _) =>
+        {
+            if (busy || lastRawDiagnostic is null) return;
+            appSignInReportedFailed = true;
+            appSignInReportedWorking = false;
+            UpdateVerificationSummary();
+        };
         signInErrors.LinkClicked += (_, _) =>
         {
             using var errorGuide = new SignInErrorDialog(recommendedHelpKey);
