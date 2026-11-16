@@ -5,7 +5,7 @@ namespace Microsoft365AuthRepair;
 
 internal static class Repair
 {
-    internal const string Version = "1.0.1";
+    internal const string Version = "1.0.2-preview.1";
     private static readonly string[] RegistryKeys =
     [
         @"Software\Microsoft\Office\16.0\Common\Identity",
@@ -111,7 +111,8 @@ internal static class Repair
             var dsreg = ExternalCommand.Run(dsregPath, ["/status"], 30);
             foreach (var line in dsreg.StdOut.Split('\n'))
             {
-                if (new[] { "DomainJoined", "AzureAdJoined", "DeviceAuthStatus", "AzureAdPrt", "WamDefaultSet" }
+                if (new[] { "DomainJoined", "AzureAdJoined", "DeviceAuthStatus", "AzureAdPrt", "WamDefaultSet",
+                    "TpmProtected", "KeySignTest", "AadRecoveryEnabled", "NgcSet" }
                     .Any(x => line.TrimStart().StartsWith(x + " ", StringComparison.Ordinal)))
                     output.AppendLine(line.Trim());
             }
@@ -119,6 +120,8 @@ internal static class Repair
                 output.AppendLine("WARNING: AADSTS50155 - Entra device authentication rejected. WAM reset cannot repair Entra device registration.");
         }
         catch (Exception ex) { output.AppendLine("Entra registration: check failed (" + ex.GetType().Name + ")"); }
+        // Read-only machine TPM and OS-volume state; access denied yields UNKNOWN.
+        output.Append(IdentityKeyDiagnostics.CaptureMachine());
         return output.ToString();
     }
 
