@@ -378,7 +378,8 @@ internal static class UpdateHandoff
                 return null;
             var receipt = JsonSerializer.Deserialize<Receipt>(File.ReadAllText(file));
             return receipt is { Version.Length: <= 70, Code.Length: <= 70 } &&
-                RegexVersion(receipt.Version) ? receipt : null;
+                (receipt.Code != "INSTALL_OK" || RegexVersion(receipt.Version))
+                ? receipt : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
             or JsonException or System.Security.SecurityException)
@@ -462,9 +463,13 @@ internal static class UpdateHandoff
             {
                 var old = FileVersionInfo.GetVersionInfo(backup).FileVersion;
                 var installed = FileVersionInfo.GetVersionInfo(current).FileVersion;
+                var priorFile = FileVersionInfo.GetVersionInfo(backup);
+                var currentFile = FileVersionInfo.GetVersionInfo(current);
                 if (!Version.TryParse(old, out var oldVersion) ||
                     !Version.TryParse(installed, out var installedVersion) ||
-                    oldVersion >= installedVersion) return;
+                    oldVersion >= installedVersion ||
+                    !string.Equals(priorFile.ProductName, currentFile.ProductName,
+                        StringComparison.OrdinalIgnoreCase)) return;
             }
             File.Delete(backup);
             DeleteReceipt();
