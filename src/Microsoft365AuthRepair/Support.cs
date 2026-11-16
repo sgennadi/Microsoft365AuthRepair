@@ -90,9 +90,19 @@ internal static class ExternalCommand
         var stderr = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(timeoutSeconds * 1000))
         {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException($"{System.IO.Path.GetFileName(exe)} exceeded the operation timeout.");
+            // A timed out Windows probe must never keep Check & Diagnose busy.
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { /* It exited meanwhile. */ }
+            try { process.WaitForExit(3000); }
+            catch (InvalidOperationException) { }
+            throw new TimeoutException($"{System.IO.Path.GetFileName(exe)} exceeded {timeoutSeconds} seconds.");
         }
+        // Descendant processes can inherit our redirected output handles.
+        // Waiting for an unclosed pipe after the parent exits is unbounded
+        // unless output draining has its own deadline.
+        var drain = Task.WhenAll(stdout, stderr);
+        if (!drain.Wait(TimeSpan.FromSeconds(5)))
+            throw new TimeoutException($"{System.IO.Path.GetFileName(exe)} exited but output streams did not close.");
         return new Result(process.ExitCode, stdout.GetAwaiter().GetResult(), stderr.GetAwaiter().GetResult());
     }
 
