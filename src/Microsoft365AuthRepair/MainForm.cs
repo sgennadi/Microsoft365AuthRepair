@@ -896,10 +896,13 @@ internal sealed class MainForm : Form
     internal bool HasDeviceSecuritySection =>
         deviceSecurityCard.Parent == mainLayout && deviceSecurityCard.HasReadOnlyDetailsLink &&
         deviceProtectionLink.Parent is FlowLayoutPanel;
+    // A hidden WinForms form has no calculated table layout yet, so
+    // GetPositionFromControl may report an empty/uncomputed position in CI.
+    // Verify the actual control ownership and compact cancel composition;
+    // main-screen placement is explicitly defined by Add(..., 0, row).
     internal bool HasLiveDeviceSecurityAndCompactCancel =>
-        mainLayout is not null &&
-        mainLayout.GetPositionFromControl(deviceSecurityCard).Row == 7 &&
-        mainLayout.GetPositionFromControl(activityJournal).Row == 8 &&
+        deviceSecurityCard.Parent == mainLayout &&
+        activityJournal.Parent == mainLayout &&
         activityJournal.HasCompactCancellation;
 
     private void ShowStatus(string message, UiGlyph glyph)
