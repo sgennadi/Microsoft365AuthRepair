@@ -39,6 +39,21 @@ internal static class SmartRepairEngine
                   "Запустите программу без повышения прав от нужного пользователя; не сбрасывайте чужой профиль.",
                   "הפעל כמשתמש הרלוונטי ללא הרשאות מנהל."), false, false);
 
+        // Local WAM registration cannot fix a TPM lockout or a failing
+        // Entra device key. These read-only findings take precedence over
+        // an otherwise tempting BrokerPlugin re-registration.
+        if (SignalIs(wam, "TpmReadiness", WamSignalState.Attention) ||
+            SignalIs(wam, "DeviceKey", WamSignalState.Attention))
+            return new(SmartRepairAction.ReviewDeviceTrust,
+                T("TPM or Entra device keys need review", "Проверьте TPM или ключи Entra", "יש לבדוק TPM או מפתחות Entra"),
+                T("The device-key signing test, recovery flag or TPM readiness needs attention. Deleting Office caches cannot repair hardware-backed keys.",
+                  "Проверка подписи ключом, признак восстановления или состояние TPM требуют внимания. Очистка Office не восстанавливает ключи.",
+                  "יש לבדוק את מפתחות המכשיר או את ה-TPM; מחיקת מטמון Office אינה מתקנת אותם."),
+                T("Ask IT to inspect tpm.msc, BitLocker recovery availability and Entra device diagnostics. Never clear TPM or delete key containers automatically.",
+                  "Проверьте tpm.msc, доступность восстановления BitLocker и Entra. Не очищайте TPM и контейнеры ключей автоматически.",
+                  "בדוק TPM, שחזור BitLocker ואבחון Entra. אין לנקות מפתחות באופן אוטומטי."),
+                false, true);
+
         // Local WAM registration does not restore device trust.
         if (SignalIs(wam, "DeviceAuthStatus", WamSignalState.Attention))
             return new(SmartRepairAction.ReviewDeviceTrust,
@@ -156,12 +171,21 @@ internal static class SmartRepairEngine
         var deviceFailed = WamHealthAnalysis.Evaluate(
             healthy.Replace("DeviceAuthStatus: SUCCESS", "DeviceAuthStatus: FAILED")
                    .Replace("BrokerPlugin: PRESENT", "BrokerPlugin: MISSING"), true);
+        var tpmLocked = WamHealthAnalysis.Evaluate(healthy +
+            "\nTpmPresent: YES\nTpmReady: NO\nTpmLockedOut: YES", true);
+        var keyFailedWithMissingBroker = WamHealthAnalysis.Evaluate(healthy.Replace(
+            "BrokerPlugin: PRESENT", "BrokerPlugin: MISSING") +
+            "\nKeySignTest: FAILED", true);
         var fakeVolume = new OfficeLicenseSnapshot(true, "Office volume / LTSC", "16.0.1",
             null, null, true, null, null, null, false);
         return Evaluate(baseResult, null, basePreflight, true).Action == SmartRepairAction.VerifyAppSignIn &&
             Evaluate(missingBroker, null, basePreflight, true).Action == SmartRepairAction.ReRegisterWam &&
             Evaluate(deviceFailed, null, basePreflight, true).Action == SmartRepairAction.ReviewDeviceTrust &&
             !Evaluate(deviceFailed, null, basePreflight, true).SafeToOfferRepair &&
+            Evaluate(tpmLocked, null, basePreflight, true).Action == SmartRepairAction.ReviewDeviceTrust &&
+            !Evaluate(tpmLocked, null, basePreflight, true).SafeToOfferRepair &&
+            Evaluate(keyFailedWithMissingBroker, null, basePreflight, true).Action ==
+                SmartRepairAction.ReviewDeviceTrust &&
             Evaluate(baseResult, null, basePreflight with { ClockAcceptable = false }, true)
                 .Action == SmartRepairAction.ReviewNetwork &&
             Evaluate(baseResult, fakeVolume, basePreflight, true)
