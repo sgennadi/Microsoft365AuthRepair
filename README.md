@@ -1,3 +1,9 @@
+## Preview.24 — Secure Boot, Security Processor and VM detection
+
+The read-only **Device Security** card now displays Secure Boot, TPM version, security processor readiness, detailed Memory Integrity/HVCI status and whether Windows is recognized as a VM guest (VMware, Hyper-V, KVM/Proxmox and other supported environments). Two new isolated stages appear in **Activity** with 10-second per-stage timeouts. No raw machine model, BIOS ID or TPM/BitLocker secrets are included in logs or anonymous reporting.
+
+[Preview.24 release notes](docs/releases/v1.0.2-preview.24.md)
+
 ## Preview.23 — TPM & BitLocker on the main screen
 
 After **Check & Diagnose**, the main result screen includes a separate **TPM & BitLocker · Device Security** card immediately under WAM/Entra. It shows categorized TPM presence/readiness/lockout, BitLocker protection/encryption, HVCI, DPAPI and writable DC state, with a **View full details** link. A shortcut in the results banner scrolls to the card. Missing evidence remains **Not verified**; the check is read-only and does not access recovery secrets.

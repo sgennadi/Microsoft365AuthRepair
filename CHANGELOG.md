@@ -1,3 +1,14 @@
+## 1.0.2-preview.24 — 2026-11-16 — Preview
+
+1. Add read-only Secure Boot / UEFI status to the Device Security card and detailed inspector.
+2. Display TPM specification version and Security Processor status alongside TPM readiness/lockout.
+3. Differentiate configured versus running Memory Integrity / HVCI, including policy-enabled-but-not-running.
+4. Detect Windows VM guests with allowlisted virtualization vendors without confusing physical-host Hyper-V/VBS with a guest.
+5. Add two time-bounded, independent probes, sanitized Activity stages and local-only worker IPC categories.
+6. Extend GUI/IPC/privacy self-tests and guarded x64/ARM64 preview release; Stable 1.0.1 is untouched.
+
+[Preview.24 notes](docs/releases/v1.0.2-preview.24.md)
+
 ## 1.0.2-preview.23 — 2026-11-16 — Preview
 
 1. Show TPM and BitLocker as a dedicated, responsive eight-tile Device Security card directly under WAM/Entra results.

@@ -1306,6 +1306,8 @@ internal sealed class MainForm : Form
         "DOMAIN_RWDC" => UpdateUiText.T("Domain controller", "Контроллер домена", "בקר תחום"),
         "TPM_LOCKOUT" => UpdateUiText.T("TPM lockout", "Блокировка TPM", "נעילת TPM"),
         "DPAPI_ATTESTATION" => "DPAPI / AIK",
+        "SECURE_BOOT" => "Secure Boot / UEFI",
+        "VIRTUAL_MACHINE" => UpdateUiText.T("Virtual machine", "Виртуальная машина", "מכונה וירטואלית"),
         _ => UpdateUiText.T("Not verified", "Не проверено", "לא נבדק")
     };
 
@@ -1321,6 +1323,8 @@ internal sealed class MainForm : Form
         "DOMAIN_RWDC" => ActivityStep.DomainDc,
         "TPM_LOCKOUT" => ActivityStep.TpmLockout,
         "DPAPI_ATTESTATION" => ActivityStep.DpapiAttestation,
+        "SECURE_BOOT" => ActivityStep.SecureBoot,
+        "VIRTUAL_MACHINE" => ActivityStep.VirtualMachine,
         _ => ActivityStep.ReadOnlyCheck
     };
 

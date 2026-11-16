@@ -94,7 +94,7 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         Margin = new Padding(0, 8, 0, 6)
     };
     private readonly StatusTile[] tiles =
-        Enumerable.Range(0, 8).Select(_ => new StatusTile()).ToArray();
+        Enumerable.Range(0, 12).Select(_ => new StatusTile()).ToArray();
     private bool reshaping;
     private int displayedColumns;
     private TpmBitLockerSnapshot? current;
@@ -225,13 +225,36 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             x.OsVolumeConversion == "FULLY_ENCRYPTED" ? Status.Good :
             x.OsVolumeConversion == "UNKNOWN" ? Status.Unknown : Status.Neutral);
 
-        tiles[5].Set(T("Memory Integrity / HVCI", "Memory Integrity / HVCI",
+        var integrity = x.MemoryIntegrityRuntime switch
+        {
+            "RUNNING" => x.MemoryIntegrityConfigured switch
+            {
+                "ON" => T("Running (enabled)", "Работает (включено)", "פועל (מופעל)"),
+                "OFF" => T("Running (policy off)", "Работает (политика выключена)", "פועל (מדיניות כבויה)"),
+                _ => T("Running", "Работает", "פועל")
+            },
+            "NOT_RUNNING" => x.MemoryIntegrityConfigured switch
+            {
+                "ON" => T("Enabled, not running", "Включено, но не работает", "מופעל אך לא פועל"),
+                "OFF" => T("Off", "Выключено", "כבוי"),
+                "NOT_SET" => T("Not configured", "Не настроено", "לא הוגדר"),
+                _ => T("Not running", "Не работает", "לא פועל")
+            },
+            _ => x.MemoryIntegrityConfigured switch
+            {
+                "ON" => T("Enabled; runtime unknown", "Включено; работа не проверена", "מופעל; מצב הפעלה לא ידוע"),
+                "OFF" => T("Disabled; runtime unknown", "Отключено; работа не проверена", "כבוי; מצב הפעלה לא ידוע"),
+                _ => Unknown
+            }
+        };
+        tiles[5].Set(T("Memory Integrity / HVCI", "Целостность памяти / HVCI",
                 "שלמות זיכרון / HVCI"),
-            x.MemoryIntegrityRuntime == "RUNNING" ? T("Running", "Работает", "פעיל") :
-            x.MemoryIntegrityRuntime == "NOT_RUNNING" ? T("Not running", "Не работает", "לא פעיל") :
-            Unknown,
+            integrity,
             x.MemoryIntegrityRuntime == "RUNNING" ? Status.Good :
-            x.MemoryIntegrityRuntime == "NOT_RUNNING" ? Status.Neutral : Status.Unknown);
+            x.MemoryIntegrityRuntime == "NOT_RUNNING" &&
+                x.MemoryIntegrityConfigured == "ON" ? Status.Review :
+            x.MemoryIntegrityRuntime == "NOT_RUNNING" ? Status.Neutral :
+            Status.Unknown);
 
         tiles[6].Set(T("DPAPI policy", "Политика DPAPI", "מדיניות DPAPI"),
             x.DpapiProtectionPolicy switch
@@ -254,6 +277,65 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
                 ? Status.Neutral :
             x.WritableDcStatus == "AVAILABLE" ? Status.Good :
             x.WritableDcStatus == "NOT_FOUND" ? Status.Review : Status.Unknown);
+
+        tiles[8].Set(T("TPM version", "Версия TPM", "גרסת TPM"),
+            x.TpmVersion switch
+            {
+                "2.0" => "2.0",
+                "1.2" => "1.2",
+                _ => Unknown
+            },
+            x.TpmVersion == "2.0" ? Status.Good :
+            x.TpmVersion == "1.2" ? Status.Neutral : Status.Unknown);
+
+        tiles[9].Set(T("Security processor", "Процессор безопасности",
+                "מעבד אבטחה"),
+            x.TpmPresent == "NO" ? T("Not detected", "Не обнаружен", "לא זוהה") :
+            x.TpmPresent == "YES" && x.TpmReady == true ?
+                T("Available", "Доступен", "זמין") :
+            x.TpmPresent == "YES" && x.TpmReady == false ?
+                T("Not ready", "Не готов", "לא מוכן") :
+            x.TpmPresent == "YES" ? T("Detected; readiness unknown",
+                "Обнаружен; готовность неизвестна", "זוהה; מוכנות לא ידועה") : Unknown,
+            x.TpmPresent == "YES" && x.TpmReady == true ? Status.Good :
+            x.TpmPresent == "YES" && x.TpmReady == false ? Status.Review :
+            x.TpmPresent == "NO" ? Status.Neutral : Status.Unknown);
+
+        tiles[10].Set(T("Secure Boot", "Безопасная загрузка (Secure Boot)",
+                "אתחול מאובטח"),
+            x.SecureBootState switch
+            {
+                "ON" => T("On", "Включена", "פעיל"),
+                "OFF" => T("Off", "Выключена", "כבוי"),
+                "UNSUPPORTED" => T("Legacy BIOS", "Legacy BIOS", "BIOS ישן"),
+                _ => Unknown
+            },
+            x.SecureBootState == "ON" ? Status.Good :
+            x.SecureBootState is "OFF" or "UNSUPPORTED" ? Status.Neutral :
+            Status.Unknown);
+
+        var virtualPlatform = x.VirtualMachinePlatform switch
+        {
+            "VMWARE" => "VMware",
+            "HYPER_V" => "Hyper-V / Azure",
+            "KVM_QEMU" => "KVM / QEMU (incl. Proxmox)",
+            "VIRTUALBOX" => "VirtualBox",
+            "AWS_EC2" => "Amazon EC2",
+            "GOOGLE_CLOUD" => "Google Cloud",
+            "NUTANIX" => "Nutanix",
+            "XEN" => "Xen",
+            "PARALLELS" => "Parallels",
+            "OTHER_VM" => T("Other VM", "Другая VM", "מכונה וירטואלית אחרת"),
+            _ => T("VM guest", "Гостевая VM", "מכונה וירטואלית")
+        };
+        tiles[11].Set(T("Windows running in a VM", "Windows запущена в VM",
+                "Windows פועל במכונה וירטואלית"),
+            x.VirtualMachineGuest == "YES" ? virtualPlatform :
+            x.VirtualMachineGuest == "NO" ?
+                T("No VM indicators (OEM)", "Без признаков VM (OEM)", "ללא סימני VM לפי OEM") :
+            Unknown,
+            x.VirtualMachineGuest == "YES" ? Status.Neutral :
+            x.VirtualMachineGuest == "NO" ? Status.Neutral : Status.Unknown);
     }
 
     internal void ShowResult(TpmBitLockerSnapshot? snapshot)
@@ -321,16 +403,21 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         {
             TpmPresent = "YES", TpmVersion = "2.0",
             TpmReady = true, TpmLockedOut = "NO",
+            SecureBootState = "ON", FirmwareType = "UEFI",
+            VirtualMachineGuest = "YES", VirtualMachinePlatform = "KVM_QEMU",
             OsVolumeProtection = "ON", OsVolumeConversion = "FULLY_ENCRYPTED",
-            MemoryIntegrityRuntime = "RUNNING",
+            MemoryIntegrityRuntime = "RUNNING", MemoryIntegrityConfigured = "ON",
             DpapiProtectionPolicy = "NOT_SET", DomainJoinStatus = "YES",
             WritableDcStatus = "AVAILABLE"
         };
         card.ShowResult(sample);
-        if (!card.HasReadOnlyDetailsLink || card.tiles.Length != 8 ||
-            card.signalGrid.Controls.Count != 8 ||
+        if (!card.HasReadOnlyDetailsLink || card.tiles.Length != 12 ||
+            card.signalGrid.Controls.Count != 12 ||
             !card.tiles[0].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase) ||
-            !card.tiles[3].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase))
+            !card.tiles[3].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase) ||
+            !card.tiles[8].Value.Text.Contains("2.0", StringComparison.Ordinal) ||
+            !card.tiles[10].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase) ||
+            !card.tiles[11].Value.Text.Contains("QEMU", StringComparison.Ordinal))
             return false;
         card.ShowResult(sample with
         {

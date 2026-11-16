@@ -164,6 +164,11 @@ internal sealed class TpmBitLockerDialog : Form
         details.Text =
             Line("TPM present", "TPM обнаружен", "קיים TPM", x.TpmPresent) +
             Line("TPM specification", "Версия TPM", "גרסת TPM", x.TpmVersion) +
+            Line("Security processor (TPM)", "Процессор безопасности (TPM)",
+                "מעבד אבטחה (TPM)",
+                x.TpmPresent == "NO" ? "NOT_PRESENT" :
+                x.TpmReady == true ? "AVAILABLE" :
+                x.TpmReady == false ? "NOT_READY" : "UNKNOWN") +
             Line("TPM ready", "TPM готов", "TPM מוכן", YesNoUnknown(x.TpmReady)) +
             Line("TPM lockout (local only)", "Блокировка TPM (локально)",
                 "חסימת TPM מקומית", x.TpmLockedOut) +
@@ -174,6 +179,14 @@ internal sealed class TpmBitLockerDialog : Form
                 "יצרן TPM", x.TpmManufacturer) +
             Line("TPM firmware (local only)", "Прошивка TPM (только локально)",
                 "קושחת TPM מקומית", x.TpmFirmwareVersion) +
+            Line("Secure Boot", "Безопасная загрузка", "אתחול מאובטח",
+                x.SecureBootState) +
+            Line("Firmware boot mode", "Режим прошивки", "מצב אתחול קושחה",
+                x.FirmwareType) +
+            Line("Running in a VM", "Запущена в VM", "פועל במכונה וירטואלית",
+                x.VirtualMachineGuest) +
+            Line("Virtualization platform", "Платформа виртуализации",
+                "פלטפורמת וירטואליזציה", x.VirtualMachinePlatform) +
             Line("Windows release", "Версия Windows", "גרסת Windows", x.WindowsRelease) +
             Line("AIK enrollment recorded result", "Последний результат регистрации AIK",
                 "מצב רישום AIK", x.AikEnrollmentError) +
