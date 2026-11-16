@@ -1,6 +1,6 @@
 # Microsoft 365 Auth Repair
 
-A portable, self-contained **Windows .NET 10 WinForms** utility for diagnosing and safely recovering Microsoft Entra/WAM, `Microsoft.AAD.BrokerPlugin`, Office application sign-in and supported Office LTSC licensing. Current **Stable: 1.0.1** (x64 / ARM64).
+A portable, self-contained **Windows .NET 10 WinForms** utility for diagnosing and safely recovering Microsoft Entra/WAM, `Microsoft.AAD.BrokerPlugin`, Office application sign-in and supported Office LTSC licensing. Current **Stable: 1.0.1** (x64 / ARM64). Development preview **1.0.2-preview.1** is tracked separately and does not replace Stable automatically.
 
 ## Download
 
@@ -18,6 +18,12 @@ The latest signed-off release and SHA-256 manifest are at [GitHub Releases](http
 - **Verify Repair:** automatically rechecks local prerequisites after successful direct user repair; actual Word, Outlook or Teams sign-in is considered confirmed only when the user says it worked.
 - **Diagnostics and reports:** generates a local report, then opens a separate review dialog with an explicit **Send anonymously** action. Uploads create public GitHub Issues **only on approval**. Outgoing data uses fixed Entra/WAM and Office evidence categories and coarse counts. No account names, SIDs, license or MAK keys, KMS hosts, tenant identifiers, product GUIDs, paths, or raw WMI and Graph responses are sent.
 - **Interface and updates:** English, Russian and Hebrew, RTL support, PerMonitorV2 scaling, Windows High Contrast, compact native controls, numbered What's New, Stable/Preview SemVer precedence, validated architecture/SHA-256 and rollback-aware update helper.
+
+## TPM and identity-key diagnostics in development Preview
+
+Preview 1.0.2 adds **read-only** TPM readiness/lockout, Entra device-key signing/recovery, Windows Hello setup and BitLocker protection-state evidence. These signals help distinguish device recovery from WAM re-registration. Unknown values remain unknown; BitLocker off, software-backed device keys or no Hello enrollment are not automatically Office sign-in failures. No TPM clearing, BitLocker key removal, PIN reset, Entra device disconnect or automatic device-key repair occurs.
+
+The current anonymous report format remains unchanged and **does not transmit TPM, Windows Hello, device-key or BitLocker state**. [Preview details](docs/releases/v1.0.2-preview.1.md).
 
 ## First test on a Windows pilot device
 
