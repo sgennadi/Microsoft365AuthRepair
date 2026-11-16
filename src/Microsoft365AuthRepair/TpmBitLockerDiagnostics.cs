@@ -656,11 +656,16 @@ internal static class TpmBitLockerProbe
             "DEVICE_GUARD_WMI" => state.MemoryIntegrityRuntime is
                 "RUNNING" or "NOT_RUNNING" ||
                 state.MemoryIntegrityConfigured is "ON" or "OFF" or "NOT_SET",
-            "DOMAIN_RWDC" => state.DomainJoinStatus is "YES" or "NO",
+            // Domain membership alone does not verify writable DC discovery.
+            "DOMAIN_RWDC" => state.DomainJoinStatus == "NO" ||
+                (state.DomainJoinStatus == "YES" &&
+                 state.WritableDcStatus is "AVAILABLE" or "NOT_FOUND"),
             "TPM_LOCKOUT" => state.TpmLockedOut is "YES" or "NO",
+            // Windows build number is not evidence that DPAPI/AIK checks ran.
             "DPAPI_ATTESTATION" => state.DpapiProtectionPolicy is
                 "NOT_SET" or "ZERO" or "ONE" or "OTHER" ||
-                state.WindowsRelease != "UNKNOWN",
+                state.AikEnrollmentError is "NOT_FOUND" or "TIMEOUT" or
+                    "OTHER_ERROR" or "NONE_RECORDED",
             _ => false
         };
 
