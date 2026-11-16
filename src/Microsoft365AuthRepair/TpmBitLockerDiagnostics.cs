@@ -27,7 +27,8 @@ internal sealed record TpmBitLockerSnapshot(
 
     internal bool NeedsAttestationReview =>
         AikEnrollmentError is "NOT_FOUND" or "TIMEOUT" or
-            "INVALID_PUBLIC_KEY" or "SERVER_ERROR" or "OTHER_ERROR";
+            "INVALID_PUBLIC_KEY" or "SERVER_ERROR" or "OTHER_ERROR" ||
+        EkCertStore == "IMPORT_INCOMPLETE";
 
     internal static TpmBitLockerSnapshot Unknown => new(
         "UNKNOWN", "UNKNOWN", null, null, null, null,
@@ -134,6 +135,7 @@ internal sealed record TpmBitLockerSnapshot(
                 .ToSafeSummary().Contains("DpapiWritableDc: NOT_FOUND", StringComparison.Ordinal) &&
             (healthy with { AikEnrollmentError = "NOT_FOUND" }).NeedsAttestationReview &&
             !(healthy with { AikEnrollmentError = "UNKNOWN" }).NeedsAttestationReview &&
+            (healthy with { EkCertStore = "IMPORT_INCOMPLETE" }).NeedsAttestationReview &&
             (healthy with { TpmFirmwareVersion = "123456SECRET",
                 TpmManufacturer = "private-device-id", AikEnrollmentError = "0x80070490" })
                 .ToSafeSummary().Contains("TpmAikEnrollment: UNKNOWN", StringComparison.Ordinal) &&
