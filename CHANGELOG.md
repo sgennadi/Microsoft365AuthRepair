@@ -1,3 +1,12 @@
+## 1.0.2-preview.22 — 2026-11-16 — Preview
+
+1. Split previously stalled 60-second TPM/BitLocker read-only scan into six independent native checks (TPM WMI, BitLocker WMI, Device Guard/HVCI, writable DC, TPM lockout, DPAPI/AIK).
+2. Per-check 10-second child-process timeout and maximum three concurrent providers; retain successful partial evidence instead of hiding results or accumulating hung WMI tasks.
+3. Show each native check in Activity with timestamp, timeout/unknown status and sanitized Copy log; add the same bounded scan to the detailed TPM inspector.
+4. Add allowlisted internal worker argument test, provider serialization tests and guarded Windows x64/ARM64 CI. Stable 1.0.1 unchanged.
+
+[Preview.22 notes](docs/releases/v1.0.2-preview.22.md)
+
 ## 1.0.2-preview.21 — 2026-11-16 — Preview
 
 1. Corrected misleading 'applications may close' message for read-only Check & Diagnose.
