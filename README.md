@@ -1,45 +1,45 @@
 # Microsoft 365 Auth Repair
 
-A Windows .NET 10 WinForms desktop repair utility for Microsoft Entra WAM / `Microsoft.AAD.BrokerPlugin`, Office sign-in caches and Microsoft 365 authentication. Version `1.0.0` **Stable baseline (source and binary release)**. The Windows GUI and x64/ARM64 builds have CI coverage, but real Microsoft Entra/WAM recovery, ARM64 hardware runtime and all-users reset have not yet received field QA. Test on pilot PCs before broad deployment.
+A portable, self-contained **Windows .NET 10 WinForms** utility for diagnosing and safely recovering Microsoft Entra/WAM, `Microsoft.AAD.BrokerPlugin`, Office application sign-in and supported Office LTSC licensing. Current **Stable: 1.0.1** (x64 / ARM64).
 
-## Features
+## Download
 
-- Standard user: recommended **Repair sign-in** re-registers AAD BrokerPlugin for **that Windows user**, with no administrative prompt and no forced logout. This mirrors a successfully observed manual recovery. This may close the running BrokerPlugin.
-- **Advanced -> Full identity reset** clears generic Microsoft/Office credentials (not domain/RDP credentials), Office identity HKCU keys, and LocalAppData WAM/IdentityCache/OneAuth/TokenBroker caches. May sign the user out of Microsoft 365 apps; action requires UI confirmation.
-- Elevated admin: choose **Current desktop user** or **All local Windows profiles**. Admin console itself does NOT own the affected user's `HKCU`, Credential Manager or per-user AppX registration. The app instead schedules a one-time Task Scheduler worker using the selected user's interactive token, immediately if signed in or next logon if offline. No user passwords, no per-user login bypass.
-- Read-only `dsregcmd /status` diagnostics including `AzureAdJoined`, `DomainJoined`, `DeviceAuthStatus`, `AzureAdPrt`, and `WamDefaultSet`. AADSTS50155 warns that cloud device registration is outside WAM cache repair.
-- Local-only log files in `%LOCALAPPDATA%\Microsoft365AuthRepair\Logs`, plus current-user per-task completion markers.
-- Modern compact WinForms GUI with PerMonitorV2 DPI, Windows High Contrast, EN / RU / HE interface (technical diagnostics remain English), and Advanced mode.
-- Multi-size 16/32/48/64/256 px Windows EXE icon (custom shield/check branding), embedded window/taskbar icons, DPI-redrawn vector action and status glyphs throughout main window, Update Center and Diagnostics, with tooltips and accessibility descriptions. Icon presence is checked in CI UI smoke test.
-- **UniversalUpdater** from `sgennadi/UniversalUpdater` (pinned official core) handles GitHub Releases checks, stable/preview SemVer, SHA256 release metadata, download and staging validation, archive safety and PE architecture. In this stable baseline **install is deliberately not wired** until safe close-and-replace helper + rollback are tested; `Download and verify` does not replace a running EXE.
-- **UniversalDiagnostics** from `sgennadi/UniversalDiagnocticsModule` (pinned canonical VB embedded adapter) writes redacted schema v1 local reports only after a review and explicit click. No automatic HTTP sending; no GitHub tokens in the binary. A shared verified HTTPS gateway will be connected separately after deployment/security testing.
+The latest signed-off release and SHA-256 manifest are at [GitHub Releases](https://github.com/sgennadi/Microsoft365AuthRepair/releases/latest). Download `Microsoft365AuthRepair-win-x64.zip` for Intel/AMD or `Microsoft365AuthRepair-win-arm64.zip` for ARM64; extract the included single EXE. **No .NET installation is necessary.** Never run an unknown EXE without verifying its source and checksum.
 
-## Stable baseline 1.0.0
+## What it does
 
-- The first stable release freezes the `preview.2` features and branding; no new reset behavior is introduced.
-- Assets: `Microsoft365AuthRepair-win-x64.zip`, `Microsoft365AuthRepair-win-arm64.zip` and `SHA256SUMS.txt`, attached to GitHub Releases under tag `v1.0.0` upon successful release workflow.
-- **Do not treat the "Stable" label as enterprise certification.** Test individual Repair, Advanced identity reset and admin all-profiles scheduled tasks on controlled Windows endpoints before deployment.
-- Full reset may sign users out of Microsoft 365 services; normal Repair sign-in does not clear identity caches.
-- The Update Center supports Stable and Preview checks but **automatic EXE installation remains disabled** pending updater-helper QA.
+- **Smart Repair:** read-only WAM/BrokerPlugin, Entra device trust/PRT and Office inventory checks, producing an evidence-based next action. The program distinguishes a broken user broker from device trust, network, policy, Conditional Access and licensing issues. It never resets accounts because a single indicator is missing.
+- **Preflight:** checks for active Office/Teams processes, Microsoft login HTTPS transport reachability, Windows clock discrepancy and relevant AppX policy hints. It does not attempt a Microsoft 365 sign-in or modify a tenant.
+- **Current user:** direct, explicitly confirmed WAM re-registration or optional *full Office identity reset*. Full reset is disruptive; save Office work and close apps first. Launch without UAC when diagnosing the affected user.
+- **All users:** one three-step administrator wizard for profiles **already existing on the device**. Schedules narrowly validated one-shot workers in each affected user's own interactive session. Task status is kept in protected machine-local history and per-user completion markers. A failed WAM registration may be retried **only** for the selected user after explicit approval, at the next sign-in; a full reset is never silently retried.
+- **Office activation:** identifies installed Office / Visio / Project 2024 Volume editions using Click-to-Run inventory and WMI, separates KMS/MAK from Microsoft 365 subscription indicators, suggests only matching public Microsoft 2024 GVLKs, and allows explicitly approved changes for safely verified obsolete Preview keys. Active production licenses are preserved; unsupported 2026 Preview products are read-only.
+- **Office WMI clarity:** multiple `SoftwareLicensingProduct` entries are *licensing records*, not multiple Office installations. The normal list shows one preferred installed edition; optional technical records (including unlicensed templates and Preview markers) are clearly labeled.
+- **Optional Microsoft Graph:** one in-process Device Code or certificate authorization, adapted from BitKeyBridge's session handling for **AuditLog.Read.All only**. Correlation ID lookup is read-only and needs an approved audit-only Entra application and appropriate reader rights. No ROPC, Graph write access, BitLocker/LAPS role borrowing or disk-stored OAuth tokens.
+- **Verify Repair:** automatically rechecks local prerequisites after successful direct user repair; actual Word, Outlook or Teams sign-in is considered confirmed only when the user says it worked.
+- **Diagnostics and reports:** generates a local report, then opens a separate review dialog with an explicit **Send anonymously** action. Uploads create public GitHub Issues **only on approval**. Outgoing data uses fixed Entra/WAM and Office evidence categories and coarse counts. No account names, SIDs, license or MAK keys, KMS hosts, tenant identifiers, product GUIDs, paths, or raw WMI and Graph responses are sent.
+- **Interface and updates:** English, Russian and Hebrew, RTL support, PerMonitorV2 scaling, Windows High Contrast, compact native controls, numbered What's New, Stable/Preview SemVer precedence, validated architecture/SHA-256 and rollback-aware update helper.
 
-## Verified CI build
+## First test on a Windows pilot device
 
-- **Preview.2 reference CI:** [successful x64/ARM64 build and x64 GUI/icon initialization test](https://github.com/sgennadi/Microsoft365AuthRepair/actions/runs/43706415667). Stable release builds perform the same checks.
-- Download the **Microsoft365AuthRepair-preview-x64-arm64** artifact from the workflow run (GitHub sign-in may be required).
-- The artifact contains `Microsoft365AuthRepair-win-x64.zip`, `Microsoft365AuthRepair-win-arm64.zip` and `SHA256SUMS.txt`. Each architecture ZIP contains one self-contained `Microsoft365AuthRepair.exe`.
-- This verifies compilation, icon embedding and basic GUI construction **only**. ARM64 actual-device execution, real Microsoft Entra sign-in repair, all-users scheduling and full identity reset have NOT yet been tested. Do not deploy the full reset to production before pilot validation.
-- Release availability is confirmed by the GitHub Releases page; a passing build alone does not create a release.
+1. Extract the x64/ARM64 ZIP and run `Microsoft365AuthRepair.exe` as the affected **ordinary user**.
+2. Click **Check & Diagnose**. Read the Smart recommendation and Office licensing summary. The check should not trigger UAC, logout, token deletion or account changes.
+3. Open **Office / Visio / Project licensing**. If activated, no key replacement is needed. **Show technical license records** is diagnostic-only and can include duplicate activation entries, unlicensed templates or Preview records.
+4. Open **Diagnostics & reports**. Review the *entire* anonymized payload, including the Office signals, before choosing Send or Keep local. You never need to share keys.
+5. Test targeted WAM repair on a disposable profile first, followed by an actual Office sign-in. Test All users tasks, task cleanup, activation changes and full identity reset **only** in an isolated controlled environment.
 
-## Packaging
+For a no-op GUI regression check, run `Microsoft365AuthRepair.exe --ui-self-test` on a Windows test machine. This checks layout creation and local policies; it does not prove Entra sign-in or KMS success.
 
-- .NET 10 WinForms **self-contained single-file**, `win-x64` and `win-arm64`. **WinForms does not support Native AOT**, so this is not an AOT build; no installed .NET runtime is required. Windows 10/11 x64 and supported ARM64 Windows versions are the targets.
-- Project/EXE: `Microsoft365AuthRepair` / `Microsoft365AuthRepair.exe`.
-- Releases (when published): `Microsoft365AuthRepair-win-x64.zip` and `Microsoft365AuthRepair-win-arm64.zip`, each containing exactly one `Microsoft365AuthRepair.exe`. Matching SHA256SUMS.txt in CI artifacts.
-- No EXE binary is included in this source archive. GitHub Actions must build it on Windows with .NET 10 SDK.
+## Security and support boundaries
 
-## Checkout existing shared modules (no forks or duplicates)
+- **No `dsregcmd /leave`** or automatic device rejoin is performed. A device trust error needs separate Entra/Hybrid Join investigation.
+- Full identity reset can sign the selected user out of Microsoft 365 applications and remove local sign-in caches; do not run on a healthy production profile.
+- Actual Azure/Entra consent, KMS/MAK activation, real domain multi-user execution, hardware ARM64 runtime and visual verification at 100/150/200% DPI (including Hebrew RTL) are **not covered by Windows CI**. **Stable is a release channel, not enterprise certification.** Pilot before broad deployment.
+- License keys, credentials and OAuth tokens are not needed for ordinary read-only diagnosis. Certificate auth requires a **separate audit-only** Entra app with approved permissions. Do not re-use BitKeyBridge's more privileged Graph app.
+- Successful local WAM registration and a Task Scheduler completion receipt do not prove cloud Microsoft 365 authentication.
 
-Both canonical repositories are private. For an authorized canonical-source build, use existing GitHub access (`gh auth login`), then:
+## Developer build
+
+Both shared modules belong to their canonical repositories; they are **not forked** in this project:
 
 ```powershell
 .\scripts\setup-modules.ps1
@@ -47,31 +47,13 @@ dotnet publish .\src\Microsoft365AuthRepair\Microsoft365AuthRepair.csproj -c Rel
 dotnet publish .\src\Microsoft365AuthRepair\Microsoft365AuthRepair.csproj -c Release -r win-arm64 --self-contained true
 ```
 
-CI can build without private credentials: it checks out **pinned public snapshots** already published in `sgennadi/TermsrvPatcherUnified` and `sgennadi/BitKeyBridge`. These copies may differ from the private canonical versions. For a canonical-source build, optionally configure Actions secret `MODULES_READ_TOKEN` with read-only Contents access to both private repositories. Never embed this token in EXE or source. Private commit pins are in `MODULES.lock`; public snapshot pins are in `.github/workflows/build.yml`. The Windows runner compiles x64/ARM64 and smoke-tests the x64 GUI; actual ARM64 and domain/Entra repair still require manual QA.
+CI checks out pinned public source snapshots from TermsrvPatcherUnified and BitKeyBridge unless it has the optional read-only `MODULES_READ_TOKEN` required for the canonical private source snapshots. See `MODULES.lock` for reviewed module commit pins. Do not place secrets in source or an EXE.
 
-## GitHub publication
+Windows GitHub Actions builds both architectures, runs x64 GUI/self-tests, parses the protected PowerShell fallback without executing it, rejects invalid worker requests and verifies that each release contains exactly one matching EXE with SHA-256 checks.
 
-The source is published to `sgennadi/Microsoft365AuthRepair`. Existing UniversalUpdater and UniversalDiagnostics repositories are not modified. For future deployments, an authorized operator can run:
+## Releases and history
 
-```powershell
-.\scripts\publish-repo.ps1 -Visibility public
-```
+- [Latest Stable](https://github.com/sgennadi/Microsoft365AuthRepair/releases/latest)
+- [v1.0.1 release notes](docs/releases/v1.0.1.md)
+- [Full changelog](CHANGELOG.md)
 
-This script only creates `sgennadi/Microsoft365AuthRepair` when absent; it is not needed after initial publication. `-Visibility private` is supported, but a private repo's unauthenticated GitHub Releases are not accessible from standard-user updater clients; do not bundle credentials to work around this. Nothing is published automatically by generating these files.
-
-## Safe first testing
-
-1. Compile and run `Microsoft365AuthRepair.exe --ui-self-test` on Windows x64 and ARM64. This checks GUI initialization, not real repair.
-2. Test **Diagnose** and **Repair sign-in** as a normal non-admin domain user. Confirm it does not request another admin account.
-3. Test admin desktop-user selection under different UAC identities; verify worker runs under the intended SID.
-4. Test Advanced full reset in an expendable test profile only; check credential filtering, partial-delete failures, package registration and rerun behavior.
-5. Test all-users tasks with offline and multiple RDP sessions; inspect per-user logs rather than treating task creation as a successful repair.
-6. Test Update Center against approved test Releases, SHA256, wrong-architecture, rollback and resource locks before enabling installation or publishing stable.
-
-**No `dsregcmd /leave` is called.** Local AD/Entra device membership is not intentionally modified. `DeviceAuthStatus: FAILED` requires separate cloud/Hybrid Join investigation.
-
-## Security limitations
-
-- Full identity reset is intentionally disruptive and cannot guarantee restoration of session tokens, Credential Manager secrets or application caches; the recommended non-destructive ReRegister mode should be tried first.
-- The admin all-users workflow depends on Task Scheduler InteractiveToken and requires Windows account sessions. A queued task is not a verified successful repair. Offline profiles are processed upon next sign-in, subject to OS policy.
-- Source was initially assembled without a Windows/.NET build environment. Check GitHub Actions for actual compilation status; Windows UI visual QA, ARM64 runtime and real AD/WAM repair are not yet verified.

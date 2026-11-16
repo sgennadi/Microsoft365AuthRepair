@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using UniversalUpdater;
 
@@ -21,102 +22,425 @@ internal static class UpdaterIntegration
             new UpdateAssetRule("win-arm64", "Microsoft365AuthRepair-win-arm64.zip", PackageKind.SingleExeZip, "Microsoft365AuthRepair.exe")
         ]
     };
+
+    // Preview builds check Preview first and Stable second by default.
+    // A user can still explicitly select Stable-only in Update Center.
+    internal static bool InstalledIsPreview => SemanticVersion.Parse(Repair.Version).IsPrerelease;
+
+    internal static UpdateChannel[] CheckOrder(bool withPreview, bool previewInstalled) =>
+        !withPreview ? [UpdateChannel.Stable] :
+        previewInstalled ? [UpdateChannel.Prerelease, UpdateChannel.Stable] :
+                           [UpdateChannel.Stable, UpdateChannel.Prerelease];
+
+    internal static async Task<UpdateRelease?> FindAsync(bool withPreview, CancellationToken token = default)
+    {
+        using var client = new GitHubReleaseClient();
+        UpdateRelease? best = null;
+        foreach (var channel in CheckOrder(withPreview, InstalledIsPreview))
+        {
+            var candidate = await client.CheckAsync(Options(channel), token);
+            // Never offer an older Stable just because it is a final release.
+            // SemVer sorts 1.0.1 above 1.0.1-preview.10 automatically.
+            if (candidate is not null && (best is null || candidate.Version > best.Version))
+                best = candidate;
+        }
+        return best;
+    }
+
+    internal static UpdateChannel ChannelFor(UpdateRelease release) =>
+        release.Version.IsPrerelease ? UpdateChannel.Prerelease : UpdateChannel.Stable;
+
+    internal static bool SelfTest()
+    {
+        var previewOrder = CheckOrder(withPreview: true, previewInstalled: true);
+        var stableOrder = CheckOrder(withPreview: true, previewInstalled: false);
+        var stableOnly = CheckOrder(withPreview: false, previewInstalled: true);
+        return previewOrder.SequenceEqual([UpdateChannel.Prerelease, UpdateChannel.Stable]) &&
+            stableOrder.SequenceEqual([UpdateChannel.Stable, UpdateChannel.Prerelease]) &&
+            stableOnly.SequenceEqual([UpdateChannel.Stable]) &&
+            SemanticVersion.Parse("1.0.1") > SemanticVersion.Parse("1.0.1-preview.10") &&
+            SemanticVersion.Parse("1.0.0") < SemanticVersion.Parse("1.0.1-preview.10") &&
+            SemanticVersion.Parse("1.0.2-preview.1") > SemanticVersion.Parse("1.0.1");
+    }
+}
+
+internal static class UpdateUiText
+{
+    internal static string T(string en, string ru, string he) =>
+        UiStrings.Language switch { "ru" => ru, "he" => he, _ => en };
+
+    internal static string FormatWhatsNew(string notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes)) return "No change details supplied.";
+        var all = new List<string>();
+        var selected = new List<string>();
+        bool section = false, seen = false;
+        foreach (var original in notes.Replace("\r", "").Split('\n'))
+        {
+            var line = original.Trim();
+            if (Regex.IsMatch(line, @"^#{1,5}\s+(What's new|Changes|Изменения|Что нового|Changelog)\b",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                section = seen = true;
+                continue;
+            }
+            if (section && line.StartsWith('#')) break;
+            var match = Regex.Match(line, @"^(?:\d{1,2}[.)]|[-*+])\s+(.+)$");
+            if (!match.Success) continue;
+            var item = Regex.Replace(match.Groups[1].Value, @"\[([^\]]+)\]\([^)]+\)", "$1");
+            item = item.Replace("**", "").Replace("\u0060", "").Trim();
+            if (item.Length == 0) continue;
+            // Keep release notes concise by item count, not by chopping words.
+            // Long items wrap and are scrollable in the adaptive What's new area.
+            if (item.Length > 500) item = item[..497] + "...";
+            if (section) selected.Add(item);
+            else if (!seen) all.Add(item);
+        }
+        var list = selected.Count > 0 ? selected : all;
+        return list.Count == 0 ? "See release page for details." :
+            string.Join(Environment.NewLine, list.Take(12).Select((x, i) => $"{i + 1}. {x}"));
+    }
+
+    internal static string CurrentChangelog() => T(
+        "1. Smart Repair recommends the safest action from WAM, Entra and Office evidence.\n2. Preflight checks Office apps, login HTTPS, time and AppX policy hints.\n3. Separate Office Volume 2024 and Microsoft 365 subscription activation evidence.\n4. Retry only a confirmed failed WAM task for one selected user at next sign-in.\n5. Optional Graph sign-in audit: Device Code/certificate, audit-only session.\n6. Automatic local recheck and explicit user-reported Office app sign-in result.\n7. Compact localized EN/RU/HE DPI-aware Smart Repair view.",
+        "1. Smart Repair предлагает действие по признакам WAM, Entra и Office.\n2. Предпроверка Office, HTTPS, времени и AppX-политик.\n3. Раздельная диагностика Office Volume 2024 и подписки Microsoft 365.\n4. Повтор только ошибочного WAM у выбранного пользователя при следующем входе.\n5. Журналы входа Graph: Device Code/сертификат, только AuditLog.Read.All.\n6. Автопроверка после ремонта и отдельное подтверждение входа пользователем.\n7. Компактный интерфейс EN/RU/HE с адаптацией к DPI.",
+        "1. Smart Repair ממליץ על פעולה לפי מצב WAM, Entra ו-Office.\n2. בדיקה מוקדמת של Office, HTTPS, שעון ומדיניות AppX.\n3. בדיקת רישוי נפרדת ל-Office Volume ולמנוי Microsoft 365.\n4. ניסיון חוזר ל-WAM שנכשל רק למשתמש נבחר ובכניסה הבאה.\n5. בדיקת Graph עם Device Code או אישור והרשאת AuditLog בלבד.\n6. בדיקה מקומית חוזרת ואישור מפורש של כניסה ל-Office.\n7. ממשק EN/RU/HE קומפקטי ומותאם DPI.");
+
+    internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
+
+    internal static bool SelfTest()
+    {
+        var currentItems = ForMultilineBox(CurrentChangelog()).Split(
+            Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        return FormatWhatsNew(
+                "## What's new\n1. Alpha\n2. Beta\n## Limitations\n- Private") ==
+            $"1. Alpha{Environment.NewLine}2. Beta" &&
+            ForMultilineBox("1. Alpha\n2. Beta") ==
+            $"1. Alpha{Environment.NewLine}2. Beta" &&
+            currentItems.Length is >= 2 and <= 7 &&
+            currentItems.Select((text, index) =>
+                text.StartsWith($"{index + 1}. ", StringComparison.Ordinal)).All(valid => valid);
+    }
 }
 
 internal sealed class UpdateCenter : Form
 {
-    private readonly ComboBox channel = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240 };
-    private readonly Label state = UiTheme.Caption("No check has been performed.");
-    private readonly TextBox releaseNotes = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
-    private readonly Button check = UiTheme.CreateActionButton("Check for updates", true);
-    private readonly Button stage = UiTheme.CreateActionButton("Download and verify");
-    private readonly Button open = UiTheme.CreateActionButton("Open release page");
-    private UpdateRelease? selected;
+    private readonly ComboBox channel = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Width = 205,
+        Margin = new Padding(6, 7, 0, 5)
+    };
+    // Automatic check on open or channel change. Manual refresh is a small link
+    // separated from the channel selection and primary Update action.
+    private readonly LinkLabel refresh = new()
+    {
+        AutoSize = true,
+        TextAlign = ContentAlignment.MiddleRight,
+        Margin = new Padding(10, 13, 3, 0),
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        TabStop = true
+    };
+    private readonly Label installed = UiTheme.Caption(string.Empty);
+    private readonly Label available = UiTheme.Caption(string.Empty);
+    private readonly Label status = UiTheme.Caption(string.Empty);
+    private readonly Label bytesText = UiTheme.Caption(string.Empty);
+    private readonly TextBox changes = new()
+    {
+        Dock = DockStyle.Fill, Multiline = true, ReadOnly = true,
+        WordWrap = true, ScrollBars = ScrollBars.Vertical,
+        BorderStyle = BorderStyle.FixedSingle,
+        MinimumSize = new Size(0, 245),
+        Font = new Font("Segoe UI", 10f),
+        Margin = new Padding(0, 6, 0, 0),
+        BackColor = SystemColors.Window
+    };
+    private readonly ProgressBar progress = new()
+    {
+        Dock = DockStyle.Fill, Minimum = 0, Maximum = 100, Height = 20
+    };
+    private readonly Button download = UiTheme.CreateActionButton("Update", true);
+    private readonly Button page = UiTheme.CreateActionButton("Release page");
+    private readonly Button folder = UiTheme.CreateActionButton("Open folder");
+    private readonly Button cancel = UiTheme.CreateActionButton("Cancel");
+    internal bool IncludesPreviews => channel.SelectedIndex == 1;
+    internal bool ChangeListHasSeparateLines => changes.Text.Contains(Environment.NewLine, StringComparison.Ordinal);
+    private UpdateRelease? release;
+    private StagedPackage? staged;
+    private CancellationTokenSource? active;
     private bool busy;
 
-    internal UpdateCenter()
+    // A null preference uses the installed build's channel. Explicit
+    // Stable-only is preserved during an elevated update handoff.
+    internal UpdateCenter(bool autoUpdate = false, bool? includePreviews = null)
     {
-        Text = "Microsoft 365 Auth Repair - UniversalUpdater";
+        Text = $"Microsoft 365 Auth Repair v{Repair.Version} - Updates";
         Font = UiTheme.BodyFont();
         AutoScaleMode = AutoScaleMode.Dpi;
-        MinimumSize = new Size(540, 420);
-        Size = new Size(670, 520);
+        MinimumSize = new Size(760, 520);
+        Size = new Size(1140, 780);
+        BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
         StartPosition = FormStartPosition.CenterParent;
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 1, RowCount = 4 };
+        ResponsiveLayout.FitInitialWindow(this, new Size(1140, 780),
+            new Size(1440, 1040), widthFraction: 0.90, heightFraction: 0.92);
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true,
+            Padding = new Padding(18), ColumnCount = 1, RowCount = 8 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        for (int i = 0; i < 7; i++) root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var top = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
-        channel.Items.AddRange(["Stable", "Preview + stable"]);
-        channel.SelectedIndex = 0;
-        top.Controls.Add(channel);
-        top.Controls.Add(check);
-        top.Controls.Add(stage);
-        top.Controls.Add(open);
-        root.Controls.Add(top, 0, 0);
-        root.Controls.Add(state, 0, 1);
-        root.Controls.Add(UiTheme.Caption("Release notes / What's new:"), 0, 2);
-        root.Controls.Add(releaseNotes, 0, 3);
-        Controls.Add(root);
-        UiIcons.SetWindowIcon(this);
-        UiIcons.Assign(check, UiGlyph.Updates, primary: true);
-        UiIcons.Assign(stage, UiGlyph.Download);
-        UiIcons.Assign(open, UiGlyph.Link);
-        UiIcons.TrackDpi(this);
-        stage.Enabled = open.Enabled = false;
-        check.Click += async (_, _) => await CheckAsync();
-        stage.Click += async (_, _) => await StageAsync();
-        open.Click += (_, _) =>
+        var headerRow = new TableLayoutPanel
         {
-            if (selected is not null)
-                Process.Start(new ProcessStartInfo(selected.ReleaseUrl) { UseShellExecute = true });
+            Dock = DockStyle.Fill, AutoSize = true,
+            ColumnCount = 2, Margin = new Padding(0, 0, 0, 8)
+        };
+        headerRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        headerRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        var header = UiTheme.Caption("Microsoft 365 Auth Repair", true);
+        header.Font = new Font("Segoe UI", 16f, FontStyle.Bold);
+        headerRow.Controls.Add(header, 0, 0);
+        refresh.Text = UpdateUiText.T("Refresh", "Обновить проверку", "רענון");
+        refresh.AccessibleName = refresh.Text;
+        headerRow.Controls.Add(refresh, 1, 0);
+        root.Controls.Add(headerRow, 0, 0);
+
+        var top = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true, WrapContents = true,
+            Margin = new Padding(0, 0, 0, 12)
+        };
+        top.Controls.Add(UiTheme.Caption(UpdateUiText.T("Channel:", "Канал:", "ערוץ:")));
+        channel.Items.AddRange([
+            UpdateUiText.T("Stable", "Стабильная", "יציבה"),
+            "Preview + Stable"
+        ]);
+        channel.SelectedIndex = (includePreviews ?? UpdaterIntegration.InstalledIsPreview) ? 1 : 0;
+        top.Controls.Add(channel);
+        root.Controls.Add(top, 0, 1);
+
+        installed.Text = UpdateUiText.T(
+            $"Installed: v{Repair.Version} / {UpdaterIntegration.Options(UpdateChannel.Stable).Architecture}",
+            $"Установлено: v{Repair.Version} / {UpdaterIntegration.Options(UpdateChannel.Stable).Architecture}",
+            $"מותקן: v{Repair.Version} / {UpdaterIntegration.Options(UpdateChannel.Stable).Architecture}");
+        available.Text = UpdateUiText.T("Available: not checked", "Доступно: не проверено", "זמין: טרם נבדק");
+        root.Controls.Add(installed, 0, 2);
+        root.Controls.Add(available, 0, 3);
+
+        var transfer = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill,
+            ColumnCount = 1, RowCount = 3, Margin = new Padding(0, 8, 0, 8) };
+        transfer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        transfer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        transfer.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
+        transfer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        status.Text = UpdateUiText.T("Ready.", "Готово.", "מוכן.");
+        transfer.Controls.Add(status, 0, 0);
+        transfer.Controls.Add(progress, 0, 1);
+        transfer.Controls.Add(bytesText, 0, 2);
+        root.Controls.Add(transfer, 0, 4);
+
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
+        download.Text = UpdateUiText.T("Update", "Обновить", "עדכן");
+        page.Text = UpdateUiText.T("Release page", "Страница релиза", "דף גרסה");
+        folder.Text = UpdateUiText.T("Open folder", "Открыть папку", "פתח תיקייה");
+        cancel.Text = UpdateUiText.T("Cancel", "Отмена", "ביטול");
+        actions.Controls.Add(download);
+        actions.Controls.Add(page);
+        actions.Controls.Add(folder);
+        actions.Controls.Add(cancel);
+        root.Controls.Add(actions, 0, 5);
+        root.Controls.Add(UiTheme.Caption(UpdateUiText.T("What's new", "Что нового", "מה חדש")), 0, 6);
+        changes.Text = UpdateUiText.ForMultilineBox(UpdateUiText.CurrentChangelog());
+        root.Controls.Add(changes, 0, 7);
+        Controls.Add(ResponsiveLayout.Center(this, root, 1320));
+        UiIcons.SetWindowIcon(this);
+        UiIcons.Assign(download, UiGlyph.Updates, primary: true);
+        download.UseMnemonic = false;
+        UiIcons.Assign(page, UiGlyph.Link);
+        UiIcons.Assign(folder, UiGlyph.Folder);
+        UiIcons.Assign(cancel, UiGlyph.Reset);
+        UiIcons.TrackDpi(this);
+        var tips = new ToolTip { AutoPopDelay = 12000, InitialDelay = 500, ReshowDelay = 200 };
+        tips.SetToolTip(download, "One click: download, SHA-256 and architecture verification, safe install, health check and rollback.");
+        tips.SetToolTip(channel, "Preview installations check Preview then Stable; the highest newer version wins. Stable-only can be selected manually.");
+        download.Enabled = page.Enabled = folder.Enabled = cancel.Enabled = false;
+        cancel.Visible = false;
+        refresh.LinkClicked += async (_, _) => await CheckAsync();
+        download.Click += async (_, _) => await UpdateAsync();
+        cancel.Click += (_, _) => active?.Cancel();
+        channel.SelectedIndexChanged += async (_, _) =>
+        {
+            // Selecting Stable or Preview+Stable immediately performs a check.
+            if (!busy) await CheckAsync();
+        };
+        page.Click += (_, _) =>
+        {
+            if (release is not null)
+                Process.Start(new ProcessStartInfo(release.ReleaseUrl) { UseShellExecute = true });
+        };
+        folder.Click += (_, _) =>
+        {
+            if (staged is not null && File.Exists(staged.ArchivePath))
+                Process.Start(new ProcessStartInfo("explorer.exe",
+                    $"/select,\"{staged.ArchivePath}\"") { UseShellExecute = true });
+        };
+        FormClosing += (_, _) => active?.Cancel();
+        Shown += async (_, _) =>
+        {
+            // UAC was confirmed by a user already clicking Update in a
+            // protected installation. Continue without a second Update click.
+            await CheckAsync();
+            if (autoUpdate && release is not null && !busy)
+                await UpdateAsync();
         };
     }
 
-    private UpdateChannel Channel => channel.SelectedIndex == 0 ? UpdateChannel.Stable : UpdateChannel.Prerelease;
-    private void Busy(bool flag)
+    private void Clear()
     {
-        busy = flag;
-        check.Enabled = channel.Enabled = !flag;
-        stage.Enabled = open.Enabled = !flag && selected is not null;
+        release = null;
+        staged = null;
+        available.Text = UpdateUiText.T("Available: not checked", "Доступно: не проверено", "זמין: טרם נבדק");
+        changes.Clear();
+        progress.Value = 0;
+        bytesText.Text = string.Empty;
+        download.Enabled = page.Enabled = folder.Enabled = false;
+    }
+
+    private void Busy(bool value)
+    {
+        busy = value;
+        refresh.Enabled = channel.Enabled = !value;
+        cancel.Enabled = value;
+        cancel.Visible = value;
+        download.Enabled = !value && release is not null && staged is null;
+        page.Enabled = !value && release is not null;
+        folder.Enabled = !value && staged is not null;
     }
 
     private async Task CheckAsync()
     {
         if (busy) return;
+        Clear();
         Busy(true);
-        state.Text = "Checking GitHub Releases...";
-        selected = null;
+        status.Text = UpdateUiText.T("Checking GitHub Releases...", "Проверка GitHub Releases...", "בודק גרסאות...");
+        progress.Style = ProgressBarStyle.Marquee;
+        active = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         try
         {
-            using var client = new GitHubReleaseClient();
-            selected = await client.CheckAsync(UpdaterIntegration.Options(Channel));
-            state.Text = selected is null ? "No newer compatible release (or repository has no published Releases)." :
-                $"Available: {selected.Version} / {selected.Rule.Architecture} / SHA-256 metadata verified.";
-            releaseNotes.Text = selected?.ReleaseNotes ?? "";
+            release = await UpdaterIntegration.FindAsync(channel.SelectedIndex == 1, active.Token);
+            if (release is null)
+            {
+                available.Text = UpdateUiText.T("Available: none", "Доступно: нет", "זמין: אין");
+                status.Text = UpdateUiText.T("You're up to date.", "Установлена актуальная версия.", "הגרסה מעודכנת.");
+                changes.Text = UpdateUiText.ForMultilineBox(UpdateUiText.CurrentChangelog());
+            }
+            else
+            {
+                var releaseChannel = release.Version.IsPrerelease
+                    ? UpdateUiText.T("Preview", "Предварительная", "תצוגה מקדימה")
+                    : UpdateUiText.T("Stable", "Стабильная", "יציבה");
+                available.Text = UpdateUiText.T(
+                    $"New: v{release.Version} ({releaseChannel}, {release.Rule.Architecture})",
+                    $"Доступна: v{release.Version} ({releaseChannel}, {release.Rule.Architecture})",
+                    $"זמין: v{release.Version} ({releaseChannel}, {release.Rule.Architecture})");
+                changes.Text = UpdateUiText.ForMultilineBox(UpdateUiText.FormatWhatsNew(release.ReleaseNotes));
+                download.Focus(); // Keyboard users can update directly after release discovery.
+                status.Text = UpdateUiText.T("Update available.", "Есть обновление.", "עדכון זמין.");
+                bytesText.Text = UpdateUiText.T("Update will verify, install and restart (same-user writable installs).",
+                    "Update проверит файл, установит и перезапустит программу (без UAC).",
+                    "העדכון ייבדק ויותקן ללא העלאת הרשאות.");
+            }
         }
+        catch (OperationCanceledException) { status.Text = UpdateUiText.T("Cancelled.", "Отменено.", "בוטל."); }
         catch (Exception ex)
         {
-            state.Text = "Check failed: " + ex.GetType().Name + ". Private repos need a separately configured trusted access path.";
+            available.Text = UpdateUiText.T("Available: unknown", "Доступно: неизвестно", "זמין: לא ידוע");
+            status.Text = $"GitHub check failed ({ex.GetType().Name}).";
         }
-        finally { Busy(false); }
+        finally
+        {
+            progress.Style = ProgressBarStyle.Continuous;
+            progress.Value = 0;
+            active.Dispose();
+            active = null;
+            Busy(false);
+        }
     }
 
-    private async Task StageAsync()
+    private async Task UpdateAsync()
     {
-        if (busy || selected is null) return;
+        if (busy || release is null) return;
+        var chosen = release;
         Busy(true);
-        state.Text = "Downloading and verifying SHA-256, ZIP contents and PE architecture...";
+        progress.Style = ProgressBarStyle.Continuous;
+        progress.Value = 0;
+        bytesText.Text = "0%";
+        status.Text = UpdateUiText.T("Updating: downloading...", "Обновление: загрузка...", "מעדכן: מוריד...");
+        active = new CancellationTokenSource(TimeSpan.FromMinutes(8));
+        var receiver = new Progress<UpdateProgress>(p =>
+        {
+            if (IsDisposed || Disposing) return;
+            if (p.Phase == UpdatePhase.Downloading && p.TotalBytes is > 0)
+            {
+                var percent = (int)Math.Clamp(p.ReceivedBytes * 100 / p.TotalBytes.Value, 0L, 100L);
+                progress.Value = percent;
+                bytesText.Text = $"{percent}% • {p.ReceivedBytes / 1048576d:F1} / {p.TotalBytes.Value / 1048576d:F1} MiB";
+            }
+            else if (p.Phase == UpdatePhase.Verified)
+            {
+                progress.Value = 100;
+                bytesText.Text = "100% • SHA-256 verified";
+            }
+        });
         try
         {
             using var downloader = new UpdateDownloader();
-            var staged = await downloader.StageAsync(UpdaterIntegration.Options(Channel), selected);
-            state.Text = "Verified download staged. No executable was replaced. Automatic installation is unavailable in version 1.0.0 until the trusted updater helper is validated.";
-            releaseNotes.Text = "Verified ZIP: " + staged.ArchivePath + Environment.NewLine + Environment.NewLine + releaseNotes.Text;
+            staged = await downloader.StageAsync(
+                UpdaterIntegration.Options(UpdaterIntegration.ChannelFor(chosen)),
+                chosen, receiver, active.Token);
+            progress.Value = 100;
+            bytesText.Text = "100% - SHA-256 and architecture verified";
+            status.Text = UpdateUiText.T("Installing verified update...", "Установка проверенного обновления...", "מתקין עדכון מאומת...");
+            // A same-user helper runs outside the application, after it exits.
+            // The helper calls PortableExeTransaction for atomic replacement,
+            // health probe and rollback. Never silently elevate.
+            try
+            {
+                UpdateHandoff.Queue(staged);
+            }
+            catch (UnauthorizedAccessException) when (!Identity.IsElevated())
+            {
+                // The verified archive is still present. A non-elevated
+                // instance in Program Files cannot replace its own EXE.
+                // Ask UAC and continue update from the trusted installed EXE.
+                if (!UpdateHandoff.TryRestartElevated(
+                        includePreview: channel.SelectedIndex == 1, out var explanation))
+                    throw new UnauthorizedAccessException(explanation);
+                status.Text = explanation;
+                Application.Exit();
+                return;
+            }
+            status.Text = UpdateUiText.T("Restarting to complete update...", "Перезапуск для завершения обновления...", "מפעיל מחדש לסיום העדכון...");
+            Application.Exit();
         }
-        catch (Exception ex) { state.Text = "Verification failed: " + ex.GetType().Name + "."; }
-        finally { Busy(false); }
+        catch (OperationCanceledException)
+        {
+            status.Text = UpdateUiText.T("Update cancelled.", "Обновление отменено.", "העדכון בוטל.");
+            progress.Value = 0;
+            bytesText.Text = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            status.Text = UpdateUiText.T(
+                "Update not installed: " + ex.Message + " Verified ZIP remains available under Open folder.",
+                "Обновление не установлено: " + ex.Message + " Проверенный ZIP доступен через «Открыть папку».",
+                "העדכון לא הותקן: " + ex.GetType().Name + ". הקובץ המאומת זמין בתיקייה.");
+            progress.Value = 0;
+            bytesText.Text = string.Empty;
+        }
+        finally
+        {
+            active.Dispose();
+            active = null;
+            Busy(false);
+        }
     }
 }
