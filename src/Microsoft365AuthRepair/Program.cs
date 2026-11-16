@@ -87,6 +87,8 @@ internal static class Program
                     ("Volume licensing UI", OfficeVolumeLicenseForm.SelfTest),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
                     ("Bounded read-only scan", ReadOnlyDiagnosticScan.SelfTest),
+                    ("Live stage-only activity and copy log", ActivityJournalView.SelfTest),
+                    ("Main activity panel", () => form.HasActivityJournal),
                     ("Local-only Entra key evidence", EntraKeySignals.SelfTest),
                     ("WAM result card", DiagnosticResultCard.SelfTest),
                     ("What's New format", UpdateUiText.SelfTest),
