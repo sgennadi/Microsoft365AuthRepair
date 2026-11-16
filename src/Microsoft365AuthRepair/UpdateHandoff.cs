@@ -36,6 +36,11 @@ internal static class UpdateHandoff
     {
         public string Code { get; set; } = "";
         public string Version { get; set; } = "";
+        // Newer helpers include exact-file evidence. Older Preview helpers
+        // wrote Code/Version only; legacy cleanup requires PE version proof.
+        public string InstalledPath { get; set; } = "";
+        public string InstalledSha256 { get; set; } = "";
+        public string BackupSha256 { get; set; } = "";
     }
 
     private static string Root => Path.Combine(
@@ -306,7 +311,10 @@ internal static class UpdateHandoff
             options, staged, Path.GetDirectoryName(target)!, ExeName,
             explicitlyApproved: true, HealthProbe, deadline.Token);
 
-        SaveResult(result.Success ? "INSTALL_OK" : result.Summary, ticket.Version);
+        SaveResult(result.Success ? "INSTALL_OK" : result.Summary, ticket.Version,
+            result.Success ? target : "",
+            result.Success ? ticket.ExtractedSha256 : "",
+            result.Success ? ticket.OriginalSha256 : "");
         if (!result.Success && !result.RolledBack)
             return 3;
         try
@@ -343,36 +351,136 @@ internal static class UpdateHandoff
         catch { return false; }
     }
 
-    private static void SaveResult(string code, string version)
+    private static void SaveResult(string code, string version,
+        string installedPath = "", string installedHash = "", string backupHash = "")
     {
         try
         {
             Directory.CreateDirectory(Root);
-            var receipt = JsonSerializer.Serialize(new Receipt { Code = code, Version = version });
+            var receipt = JsonSerializer.Serialize(new Receipt
+            {
+                Code = code, Version = version,
+                InstalledPath = installedPath,
+                InstalledSha256 = installedHash, BackupSha256 = backupHash
+            });
             File.WriteAllText(Path.Combine(Root, ResultFile), receipt, Encoding.UTF8);
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
     }
 
-    internal static string? ConsumeResult()
+    private static Receipt? ReadReceipt()
     {
-        var path = Path.Combine(Root, ResultFile);
-        if (!File.Exists(path)) return null;
         try
         {
-            var receipt = JsonSerializer.Deserialize<Receipt>(File.ReadAllText(path));
-            File.Delete(path);
-            if (receipt is null || receipt.Version.Length > 70) return null;
+            var file = Path.Combine(Root, ResultFile);
+            if (!File.Exists(file) || new FileInfo(file).Length > 4096)
+                return null;
+            var receipt = JsonSerializer.Deserialize<Receipt>(File.ReadAllText(file));
+            return receipt is { Version.Length: <= 70, Code.Length: <= 70 } &&
+                (receipt.Code != "INSTALL_OK" || RegexVersion(receipt.Version))
+                ? receipt : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or JsonException or System.Security.SecurityException)
+        { return null; }
+    }
+
+    private static void DeleteReceipt()
+    {
+        try { File.Delete(Path.Combine(Root, ResultFile)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
+    // INSTALL_OK is written only after the transaction checked the installed
+    // hash and ran the GUI self-test. The .bak is deliberately retained until
+    // the updated main application reaches its visible Shown event.
+    internal static string? ConsumeResult()
+    {
+        var receipt = ReadReceipt();
+        if (receipt is null) return null;
+        if (receipt.Code != "INSTALL_OK")
+        {
+            DeleteReceipt();
             return receipt.Code switch
             {
-                "INSTALL_OK" => "Updated successfully to v" + receipt.Version + ".",
-                "INSTALL_FAILED_RESTORED" => "Update failed; previous version restored. Check updater logs.",
-                "ROLLBACK_REQUIRES_ATTENTION" => "Update failed; manual rollback is required.",
+                "INSTALL_FAILED_RESTORED" =>
+                    "Update failed; previous version restored. Check updater logs.",
+                "ROLLBACK_REQUIRES_ATTENTION" =>
+                    "Update failed; manual rollback is required.",
                 _ => "Update did not finish (" + receipt.Code + ")."
             };
         }
-        catch { return null; }
+        if (receipt.Version != Repair.Version) return null;
+        return "Updated successfully to v" + receipt.Version + ".";
+    }
+
+    internal static bool CanDeleteSuccessfulBackup(string code,
+        string receiptVersion, string runningVersion, string exeName,
+        string receiptPath, string actualPath) =>
+        code == "INSTALL_OK" && receiptVersion == runningVersion &&
+        exeName.Equals(ExeName, StringComparison.OrdinalIgnoreCase) &&
+        !actualPath.StartsWith(@"\\", StringComparison.Ordinal) &&
+        (string.IsNullOrEmpty(receiptPath) ||
+         string.Equals(receiptPath, actualPath, StringComparison.OrdinalIgnoreCase));
+
+    // Called only after the new main WinForms window is shown, never from
+    // --ui-self-test, the old updater helper, or a maintenance/worker entry.
+    // Failed updates and mismatched versions leave .bak completely untouched.
+    internal static void CleanupSuccessfulBackupAfterStartup()
+    {
+        var receipt = ReadReceipt();
+        if (receipt is null || receipt.Code != "INSTALL_OK") return;
+        try
+        {
+            var current = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(current)) return;
+            current = Full(current);
+            if (!CanDeleteSuccessfulBackup(receipt.Code, receipt.Version,
+                Repair.Version, Path.GetFileName(current), receipt.InstalledPath,
+                current)) return;
+            var backup = current + ".bak";
+            if (!File.Exists(backup))
+            {
+                DeleteReceipt(); // successful install did not create a backup
+                return;
+            }
+            RejectLink(Path.GetDirectoryName(current)!);
+            RejectLink(current);
+            RejectLink(backup);
+            // A new helper supplies exact before/after hashes. A legacy helper
+            // (Preview.26 -> Preview.27) did not; in that case we require the
+            // backup's Windows file version to be strictly older than the new
+            // program, preventing deletion of an unrelated same-name file.
+            if (Sha(receipt.InstalledSha256) && Sha(receipt.BackupSha256))
+            {
+                if (!Digest(current).Equals(receipt.InstalledSha256,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !Digest(backup).Equals(receipt.BackupSha256,
+                        StringComparison.OrdinalIgnoreCase)) return;
+            }
+            else
+            {
+                var old = FileVersionInfo.GetVersionInfo(backup).FileVersion;
+                var installed = FileVersionInfo.GetVersionInfo(current).FileVersion;
+                var priorFile = FileVersionInfo.GetVersionInfo(backup);
+                var currentFile = FileVersionInfo.GetVersionInfo(current);
+                if (!Version.TryParse(old, out var oldVersion) ||
+                    !Version.TryParse(installed, out var installedVersion) ||
+                    oldVersion >= installedVersion ||
+                    !string.Equals(priorFile.ProductName, currentFile.ProductName,
+                        StringComparison.OrdinalIgnoreCase)) return;
+            }
+            File.Delete(backup);
+            DeleteReceipt();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or System.Security.SecurityException or ArgumentException or
+            System.ComponentModel.Win32Exception)
+        {
+            // Safe retry on a later normal startup; the rollback file is
+            // intentionally preserved if access or integrity is in doubt.
+        }
     }
 
     internal static void CleanupOldHelpers()
@@ -400,6 +508,20 @@ internal static class UpdateHandoff
             && RegexVersion("1.2.3")
             && !RegexVersion("0.0.3 && whoami")
             && !RegexVersion("../evil")
-            && Sha(new string('a', 64));
+            && Sha(new string('a', 64)) &&
+            CanDeleteSuccessfulBackup("INSTALL_OK", Repair.Version, Repair.Version,
+                ExeName, "", @"C:\Apps\Microsoft365AuthRepair.exe") &&
+            !CanDeleteSuccessfulBackup("INSTALL_FAILED_RESTORED",
+                Repair.Version, Repair.Version, ExeName, "",
+                @"C:\Apps\Microsoft365AuthRepair.exe") &&
+            !CanDeleteSuccessfulBackup("INSTALL_OK", "1.0.2-preview.26",
+                Repair.Version, ExeName, "",
+                @"C:\Apps\Microsoft365AuthRepair.exe") &&
+            !CanDeleteSuccessfulBackup("INSTALL_OK", Repair.Version,
+                Repair.Version, "unrelated.exe", "",
+                @"C:\Apps\unrelated.exe") &&
+            !CanDeleteSuccessfulBackup("INSTALL_OK", Repair.Version,
+                Repair.Version, ExeName, @"C:\Other\Microsoft365AuthRepair.exe",
+                @"C:\Apps\Microsoft365AuthRepair.exe");
     }
 }

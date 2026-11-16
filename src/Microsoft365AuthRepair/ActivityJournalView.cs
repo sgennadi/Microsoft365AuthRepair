@@ -10,7 +10,7 @@ namespace Microsoft365AuthRepair;
 internal enum ActivityStep
 {
     Ready, ReadOnlyCheck, WamEntra, OfficeLicensing, TpmBitLocker,
-    NetworkPreflight, TpmWmi, BitLockerWmi, BitLockerConversion, DeviceGuardWmi,
+    NetworkPreflight, TpmWmi, BitLockerWmi, BitLockerConversion, ThirdPartyFde, DeviceGuardWmi,
     DomainDc, TpmLockout, DpapiAttestation, SecureBoot, VirtualMachine,
     Preflight,
     WamRegistration, OfficeReset, CredentialCleanup, RegistryCleanup,
@@ -139,6 +139,8 @@ internal sealed class ActivityJournalView : TableLayoutPanel
             "Защита BitLocker (WMI)", "הגנת BitLocker (WMI)"),
         ActivityStep.BitLockerConversion => UpdateUiText.T("BitLocker encryption (WMI)",
             "Шифрование BitLocker (WMI)", "הצפנת BitLocker (WMI)"),
+        ActivityStep.ThirdPartyFde => UpdateUiText.T("Third-party disk encryption software",
+            "Стороннее шифрование — программы", "תוכנות הצפנת דיסק חיצוניות"),
         ActivityStep.DeviceGuardWmi => "Device Guard / HVCI (WMI)",
         ActivityStep.DomainDc => UpdateUiText.T("Domain controller",
             "Контроллер домена", "בקר תחום"),
@@ -252,6 +254,7 @@ internal sealed class ActivityJournalView : TableLayoutPanel
         view.Add(ActivityStep.TpmWmi, ActivityOutcome.TimeLimit);
         view.Add(ActivityStep.BitLockerWmi, ActivityOutcome.Finished);
         view.Add(ActivityStep.BitLockerConversion, ActivityOutcome.TimeLimit);
+        view.Add(ActivityStep.ThirdPartyFde, ActivityOutcome.Finished);
         view.Add(ActivityStep.SecureBoot, ActivityOutcome.Finished);
         view.Add(ActivityStep.VirtualMachine, ActivityOutcome.NotVerified);
         view.SetCancellationAvailable(true);
@@ -265,6 +268,6 @@ internal sealed class ActivityJournalView : TableLayoutPanel
             view.CopyText.Contains("TPM / BitLocker", StringComparison.Ordinal) &&
             !view.CopyText.Contains("TenantId", StringComparison.OrdinalIgnoreCase) &&
             !view.CopyText.Contains("UserSid", StringComparison.OrdinalIgnoreCase) &&
-            view.entries.Count == 9;
+            view.entries.Count == 10;
     }
 }

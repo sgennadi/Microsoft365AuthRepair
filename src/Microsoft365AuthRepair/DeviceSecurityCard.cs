@@ -94,7 +94,7 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         Margin = new Padding(0, 8, 0, 6)
     };
     private readonly StatusTile[] tiles =
-        Enumerable.Range(0, 12).Select(_ => new StatusTile()).ToArray();
+        Enumerable.Range(0, 14).Select(_ => new StatusTile()).ToArray();
     private bool reshaping;
     private int displayedColumns;
     private TpmBitLockerSnapshot? current;
@@ -169,9 +169,9 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             "Pending values are not yet verified. This check does not change TPM, BitLocker or Office.",
             "Ожидающие данные ещё не проверены. Проверка не изменяет TPM, BitLocker или Office.",
             "ערכים ממתינים טרם אומתו. הבדיקה אינה משנה TPM, BitLocker או Office.") : T(
-            "Unknown means not verified. BitLocker off or Windows Hello absent can be expected by policy. No recovery keys are read.",
-            "Неизвестно означает «не проверено». BitLocker OFF может соответствовать политике. Ключи восстановления не считываются.",
-            "לא ידוע פירושו לא אומת. BitLocker כבוי עשוי להיות תקין לפי מדיניות. מפתחות שחזור אינם נקראים.");
+            "Unknown means not verified. Third-party FDE software detection does NOT prove disk encryption. No recovery keys are read.",
+            "Не проверено — не значит отключено. Обнаружение стороннего шифратора НЕ доказывает шифрование диска. Ключи восстановления не считываются.",
+            "לא אומת אינו כבוי. זיהוי מוצר הצפנה חיצוני אינו מוכיח שהכונן מוצפן. מפתחות שחזור אינם נקראים.");
         if (current is not null) UpdateValues(current);
         UpdateGeometry();
     }
@@ -228,8 +228,8 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             "DECRYPTION_PAUSED" => T("Decryption paused", "Расшифровка приостановлена", "הפענוח מושהה"),
             _ => Unknown
         };
-        tiles[4].Set(T("OS volume encryption", "Шифрование системного диска",
-                "הצפנת כונן מערכת"),
+        tiles[4].Set(T("OS BitLocker encryption", "Шифрование BitLocker системного диска",
+                "הצפנת BitLocker בכונן המערכת"),
             conversion,
             x.OsVolumeConversion == "FULLY_ENCRYPTED" ? Status.Good :
             x.OsVolumeConversion == "UNKNOWN" ? Status.Unknown : Status.Neutral);
@@ -345,6 +345,41 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             Unknown,
             x.VirtualMachineGuest == "YES" ? Status.Neutral :
             x.VirtualMachineGuest == "NO" ? Status.Neutral : Status.Unknown);
+
+        // Third-party full-disk encryption is NOT exposed by BitLocker WMI.
+        // Installed software/service evidence is shown separately from
+        // volume encryption, which stays unverified without vendor evidence.
+        var vendor = ThirdPartyDiskEncryptionProbe.Validate(x.ThirdPartyEncryptionProducts);
+        var products = ThirdPartyDiskEncryptionProbe.DisplayNames(vendor);
+        var vendorCodes = ThirdPartyDiskEncryptionProbe.IsDetected(vendor)
+            ? vendor.Split(',') : [];
+        var shortNames = vendorCodes.Length > 0
+            ? string.Join(", ", vendorCodes.Take(2).Select(code =>
+                ThirdPartyDiskEncryptionProbe.DisplayNames(code)))
+            : string.Empty;
+        var more = vendorCodes.Length > 2
+            ? " +" + (vendorCodes.Length - 2).ToString(
+                System.Globalization.CultureInfo.InvariantCulture)
+            : "";
+        tiles[12].Set(T("Third-party encryption software",
+                "Сторонние программы шифрования",
+                "תוכנות הצפנה חיצוניות"),
+            vendorCodes.Length > 0
+                ? T("Detected: ", "Обнаружено: ", "זוהו: ") + shortNames + more
+                : vendor == "NONE_DETECTED"
+                    ? T("No known product detected", "Известные продукты не найдены",
+                        "לא זוהתה תוכנה מוכרת")
+                    : Unknown,
+            vendorCodes.Length > 0 ? Status.Neutral :
+            vendor == "NONE_DETECTED" ? Status.Neutral : Status.Unknown);
+        tiles[13].Set(T("Third-party OS encryption",
+                "Шифрование системного диска сторонними средствами",
+                "הצפנת כונן מערכת חיצונית"),
+            vendorCodes.Length > 0
+                ? T("Vendor verification required", "Нужна проверка производителя",
+                    "נדרשת בדיקת יצרן")
+                : Unknown,
+            Status.Unknown);
     }
 
     internal void ShowResult(TpmBitLockerSnapshot? snapshot, bool inProgress = false)
@@ -417,6 +452,7 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             SecureBootState = "ON", FirmwareType = "UEFI",
             VirtualMachineGuest = "YES", VirtualMachinePlatform = "KVM_QEMU",
             OsVolumeProtection = "ON", OsVolumeConversion = "FULLY_ENCRYPTED",
+            ThirdPartyEncryptionProducts = "SOPHOS,VERACRYPT",
             MemoryIntegrityRuntime = "RUNNING", MemoryIntegrityConfigured = "ON",
             DpapiProtectionPolicy = "NOT_SET", DomainJoinStatus = "YES",
             WritableDcStatus = "AVAILABLE"
@@ -426,13 +462,17 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             T("Checking…", "Проверяется…", "בבדיקה…"))
             return false;
         card.ShowResult(sample);
-        if (!card.HasReadOnlyDetailsLink || card.tiles.Length != 12 ||
-            card.signalGrid.Controls.Count != 12 ||
+        if (!card.HasReadOnlyDetailsLink || card.tiles.Length != 14 ||
+            card.signalGrid.Controls.Count != 14 ||
             !card.tiles[0].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase) ||
             !card.tiles[3].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase) ||
             !card.tiles[8].Value.Text.Contains("2.0", StringComparison.Ordinal) ||
             !card.tiles[10].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase) ||
-            !card.tiles[11].Value.Text.Contains("QEMU", StringComparison.Ordinal))
+            !card.tiles[11].Value.Text.Contains("QEMU", StringComparison.Ordinal) ||
+            !card.tiles[12].Value.Text.Contains("VeraCrypt", StringComparison.Ordinal) ||
+            !card.tiles[13].Value.Text.Contains(
+                T("Vendor verification", "Нужна проверка", "נדרשת בדיקת"),
+                StringComparison.Ordinal))
             return false;
         card.ShowResult(sample with
         {

@@ -136,6 +136,23 @@ internal static class SignInKnowledgeBase
               "תקן פרטי כניסה או פנה לתמיכה. איפוס WAM לא ייצור חשבון."),
             "Microsoft Learn — Entra error-code reference",
             ErrorCodes),
+        new("expired-grant",
+            T("Expired Microsoft 365 sign-in grant", "Истёкший токен входа Microsoft 365",
+              "פג תוקף הרשאת הכניסה של Microsoft 365"),
+            T("AADSTS70008, AADSTS700082 or AADSTS700084 appears while the application attempts to renew authentication.",
+              "При обновлении авторизации появляется AADSTS70008, AADSTS700082 или AADSTS700084.",
+              "בעת רענון הכניסה מופיע AADSTS70008, AADSTS700082 או AADSTS700084."),
+            T("Start an interactive sign-in from the affected application. If it repeats, review the corresponding Entra event and token/session policies without sharing personal identifiers publicly.",
+              "Запустите интерактивный вход из проблемного приложения. При повторении проверьте событие Entra и политики токенов/сессий, не публикуя идентификаторы.",
+              "התחבר מחדש ביישום. אם התקלה חוזרת, בדוק אירוע Entra ומדיניות אסימונים ללא פרסום מזהים."),
+            T("Refresh tokens or authorization grants expire or are revoked during normal operation; this does not mean TPM, BitLocker, WAM or the Microsoft 365 license is broken.",
+              "Токены и коды авторизации истекают или отзываются в обычном режиме; это не означает поломку TPM, BitLocker, WAM или лицензии Microsoft 365.",
+              "אסימונים וקודי הרשאה פוקעים או מתבטלים; זו אינה הוכחה לתקלה ב-TPM, ב-BitLocker או ברישוי."),
+            T("Sign in interactively and complete any approved MFA prompt. Avoid a full Office reset and TPM clear for an expired grant alone. Ask IT to check Entra logs only if reauthentication fails.",
+              "Повторно войдите вручную и завершите MFA. Не очищайте TPM и не делайте полный сброс Office из-за одного истёкшего токена. При повторении проверьте журналы Entra.",
+              "התחבר מחדש והשלים MFA. אל תנקה TPM או תאפס Office בשל אסימון שפג תוקפו."),
+            "Microsoft Learn — Entra authentication error codes",
+            ErrorCodes),
         new("session",
             T("Incomplete or expired session", "Незавершённый вход или истёкшая сессия", "הפעלה לא הושלמה או שפג תוקפה"),
             T("AADSTS50058 or 70046 while silently signing in.",
@@ -264,6 +281,8 @@ internal static class SignInKnowledgeBase
                 => Get("mfa"),
             "AADSTS50126" or "AADSTS50055" or "AADSTS50057" or "AADSTS50034"
                 => Get("account"),
+            "AADSTS70008" or "AADSTS700082" or "AADSTS700084" =>
+                Get("expired-grant"),
             "AADSTS50058" or "AADSTS70046" => Get("session"),
             "80090011" or "80090016" or "80090034" => Get("device-key"),
             "80090030" or "80090031" => Get("tpm-lockout"),
@@ -320,6 +339,8 @@ internal static class SignInKnowledgeBase
                 !string.IsNullOrWhiteSpace(x.SafeAction)) &&
             ByCode("AADSTS53003")?.Key == "conditional-access" &&
             ByCode("AADSTS50076")?.Key == "mfa" &&
+            ByCode("AADSTS70008")?.Key == "expired-grant" &&
+            ByCode("AADSTS700082")?.Key == "expired-grant" &&
             ByCode("AADSTS50155")?.Key == "device-trust" &&
             ByCode("80090031")?.Key == "tpm-lockout" &&
             ByCode("80090034")?.Key == "device-key" &&

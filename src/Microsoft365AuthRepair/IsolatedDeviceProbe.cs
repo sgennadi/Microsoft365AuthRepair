@@ -25,7 +25,8 @@ internal static class IsolatedDeviceProbe
         string WindowsRelease, string AikEnrollmentError, string EkCertStore,
         string TpmLockedOut,
         string SecureBootState, string FirmwareType,
-        string VirtualMachineGuest, string VirtualMachinePlatform);
+        string VirtualMachineGuest, string VirtualMachinePlatform,
+        string ThirdPartyEncryptionProducts);
 
     private static Wire Pack(string part, TpmBitLockerSnapshot snapshot) =>
         new(part, snapshot, snapshot.TpmManufacturer,
@@ -33,7 +34,8 @@ internal static class IsolatedDeviceProbe
             snapshot.AikEnrollmentError, snapshot.EkCertStore,
             snapshot.TpmLockedOut, snapshot.SecureBootState,
             snapshot.FirmwareType, snapshot.VirtualMachineGuest,
-            snapshot.VirtualMachinePlatform);
+            snapshot.VirtualMachinePlatform,
+            snapshot.ThirdPartyEncryptionProducts);
 
     private static string Allowed(string? value, params string[] allowed) =>
         value is not null && allowed.Contains(value, StringComparer.Ordinal)
@@ -99,7 +101,10 @@ internal static class IsolatedDeviceProbe
                 VirtualMachinePlatform = Allowed(wire.VirtualMachinePlatform,
                     "VMWARE", "HYPER_V", "VIRTUALBOX", "KVM_QEMU",
                     "XEN", "PARALLELS", "AWS_EC2", "GOOGLE_CLOUD",
-                    "NUTANIX", "OTHER_VM", "NONE", "UNKNOWN")
+                    "NUTANIX", "OTHER_VM", "NONE", "UNKNOWN"),
+                ThirdPartyEncryptionProducts =
+                    ThirdPartyDiskEncryptionProbe.Validate(
+                        wire.ThirdPartyEncryptionProducts)
             };
             // A child is our own signed-by-release app. Nonetheless, validate
             // the narrow set of fields that can enter the parent process.
@@ -122,6 +127,10 @@ internal static class IsolatedDeviceProbe
                     "FULLY_DECRYPTED" or "FULLY_ENCRYPTED" or "ENCRYPTING" or
                     "DECRYPTING" or "ENCRYPTION_PAUSED" or
                     "DECRYPTION_PAUSED" or "UNKNOWN" => state,
+                "THIRD_PARTY_FDE" when
+                    state.ThirdPartyEncryptionProducts ==
+                    ThirdPartyDiskEncryptionProbe.Validate(
+                        state.ThirdPartyEncryptionProducts) => state,
                 "DEVICE_GUARD_WMI" when state.MemoryIntegrityRuntime is
                     "RUNNING" or "NOT_RUNNING" or "UNKNOWN" &&
                     state.MemoryIntegrityConfigured is "ON" or "OFF" or
@@ -283,15 +292,32 @@ internal static class IsolatedDeviceProbe
             JsonSerializer.Serialize(protection));
         var conversionResult = Parse("BITLOCKER_CONVERSION",
             JsonSerializer.Serialize(conversion));
+        var vendor = Pack("THIRD_PARTY_FDE", unknown with {
+            ThirdPartyEncryptionProducts = "SOPHOS,VERACRYPT"
+        });
+        var vendorResult = Parse("THIRD_PARTY_FDE",
+            JsonSerializer.Serialize(vendor));
+        var invalidVendor = Pack("THIRD_PARTY_FDE", unknown with {
+            ThirdPartyEncryptionProducts = "SECRET_UNSAFE_VALUE"
+        });
+        var invalidVendorResult = Parse("THIRD_PARTY_FDE",
+            JsonSerializer.Serialize(invalidVendor));
         var secureBoot = Pack("SECURE_BOOT", unknown with {
             SecureBootState = "ON", FirmwareType = "UEFI"
         });
         var secureResult = Parse("SECURE_BOOT", JsonSerializer.Serialize(secureBoot));
-        return TpmBitLockerProbe.PartNames.Length == 9 &&
-            TpmBitLockerProbe.PartNames.Distinct().Count() == 9 &&
+        return TpmBitLockerProbe.PartNames.Length == 10 &&
+            TpmBitLockerProbe.PartNames.Distinct().Count() == 10 &&
             PartTimeoutSeconds >= 5 && PartTimeoutSeconds <= 15 &&
             MaxParallel >= 1 && MaxParallel <= 3 &&
             invalid is null && parsed?.TpmLockedOut == "YES" &&
+            vendorResult?.ThirdPartyEncryptionProducts == "SOPHOS,VERACRYPT" &&
+            invalidVendorResult?.ThirdPartyEncryptionProducts == "UNKNOWN" &&
+            !TpmBitLockerProbe.HasPartEvidence("THIRD_PARTY_FDE",
+                invalidVendorResult!) &&
+            TpmBitLockerProbe.HasPartEvidence("THIRD_PARTY_FDE", vendorResult) &&
+            !vendorResult.ToSafeSummary().Contains("VERACRYPT", StringComparison.Ordinal) &&
+            !vendorResult.ToSafeSummary().Contains("SOPHOS", StringComparison.Ordinal) &&
             protectionResult?.OsVolumeProtection == "ON" &&
             protectionResult.OsVolumeConversion == "UNKNOWN" &&
             conversionResult?.OsVolumeConversion == "FULLY_ENCRYPTED" &&

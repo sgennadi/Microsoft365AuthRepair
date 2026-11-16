@@ -538,6 +538,10 @@ internal sealed class MainForm : Form
         updateTimer.Tick += async (_, _) => await CheckForUpdatesAsync();
         Shown += async (_, _) =>
         {
+            // A successful update retains its rollback .bak until this
+            // exact installed version has opened a real interactive UI.
+            // --ui-self-test / worker / unsuccessful updates never clean it.
+            UpdateHandoff.CleanupSuccessfulBackupAfterStartup();
             updateTimer.Start();
             // UAC handoff can only request this explicit, independently
             // confirmed action; no repair runs on wizard completion or UAC.
@@ -1331,6 +1335,8 @@ internal sealed class MainForm : Form
             "Защита BitLocker (WMI)", "הגנת BitLocker (WMI)"),
         "BITLOCKER_CONVERSION" => UpdateUiText.T("BitLocker encryption (WMI)",
             "Шифрование BitLocker (WMI)", "הצפנת BitLocker (WMI)"),
+        "THIRD_PARTY_FDE" => UpdateUiText.T("Third-party disk encryption software",
+            "Стороннее шифрование — программы", "תוכנות הצפנת דיסק חיצוניות"),
         "DEVICE_GUARD_WMI" => "Device Guard / HVCI (WMI)",
         "DOMAIN_RWDC" => UpdateUiText.T("Domain controller", "Контроллер домена", "בקר תחום"),
         "TPM_LOCKOUT" => UpdateUiText.T("TPM lockout", "Блокировка TPM", "נעילת TPM"),
@@ -1349,6 +1355,7 @@ internal sealed class MainForm : Form
         "TPM_WMI" => ActivityStep.TpmWmi,
         "BITLOCKER_WMI" => ActivityStep.BitLockerWmi,
         "BITLOCKER_CONVERSION" => ActivityStep.BitLockerConversion,
+        "THIRD_PARTY_FDE" => ActivityStep.ThirdPartyFde,
         "DEVICE_GUARD_WMI" => ActivityStep.DeviceGuardWmi,
         "DOMAIN_RWDC" => ActivityStep.DomainDc,
         "TPM_LOCKOUT" => ActivityStep.TpmLockout,
