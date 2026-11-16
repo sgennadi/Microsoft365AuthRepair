@@ -1,3 +1,13 @@
+## 1.0.2-preview.20 — 2026-11-16 — Preview
+
+1. Added read-only `KeySignTest`, `AadRecoveryEnabled`, `TpmProtected` and `NgcSet` Entra user/device health signals; unknown remains unknown.
+2. Added local-only TPM lockout inspection using bounded `Get-Tpm`; no TPM reset, protector modification, owner authentication or secret export.
+3. Prioritized failed Entra device-key signing/recovery before WAM re-registration, retaining Preview.19 TPM, DPAPI, RWDC and AIK paths.
+4. Expanded offline cryptographic error guidance with 0x80090011/30/31/34, EN/RU/HE UI tiles and a privacy regression test for device key IDs.
+5. Stable 1.0.1 unchanged; hardware, Entra, BitLocker, 200% DPI and Hebrew RTL pilot remains required.
+
+[Preview.20 notes](docs/releases/v1.0.2-preview.20.md)
+
 ## 1.0.2-preview.19 — 2026-11-16 — Preview
 
 1. Read-only TPM readiness, firmware class, OS-volume BitLocker protection/encryption, Memory Integrity and DPAPI ProtectionPolicy inspection; no keys or protectors accessed.
