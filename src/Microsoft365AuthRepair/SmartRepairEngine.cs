@@ -54,6 +54,19 @@ internal static class SmartRepairEngine
                   "Откройте сведения TPM и BitLocker и проверьте с IT состояние устройства и Entra перед изменениями.",
                   "בדוק TPM, BitLocker ו-Entra עם מנהל המערכת."), false, true);
 
+        // Device-key signing failures or recovery flags are distinct from
+        // AppX registration and must not trigger a blind WAM or Office reset.
+        if (SignalIs(wam, "EntraDeviceKey", WamSignalState.Attention))
+            return new(SmartRepairAction.ReviewDeviceTrust,
+                T("Entra device keys need review", "Проверьте ключи устройства Entra", "יש לבדוק מפתחות Entra"),
+                T("The signing test failed or device-key recovery is indicated. A WAM re-registration cannot repair the device key.",
+                  "KeySignTest не прошёл либо требуется восстановление ключа устройства. Перерегистрация WAM не восстанавливает ключ Entra.",
+                  "בדיקת המפתח נכשלה או שנדרש שחזור. רישום WAM לא יתקן מפתח מכשיר."),
+                T("Ask IT to inspect dsregcmd and device trust. KeySignTest requires elevation; never clear TPM, delete key containers or disconnect Entra automatically.",
+                  "Проверьте с IT dsregcmd и доверие устройства. Для KeySignTest нужны права администратора. Не очищайте TPM и не удаляйте ключи.",
+                  "בדוק dsregcmd ואמון המכשיר; אין למחוק TPM או מפתחות."),
+                false, true);
+
         // Local WAM registration does not restore device trust.
         if (SignalIs(wam, "DeviceAuthStatus", WamSignalState.Attention))
             return new(SmartRepairAction.ReviewDeviceTrust,
@@ -206,12 +219,18 @@ internal static class SmartRepairEngine
         var deviceFailed = WamHealthAnalysis.Evaluate(
             healthy.Replace("DeviceAuthStatus: SUCCESS", "DeviceAuthStatus: FAILED")
                    .Replace("BrokerPlugin: PRESENT", "BrokerPlugin: MISSING"), true);
+        var brokenKeyAndBroker = WamHealthAnalysis.Evaluate(healthy.Replace(
+            "BrokerPlugin: PRESENT", "BrokerPlugin: MISSING") +
+            "\nKeySignTest: FAILED", true);
         var fakeVolume = new OfficeLicenseSnapshot(true, "Office volume / LTSC", "16.0.1",
             null, null, true, null, null, null, false);
         return Evaluate(baseResult, null, basePreflight, true).Action == SmartRepairAction.VerifyAppSignIn &&
             Evaluate(missingBroker, null, basePreflight, true).Action == SmartRepairAction.ReRegisterWam &&
             Evaluate(deviceFailed, null, basePreflight, true).Action == SmartRepairAction.ReviewDeviceTrust &&
             !Evaluate(deviceFailed, null, basePreflight, true).SafeToOfferRepair &&
+            Evaluate(brokenKeyAndBroker, null, basePreflight, true).Action ==
+                SmartRepairAction.ReviewDeviceTrust &&
+            !Evaluate(brokenKeyAndBroker, null, basePreflight, true).SafeToOfferRepair &&
             Evaluate(baseResult, null, basePreflight with { ClockAcceptable = false }, true)
                 .Action == SmartRepairAction.ReviewNetwork &&
             Evaluate(baseResult, fakeVolume, basePreflight, true)
