@@ -1360,7 +1360,10 @@ internal sealed class MainForm : Form
             // verified. Show partial evidence rather than an endless spinner.
             if (data.UnverifiedSections.Length > 0)
             {
-                string missing = string.Join(", ",
+                // A partial scan must not offer a one-click repair based on
+                // WAM alone when device/Office evidence was not obtained.
+                applyRecommendation.Visible = false;
+                string missing = string.Join( ",
                     data.UnverifiedSections.Select(DiagnosticSectionLabel));
                 detail.Text += Environment.NewLine + Environment.NewLine +
                     UpdateUiText.T("Unverified sections: ", "Непроверенные разделы: ",
