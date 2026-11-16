@@ -20,7 +20,7 @@ internal sealed class TpmBitLockerDialog : Form
     private readonly ComboBox errorCode = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList,
-        Width = 208,
+        Width = 265,
         AccessibleName = "Reported Office sign-in error code"
     };
     private readonly Label errorDetails = UiTheme.Caption(string.Empty);
@@ -46,7 +46,7 @@ internal sealed class TpmBitLockerDialog : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(18),
-            RowCount = 7, ColumnCount = 1
+            AutoScroll = true, RowCount = 7, ColumnCount = 1
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int i = 0; i < 3; i++)
@@ -147,6 +147,10 @@ internal sealed class TpmBitLockerDialog : Form
                 ? UpdateUiText.T("TPM attestation needs review (not evidence of broken TPM).",
                     "Требуется проверка аттестации TPM; неисправность оборудования не доказана.",
                     "נדרשת בדיקת אימות TPM.")
+                : x is { DomainJoinStatus: "YES", WritableDcStatus: "NOT_FOUND" }
+                ? UpdateUiText.T("Writable domain controller not found; DPAPI may require it.",
+                    "RWDC не найден. Для DPAPI доменного пользователя может потребоваться связь с DC.",
+                    "לא נמצא בקר תחום לכתיבה; ייתכן ש-DPAPI תלוי בו.")
                 : x.NeedsBitLockerReview
                 ? UpdateUiText.T("Encrypted OS volume reports protection OFF. Review with IT.",
                     "Системный раздел зашифрован, но защита OFF — проверьте с IT.",
@@ -155,27 +159,45 @@ internal sealed class TpmBitLockerDialog : Form
                     "Данные получены; UNKNOWN не означает неисправность.",
                     "הנתונים נאספו. UNKNOWN אינה שגיאה.");
         var newline = Environment.NewLine;
+        string Line(string en, string ru, string he, string val) =>
+            UpdateUiText.T(en, ru, he) + ": " + val + newline;
         details.Text =
-            $"TPM present: {x.TpmPresent}{newline}" +
-            $"TPM specification: {x.TpmVersion}{newline}" +
-            $"TPM ready: {YesNoUnknown(x.TpmReady)}{newline}" +
-            $"TPM enabled: {YesNoUnknown(x.TpmEnabled)}{newline}" +
-            $"TPM activated: {YesNoUnknown(x.TpmActivated)}{newline}" +
-            $"TPM owned: {YesNoUnknown(x.TpmOwned)}{newline}" +
-            $"TPM manufacturer class: {x.TpmManufacturer}{newline}" +
-            $"TPM firmware version (local only): {x.TpmFirmwareVersion}{newline}" +
-            $"Windows release: {x.WindowsRelease}{newline}" +
-            $"AIK enrollment last error: {x.AikEnrollmentError}{newline}" +
-            $"EK certificate readiness indicator: {x.EkCertStore}{newline}" +
-            $"{newline}OS volume BitLocker protection: {x.OsVolumeProtection}{newline}" +
-            $"OS volume conversion: {x.OsVolumeConversion}{newline}" +
-            $"{newline}Memory Integrity configured: {x.MemoryIntegrityConfigured}{newline}" +
-            $"Memory Integrity running: {x.MemoryIntegrityRuntime}{newline}" +
-            $"DPAPI ProtectionPolicy: {x.DpapiProtectionPolicy}{newline}" +
-            $"Domain joined: {x.DomainJoinStatus}{newline}" +
-            $"Writable DC discovery: {x.WritableDcStatus}{newline}{newline}" +
-            "These values do not reveal stored BitLocker recovery keys, " +
-            "do not identify TPM hardware failure, and do not prove Office authentication.";
+            Line("TPM present", "TPM обнаружен", "קיים TPM", x.TpmPresent) +
+            Line("TPM specification", "Версия TPM", "גרסת TPM", x.TpmVersion) +
+            Line("TPM ready", "TPM готов", "TPM מוכן", YesNoUnknown(x.TpmReady)) +
+            Line("TPM enabled", "TPM включён", "TPM מופעל", YesNoUnknown(x.TpmEnabled)) +
+            Line("TPM activated", "TPM активирован", "TPM פעיל", YesNoUnknown(x.TpmActivated)) +
+            Line("TPM owned", "TPM инициализирован", "בעלות TPM", YesNoUnknown(x.TpmOwned)) +
+            Line("TPM manufacturer class", "Производитель TPM (категория)",
+                "יצרן TPM", x.TpmManufacturer) +
+            Line("TPM firmware (local only)", "Прошивка TPM (только локально)",
+                "קושחת TPM מקומית", x.TpmFirmwareVersion) +
+            Line("Windows release", "Версия Windows", "גרסת Windows", x.WindowsRelease) +
+            Line("AIK enrollment recorded result", "Последний результат регистрации AIK",
+                "מצב רישום AIK", x.AikEnrollmentError) +
+            Line("EK certificate import indicator", "Признак импорта сертификата EK",
+                "מצב ייבוא אישור EK", x.EkCertStore) +
+            newline +
+            Line("OS BitLocker protection", "Защита BitLocker системного диска",
+                "הגנת BitLocker", x.OsVolumeProtection) +
+            Line("OS volume encryption", "Шифрование системного диска",
+                "הצפנת דיסק מערכת", x.OsVolumeConversion) +
+            newline +
+            Line("Memory Integrity configured", "Memory Integrity настроен",
+                "תצורת Memory Integrity", x.MemoryIntegrityConfigured) +
+            Line("Memory Integrity running", "Memory Integrity работает",
+                "Memory Integrity פועל", x.MemoryIntegrityRuntime) +
+            Line("DPAPI ProtectionPolicy", "Политика DPAPI",
+                "מדיניות DPAPI", x.DpapiProtectionPolicy) +
+            Line("Domain joined", "Компьютер в домене",
+                "חיבור לדומיין", x.DomainJoinStatus) +
+            Line("Writable DC discovery", "Доступность RWDC",
+                "גישה לבקר תחום", x.WritableDcStatus) +
+            newline + UpdateUiText.T(
+                "This view does not read recovery keys and does not prove TPM hardware failure or Office authentication.",
+                "Ключи восстановления не считываются. Данные не доказывают поломку TPM или успешный вход в Office.",
+                "אין קריאת מפתחות שחזור; הממצאים אינם מוכיחים כשל חומרה או כניסה ל-Office.");
+
     }
 
     private async Task RefreshAsync()
