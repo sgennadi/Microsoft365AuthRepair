@@ -92,6 +92,7 @@ internal static class Program
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
                     ("Bounded read-only scan", ReadOnlyDiagnosticScan.SelfTest),
                     ("Isolated provider security and timeout rules", IsolatedDeviceProbe.SelfTest),
+                    ("Secure Boot and virtual-guest classification", PlatformSecurityProbe.SelfTest),
                     ("Live stage-only activity and copy log", ActivityJournalView.SelfTest),
                     ("Main activity panel", () => form.HasActivityJournal),
                     ("Local-only Entra key evidence", EntraKeySignals.SelfTest),
