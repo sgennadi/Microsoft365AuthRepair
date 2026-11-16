@@ -1,0 +1,347 @@
+using System.Drawing;
+using System.Windows.Forms;
+
+namespace Microsoft365AuthRepair;
+
+// Separate device-security evidence from WAM/Entra app sign-in health.
+// Only categories already collected read-only by Check & Diagnose are shown.
+// Never put recovery keys, TPM authorization, device identifiers, provider
+// output, registry paths or other raw sensitive material in this control.
+internal sealed class DeviceSecurityCard : TableLayoutPanel
+{
+    private enum Status { Good, Review, Neutral, Unknown }
+
+    private sealed class StatusTile : TableLayoutPanel
+    {
+        internal readonly Label Heading = UiTheme.Caption(string.Empty);
+        internal readonly Label Value = UiTheme.Caption(string.Empty);
+
+        internal StatusTile()
+        {
+            AutoSize = true;
+            AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            Dock = DockStyle.Fill;
+            ColumnCount = 1;
+            RowCount = 2;
+            Margin = new Padding(3, 3, 6, 3);
+            Padding = new Padding(10, 7, 10, 7);
+            BackColor = SystemInformation.HighContrast ? SystemColors.Window
+                : Color.FromArgb(247, 249, 252);
+            BorderStyle = BorderStyle.FixedSingle;
+            ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            Heading.Margin = new Padding(0, 0, 0, 3);
+            Heading.ForeColor = SystemInformation.HighContrast
+                ? SystemColors.WindowText : UiTheme.Muted;
+            Value.Margin = Padding.Empty;
+            Value.Font = new Font("Segoe UI Semibold", 10f, FontStyle.Bold);
+            Controls.Add(Heading, 0, 0);
+            Controls.Add(Value, 0, 1);
+        }
+
+        internal void Set(string heading, string value, Status state)
+        {
+            Heading.Text = heading;
+            Value.Text = (state switch
+            {
+                Status.Good => "✓ ",
+                Status.Review => "! ",
+                Status.Neutral => "• ",
+                _ => "? "
+            }) + value;
+            Value.ForeColor = SystemInformation.HighContrast
+                ? SystemColors.WindowText
+                : state switch
+                {
+                    Status.Good => UiTheme.Positive,
+                    Status.Review => Color.FromArgb(158, 48, 60),
+                    _ => UiTheme.Muted
+                };
+            AccessibleName = heading + ": " + value;
+            AccessibleDescription = state switch
+            {
+                Status.Good => "Reported positive state",
+                Status.Review => "Needs administrator review, no automatic fix",
+                Status.Neutral => "Device policy dependent, not necessarily a fault",
+                _ => "No verified status available"
+            };
+        }
+    }
+
+    private readonly Label title = UiTheme.Caption(string.Empty, heading: true);
+    private readonly Label explanation = UiTheme.Caption(string.Empty);
+    private readonly Label caution = UiTheme.Caption(string.Empty);
+    private readonly LinkLabel detailsLink = new()
+    {
+        AutoSize = true,
+        TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(10, 8, 3, 5)
+    };
+    private readonly TableLayoutPanel header = new()
+    {
+        Dock = DockStyle.Fill,
+        AutoSize = true,
+        ColumnCount = 2, RowCount = 1,
+        Margin = Padding.Empty
+    };
+    private readonly TableLayoutPanel signalGrid = new()
+    {
+        Dock = DockStyle.Fill,
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        Margin = new Padding(0, 8, 0, 6)
+    };
+    private readonly StatusTile[] tiles =
+        Enumerable.Range(0, 8).Select(_ => new StatusTile()).ToArray();
+    private bool reshaping;
+    private int displayedColumns;
+    private TpmBitLockerSnapshot? current;
+
+    internal event EventHandler? DetailsRequested;
+
+    internal DeviceSecurityCard()
+    {
+        Dock = DockStyle.Fill;
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        ColumnCount = 1;
+        RowCount = 4;
+        Margin = new Padding(0, 9, 0, 5);
+        Padding = new Padding(14, 10, 14, 11);
+        BorderStyle = BorderStyle.FixedSingle;
+        BackColor = SystemInformation.HighContrast
+            ? SystemColors.Window : Color.White;
+        Visible = false;
+        ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < 4; i++)
+            RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        title.Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold);
+        title.ForeColor = SystemInformation.HighContrast
+            ? SystemColors.WindowText : UiTheme.Navy;
+        title.Margin = new Padding(2, 4, 8, 5);
+        explanation.ForeColor = SystemInformation.HighContrast
+            ? SystemColors.WindowText : UiTheme.Muted;
+        explanation.Margin = new Padding(3, 5, 2, 5);
+        caution.ForeColor = SystemInformation.HighContrast
+            ? SystemColors.WindowText : UiTheme.Muted;
+        caution.Margin = new Padding(3, 7, 3, 2);
+        header.Controls.Add(title, 0, 0);
+        header.Controls.Add(detailsLink, 1, 0);
+        Controls.Add(header, 0, 0);
+        Controls.Add(explanation, 0, 1);
+        Controls.Add(signalGrid, 0, 2);
+        Controls.Add(caution, 0, 3);
+
+        detailsLink.LinkClicked += (_, _) =>
+            DetailsRequested?.Invoke(this, EventArgs.Empty);
+        SizeChanged += (_, _) => UpdateGeometry();
+        signalGrid.SizeChanged += (_, _) => UpdateGeometry();
+        UpdateLanguage();
+    }
+
+    private static string T(string en, string ru, string he) =>
+        UpdateUiText.T(en, ru, he);
+
+    internal void UpdateLanguage()
+    {
+        title.Text = T("TPM & BITLOCKER · DEVICE SECURITY",
+            "TPM И BITLOCKER · ЗАЩИТА УСТРОЙСТВА",
+            "TPM ו-BitLocker · אבטחת מכשיר");
+        detailsLink.Text = T("View full details", "Подробнее", "הצג פרטים מלאים");
+        detailsLink.AccessibleName = T("Open TPM and BitLocker read-only details",
+            "Открыть подробности TPM и BitLocker (только чтение)",
+            "פתח פרטי TPM ו-BitLocker לקריאה בלבד");
+        explanation.Text = T(
+            "Separate read-only Windows security results; these are not Office sign-in tests.",
+            "Отдельные результаты проверки защиты Windows — это не проверка входа в Office.",
+            "תוצאות אבטחת Windows לקריאה בלבד; אינן בודקות כניסה ל-Office.");
+        caution.Text = T(
+            "Unknown means not verified. BitLocker off or Windows Hello absent can be expected by policy. No recovery keys are read.",
+            "Неизвестно означает «не проверено». BitLocker OFF может соответствовать политике. Ключи восстановления не считываются.",
+            "לא ידוע פירושו לא אומת. BitLocker כבוי עשוי להיות תקין לפי מדיניות. מפתחות שחזור אינם נקראים.");
+        if (current is not null) UpdateValues(current);
+        UpdateGeometry();
+    }
+
+    private static string Unknown => T("Not verified", "Не проверено", "לא אומת");
+
+    private void UpdateValues(TpmBitLockerSnapshot x)
+    {
+        tiles[0].Set(T("TPM detected", "TPM обнаружен", "זוהה TPM"),
+            x.TpmPresent == "YES" ? T("Present", "Обнаружен", "קיים") :
+            x.TpmPresent == "NO" ? T("Not present", "Отсутствует", "לא קיים") : Unknown,
+            x.TpmPresent == "YES" ? Status.Good :
+            x.TpmPresent == "NO" ? Status.Neutral : Status.Unknown);
+
+        tiles[1].Set(T("TPM readiness", "Готовность TPM", "מוכנות TPM"),
+            x.TpmPresent == "NO" ? T("Not applicable", "Не применяется", "לא חל") :
+            x.TpmReady == true ? T("Ready", "Готов", "מוכן") :
+            x.TpmReady == false ? T("Not ready", "Не готов", "לא מוכן") : Unknown,
+            x.TpmPresent == "NO" ? Status.Neutral :
+            x.TpmReady == true ? Status.Good :
+            x.TpmReady == false && x.TpmPresent == "YES" ? Status.Review :
+            Status.Unknown);
+
+        tiles[2].Set(T("TPM lockout", "Блокировка TPM", "נעילת TPM"),
+            x.TpmPresent == "NO" || x.TpmLockedOut == "NOT_APPLICABLE"
+                ? T("Not applicable", "Не применяется", "לא חל") :
+            x.TpmLockedOut == "NO" ? T("Not locked", "Не заблокирован", "לא נעול") :
+            x.TpmLockedOut == "YES" ? T("Locked out", "Заблокирован", "נעול") : Unknown,
+            x.TpmPresent == "NO" || x.TpmLockedOut == "NOT_APPLICABLE"
+                ? Status.Neutral :
+            x.TpmLockedOut == "NO" ? Status.Good :
+            x.TpmLockedOut == "YES" ? Status.Review : Status.Unknown);
+
+        var encryptedWithoutProtection =
+            x.OsVolumeProtection == "OFF" &&
+            x.OsVolumeConversion == "FULLY_ENCRYPTED";
+        tiles[3].Set(T("OS BitLocker protection", "Защита BitLocker системного диска",
+                "הגנת BitLocker לכונן מערכת"),
+            x.OsVolumeProtection == "ON" ? T("On", "Включена", "פועלת") :
+            x.OsVolumeProtection == "OFF" ? T("Off", "Выключена", "כבויה") : Unknown,
+            x.OsVolumeProtection == "ON" ? Status.Good :
+            encryptedWithoutProtection ? Status.Review :
+            x.OsVolumeProtection == "OFF" ? Status.Neutral : Status.Unknown);
+
+        var conversion = x.OsVolumeConversion switch
+        {
+            "FULLY_ENCRYPTED" => T("Fully encrypted", "Зашифрован", "מוצפן לחלוטין"),
+            "FULLY_DECRYPTED" => T("Not encrypted", "Не зашифрован", "לא מוצפן"),
+            "ENCRYPTING" => T("Encrypting", "Шифруется", "בהצפנה"),
+            "DECRYPTING" => T("Decrypting", "Расшифровывается", "בפענוח"),
+            "ENCRYPTION_PAUSED" => T("Encryption paused", "Шифрование приостановлено", "ההצפנה מושהית"),
+            "DECRYPTION_PAUSED" => T("Decryption paused", "Расшифровка приостановлена", "הפענוח מושהה"),
+            _ => Unknown
+        };
+        tiles[4].Set(T("OS volume encryption", "Шифрование системного диска",
+                "הצפנת כונן מערכת"),
+            conversion,
+            x.OsVolumeConversion == "FULLY_ENCRYPTED" ? Status.Good :
+            x.OsVolumeConversion == "UNKNOWN" ? Status.Unknown : Status.Neutral);
+
+        tiles[5].Set(T("Memory Integrity / HVCI", "Memory Integrity / HVCI",
+                "שלמות זיכרון / HVCI"),
+            x.MemoryIntegrityRuntime == "RUNNING" ? T("Running", "Работает", "פעיל") :
+            x.MemoryIntegrityRuntime == "NOT_RUNNING" ? T("Not running", "Не работает", "לא פעיל") :
+            Unknown,
+            x.MemoryIntegrityRuntime == "RUNNING" ? Status.Good :
+            x.MemoryIntegrityRuntime == "NOT_RUNNING" ? Status.Neutral : Status.Unknown);
+
+        tiles[6].Set(T("DPAPI policy", "Политика DPAPI", "מדיניות DPAPI"),
+            x.DpapiProtectionPolicy switch
+            {
+                "NOT_SET" => T("Not set", "Не задана", "לא הוגדר"),
+                "ZERO" => "0",
+                "ONE" => "1",
+                "OTHER" => T("Other value", "Другое значение", "ערך אחר"),
+                _ => Unknown
+            },
+            x.DpapiProtectionPolicy == "UNKNOWN" ? Status.Unknown : Status.Neutral);
+
+        tiles[7].Set(T("Writable domain controller", "Доступность RWDC",
+                "בקר תחום לכתיבה"),
+            x.DomainJoinStatus == "NO" || x.WritableDcStatus == "NOT_APPLICABLE"
+                ? T("Not applicable", "Не применяется", "לא חל") :
+            x.WritableDcStatus == "AVAILABLE" ? T("Available", "Доступен", "זמין") :
+            x.WritableDcStatus == "NOT_FOUND" ? T("Not found", "Не найден", "לא נמצא") : Unknown,
+            x.DomainJoinStatus == "NO" || x.WritableDcStatus == "NOT_APPLICABLE"
+                ? Status.Neutral :
+            x.WritableDcStatus == "AVAILABLE" ? Status.Good :
+            x.WritableDcStatus == "NOT_FOUND" ? Status.Review : Status.Unknown);
+    }
+
+    internal void ShowResult(TpmBitLockerSnapshot? snapshot)
+    {
+        current = snapshot ?? TpmBitLockerSnapshot.Unknown;
+        UpdateLanguage();
+        Visible = true;
+        UpdateValues(current);
+        UpdateGeometry();
+    }
+
+    internal void ClearResult()
+    {
+        current = null;
+        Visible = false;
+    }
+
+    private void UpdateGeometry()
+    {
+        if (reshaping) return;
+        reshaping = true;
+        try
+        {
+            var available = Math.Max(170, ClientSize.Width - Padding.Horizontal - 20);
+            var maxLabel = new Size(Math.Max(140, available - 12), 0);
+            title.MaximumSize = maxLabel;
+            explanation.MaximumSize = maxLabel;
+            caution.MaximumSize = maxLabel;
+            var columns = available >= 620 * Math.Max(96, DeviceDpi) / 96 ? 2 : 1;
+            if (columns != displayedColumns)
+            {
+                displayedColumns = columns;
+                signalGrid.SuspendLayout();
+                signalGrid.Controls.Clear();
+                signalGrid.ColumnStyles.Clear();
+                signalGrid.RowStyles.Clear();
+                signalGrid.ColumnCount = columns;
+                signalGrid.RowCount = (tiles.Length + columns - 1) / columns;
+                for (int i = 0; i < columns; i++)
+                    signalGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / columns));
+                for (int i = 0; i < signalGrid.RowCount; i++)
+                    signalGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                for (int i = 0; i < tiles.Length; i++)
+                    signalGrid.Controls.Add(tiles[i], i % columns, i / columns);
+                signalGrid.ResumeLayout(true);
+            }
+            var valueWidth = Math.Max(120, available / columns - 28);
+            foreach (var tile in tiles)
+            {
+                var max = new Size(valueWidth, 0);
+                tile.Heading.MaximumSize = max;
+                tile.Value.MaximumSize = max;
+            }
+        }
+        finally { reshaping = false; }
+    }
+
+    internal bool HasReadOnlyDetailsLink => detailsLink.Parent == header &&
+        !string.IsNullOrWhiteSpace(detailsLink.Text);
+
+    internal static bool SelfTest()
+    {
+        using var card = new DeviceSecurityCard();
+        var sample = TpmBitLockerSnapshot.Unknown with
+        {
+            TpmPresent = "YES", TpmVersion = "2.0",
+            TpmReady = true, TpmLockedOut = "NO",
+            OsVolumeProtection = "ON", OsVolumeConversion = "FULLY_ENCRYPTED",
+            MemoryIntegrityRuntime = "RUNNING",
+            DpapiProtectionPolicy = "NOT_SET", DomainJoinStatus = "YES",
+            WritableDcStatus = "AVAILABLE"
+        };
+        card.ShowResult(sample);
+        if (!card.HasReadOnlyDetailsLink || card.tiles.Length != 8 ||
+            card.signalGrid.Controls.Count != 8 ||
+            !card.tiles[0].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase) ||
+            !card.tiles[3].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase))
+            return false;
+        card.ShowResult(sample with
+        {
+            TpmLockedOut = "YES", OsVolumeProtection = "OFF"
+        });
+        if (!card.tiles[2].AccessibleDescription.Contains("review", StringComparison.OrdinalIgnoreCase) ||
+            !card.tiles[3].AccessibleDescription.Contains("review", StringComparison.OrdinalIgnoreCase))
+            return false;
+        card.ShowResult(TpmBitLockerSnapshot.Unknown);
+        return card.tiles.All(t =>
+            t.AccessibleDescription.Contains("No verified status", StringComparison.Ordinal)) &&
+            card.Controls.Count == 4;
+    }
+}

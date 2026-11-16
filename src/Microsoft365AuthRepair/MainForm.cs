@@ -15,6 +15,7 @@ internal sealed class MainForm : Form
     private readonly Label status = UiTheme.Caption(string.Empty);
     private readonly PictureBox statusGlyph = UiIcons.CreateStatus();
     private readonly DiagnosticResultCard diagnosticResult = new();
+    private readonly DeviceSecurityCard deviceSecurityCard = new();
     private readonly Label officeLicenseSummary = UiTheme.Caption(string.Empty);
     private readonly LinkLabel officeVolumeLink = new()
     {
@@ -26,12 +27,13 @@ internal sealed class MainForm : Form
     private OfficeActivationHealth? lastOfficeActivation;
     private RepairPreflight? lastPreflight;
     private TpmBitLockerSnapshot? lastDeviceProtection;
-    private readonly Label deviceProtectionSummary = UiTheme.Caption(string.Empty);
+    // In the result banner, this shortcut scrolls directly to the new
+    // visible security card, even when the recommendations are collapsed.
     private readonly LinkLabel deviceProtectionLink = new()
     {
-        AutoSize = true, TabStop = true,
+        AutoSize = true, TabStop = true, Visible = false,
         LinkBehavior = LinkBehavior.HoverUnderline,
-        Margin = new Padding(0, 4, 0, 6)
+        Margin = new Padding(12, 5, 0, 5)
     };
     private SmartRepairDecision? lastSmartDecision;
     private bool awaitingAppSignInCheck;
@@ -40,7 +42,7 @@ internal sealed class MainForm : Form
     private readonly TableLayoutPanel smartPanel = new()
     {
         AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1,
-        RowCount = 7, Margin = new Padding(0, 7, 0, 3),
+        RowCount = 5, Margin = new Padding(0, 7, 0, 3),
         Padding = new Padding(10, 8, 10, 8), Visible = false,
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : Color.FromArgb(240, 246, 252)
     };
@@ -166,12 +168,12 @@ internal sealed class MainForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(20), AutoScroll = true,
-            ColumnCount = 1, RowCount = 17,
+            ColumnCount = 1, RowCount = 18,
             BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas
         };
         mainLayout = root;
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var row = 0; row < 16; row++)
+        for (var row = 0; row < 17; row++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         // Only the canvas receives unused space on a maximized window.
         // Never stretch a read-only textbox into an empty grey rectangle.
@@ -308,6 +310,7 @@ internal sealed class MainForm : Form
         banner.Controls.Add(statusGlyph);
         banner.Controls.Add(status);
         banner.Controls.Add(diagnosticToggle);
+        banner.Controls.Add(deviceProtectionLink);
         cancelDiagnostic.Visible = false;
         cancelDiagnostic.Margin = new Padding(9, 0, 0, 0);
         banner.Controls.Add(cancelDiagnostic);
@@ -317,16 +320,18 @@ internal sealed class MainForm : Form
         // This panel contains only fixed stage labels and status categories.
         activityJournal.Height = 188;
         root.Controls.Add(activityJournal, 0, 7);
-        // Immediately visible diagnosis, before any optional raw details.
+        // The security card is part of the primary Check & Diagnose result,
+        // not hidden inside Smart Recommendation or the technical log.
         root.Controls.Add(diagnosticResult, 0, 8);
+        root.Controls.Add(deviceSecurityCard, 0, 9);
         officeLicenseSummary.Visible = false;
         officeLicenseSummary.Margin = new Padding(4, 8, 0, 4);
-        root.Controls.Add(officeLicenseSummary, 0, 9);
-        root.Controls.Add(officeVolumeLink, 0, 10);
-        root.Controls.Add(technicalToggle, 0, 11);
-        root.Controls.Add(detail, 0, 12);
+        root.Controls.Add(officeLicenseSummary, 0, 10);
+        root.Controls.Add(officeVolumeLink, 0, 11);
+        root.Controls.Add(technicalToggle, 0, 12);
+        root.Controls.Add(detail, 0, 13);
         smartPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 7; i++)
+        for (int i = 0; i < 5; i++)
             smartPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         smartPanel.Controls.Add(smartHeading, 0, 0);
         smartPanel.Controls.Add(smartExplanation, 0, 1);
@@ -338,23 +343,20 @@ internal sealed class MainForm : Form
         recommendationRow.Controls.Add(applyRecommendation);
         smartPanel.Controls.Add(recommendationRow, 0, 3);
         smartPanel.Controls.Add(entraReview, 0, 4);
-        smartPanel.Controls.Add(deviceProtectionSummary, 0, 5);
-        smartPanel.Controls.Add(deviceProtectionLink, 0, 6);
-        root.Controls.Add(smartPanel, 0, 13);
+        root.Controls.Add(smartPanel, 0, 14);
         activationDetail.Visible = false;
         activationDetail.Margin = new Padding(6, 8, 0, 4);
-        root.Controls.Add(activationDetail, 0, 14);
+        root.Controls.Add(activationDetail, 0, 15);
         verificationPanel.Controls.Add(verificationSummary);
         verificationPanel.Controls.Add(signInWorks);
         verificationPanel.Controls.Add(signInFailed);
-        root.Controls.Add(verificationPanel, 0, 15);
+        root.Controls.Add(verificationPanel, 0, 16);
         root.SizeChanged += (_, _) =>
         {
             int available = Math.Max(190, root.ClientSize.Width - root.Padding.Horizontal - 45);
             smartHeading.MaximumSize = new Size(available, 0);
             smartExplanation.MaximumSize = new Size(available, 0);
             preflightSummary.MaximumSize = new Size(available, 0);
-            deviceProtectionSummary.MaximumSize = new Size(available, 0);
             activationDetail.MaximumSize = new Size(available, 0);
             verificationSummary.MaximumSize = new Size(available, 0);
         };
@@ -405,7 +407,7 @@ internal sealed class MainForm : Form
         hints.SetToolTip(applyRecommendation, "Start only the specifically recommended WAM action with the existing independent confirmation.");
         hints.SetToolTip(entraReview, "Optional read-only Microsoft Graph sign-in audit using Device Code or an approved certificate.");
         hints.SetToolTip(deviceProtectionLink,
-            "Read-only TPM, OS-volume BitLocker, Memory Integrity and DPAPI policy inspection. No recovery keys are read.");
+            "Jump to the TPM / BitLocker read-only diagnostic card. No recovery keys are read.");
         hints.SetToolTip(signInWorks, "You confirm that an actual Microsoft 365 application completed sign-in; this is not independently tested.");
         hints.SetToolTip(signInFailed, "App sign-in still failed. Review the error and optional Entra audit.");
 
@@ -482,7 +484,14 @@ internal sealed class MainForm : Form
         };
         deviceProtectionLink.LinkClicked += (_, _) =>
         {
-            if (busy) return;
+            if (busy || lastRawDiagnostic is null) return;
+            if (diagnosticsCollapsed) SetDiagnosticsCollapsed(false);
+            mainLayout?.ScrollControlIntoView(deviceSecurityCard);
+        };
+        deviceSecurityCard.DetailsRequested += (_, _) =>
+        {
+            if (busy || lastRawDiagnostic is null) return;
+            // Reuse the successful scan, do not start another TPM WMI query.
             using var inspector = new TpmBitLockerDialog(lastDeviceProtection);
             inspector.ShowDialog(this);
         };
@@ -677,9 +686,8 @@ internal sealed class MainForm : Form
             "יומן כניסה ל-Entra (אופציונלי)");
         entraReview.AccessibleName = entraReview.Text;
         deviceProtectionLink.Text = UpdateUiText.T(
-            "TPM & BitLocker details (read-only)",
-            "TPM и BitLocker — подробности (только чтение)",
-            "פרטי TPM ו-BitLocker (לקריאה בלבד)");
+            "TPM & BitLocker", "TPM и BitLocker", "TPM ו-BitLocker");
+        deviceSecurityCard.UpdateLanguage();
         deviceProtectionLink.AccessibleName = deviceProtectionLink.Text;
         signInWorks.Text = UpdateUiText.T(
             "App sign-in works", "Вход в приложение работает", "הכניסה לאפליקציה פועלת");
@@ -788,25 +796,8 @@ internal sealed class MainForm : Form
             Environment.NewLine + UpdateUiText.T("Next: ", "Дальше: ", "הבא: ") +
             lastSmartDecision.NextAction;
         preflightSummary.Text = FormatPreflight(lastPreflight);
-        deviceProtectionSummary.Text = lastDeviceProtection is null
-            ? UpdateUiText.T("TPM / BitLocker: not checked",
-                "TPM / BitLocker: не проверено", "TPM / BitLocker: לא נבדק")
-            : lastDeviceProtection.NeedsTpmReview
-                ? UpdateUiText.T("TPM state needs review; do not clear TPM.",
-                    "TPM требует проверки; не очищайте TPM.", "יש לבדוק TPM; אין לנקות.")
-                : lastDeviceProtection.NeedsAttestationReview
-                    ? UpdateUiText.T("TPM AIK attestation needs review; do not clear TPM.",
-                        "Ошибка аттестации TPM AIK. Не очищайте TPM.",
-                        "נדרשת בדיקת AIK. אין לנקות TPM.")
-                : lastDeviceProtection is { DomainJoinStatus: "YES", WritableDcStatus: "NOT_FOUND" }
-                    ? UpdateUiText.T("Domain RWDC was not found; check DNS/VPN/DPAPI.",
-                        "RWDC не найден; проверьте DNS, VPN и DPAPI.",
-                        "בקר תחום לכתיבה לא נמצא.")
-                : lastDeviceProtection.NeedsBitLockerReview
-                    ? UpdateUiText.T("Encrypted OS volume protection appears OFF; ask IT.",
-                        "Защита зашифрованного системного раздела OFF — проверьте с IT.",
-                        "הגנת כונן מערכת מוצפן כבויה.")
-                    : "TPM / BitLocker: " + lastDeviceProtection.CompactSummary();
+        deviceSecurityCard.ShowResult(lastDeviceProtection);
+        deviceProtectionLink.Visible = true;
         applyRecommendation.Visible = lastSmartDecision.SafeToOfferRepair &&
             lastSmartDecision.Action == SmartRepairAction.ReRegisterWam &&
             scope.SelectedIndex == 0 && ownSession;
@@ -823,6 +814,7 @@ internal sealed class MainForm : Form
         if (diagnosticsCollapsed)
         {
             diagnosticResult.Visible = false;
+            deviceSecurityCard.Visible = false;
             officeLicenseSummary.Visible = false;
             officeVolumeLink.Visible = false;
             smartPanel.Visible = false;
@@ -834,6 +826,7 @@ internal sealed class MainForm : Form
         else
         {
             diagnosticResult.Visible = true;
+            deviceSecurityCard.Visible = true;
             officeLicenseSummary.Visible = lastOfficeLicense is not null;
             officeVolumeLink.Visible = lastOfficeLicense is not null;
             technicalToggle.Visible = true;
@@ -908,6 +901,9 @@ internal sealed class MainForm : Form
     internal bool AreDiagnosticsCollapsed => diagnosticsCollapsed;
     internal bool HasActivityJournal => activityJournal.HasCopyControl &&
         activityJournal.CopyText.Contains("Microsoft 365 Auth Repair", StringComparison.Ordinal);
+    internal bool HasDeviceSecuritySection =>
+        deviceSecurityCard.Parent == mainLayout && deviceSecurityCard.HasReadOnlyDetailsLink &&
+        deviceProtectionLink.Parent is FlowLayoutPanel;
 
     private void ShowStatus(string message, UiGlyph glyph)
     {
@@ -1180,6 +1176,11 @@ internal sealed class MainForm : Form
         }
 
         // Capture WinForms checkbox state on UI thread before Task.Run.
+        // Repair invalidates the previous device snapshot. Never show a
+        // stale green TPM or BitLocker status after changing sign-in state.
+        lastDeviceProtection = null;
+        deviceSecurityCard.ClearResult();
+        deviceProtectionLink.Visible = false;
         lastRawDiagnostic = null;
         lastOfficeLicense = null;
         lastOfficeActivation = null;
@@ -1344,6 +1345,8 @@ internal sealed class MainForm : Form
         lastSmartDecision = null;
         lastPreflight = null;
         lastDeviceProtection = null;
+        deviceSecurityCard.ClearResult();
+        deviceProtectionLink.Visible = false;
         recommendedHelpKey = null;
         officeLicenseSummary.Visible = false;
         officeVolumeLink.Visible = false;
