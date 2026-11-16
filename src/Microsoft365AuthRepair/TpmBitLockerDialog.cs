@@ -10,13 +10,20 @@ internal sealed class TpmBitLockerDialog : Form
     private readonly Label heading = UiTheme.Caption(string.Empty, heading: true);
     private readonly Label safety = UiTheme.Caption(string.Empty);
     private readonly Label status = UiTheme.Caption(string.Empty);
-    private readonly TextBox details = new()
+    // Grouped, keyboard-accessible status rows instead of one enormous
+    // selectable raw-text field. All evidence remains local and read-only.
+    private readonly Panel detailsArea = new()
     {
-        Dock = DockStyle.Fill, Multiline = true, ReadOnly = true,
-        WordWrap = true, ScrollBars = ScrollBars.Vertical,
-        Font = new Font("Segoe UI", 9.5f),
-        BackColor = SystemColors.Window, BorderStyle = BorderStyle.FixedSingle
+        Dock = DockStyle.Fill, AutoScroll = true,
+        BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas
     };
+    private readonly TableLayoutPanel sections = new()
+    {
+        Dock = DockStyle.Top, AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        ColumnCount = 1, Margin = Padding.Empty
+    };
+    private readonly Dictionary<string, Label> statusValues = new(StringComparer.Ordinal);
     private readonly ComboBox errorCode = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList,
@@ -28,12 +35,6 @@ internal sealed class TpmBitLockerDialog : Form
         UpdateUiText.T("Refresh", "Обновить", "רענן"), primary: true);
     private readonly Button close = UiTheme.CreateActionButton(
         UpdateUiText.T("Close", "Закрыть", "סגור"));
-    private readonly LinkLabel advanced = new()
-    {
-        AutoSize = true, TabStop = true,
-        LinkBehavior = LinkBehavior.HoverUnderline,
-        Margin = new Padding(16, 16, 12, 8)
-    };
     private bool running;
 
     internal TpmBitLockerDialog(TpmBitLockerSnapshot? initial = null)
@@ -44,11 +45,11 @@ internal sealed class TpmBitLockerDialog : Form
         Font = UiTheme.BodyFont();
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(600, 480);
-        Size = new Size(920, 730);
+        MinimumSize = new Size(630, 490);
+        Size = new Size(820, 680);
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
-        ResponsiveLayout.FitInitialWindow(this, new Size(920, 730),
-            new Size(1240, 920), widthFraction: 0.84, heightFraction: 0.78);
+        ResponsiveLayout.FitInitialWindow(this, new Size(820, 680),
+            new Size(990, 820), widthFraction: 0.56, heightFraction: 0.73);
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(18),
@@ -72,7 +73,9 @@ internal sealed class TpmBitLockerDialog : Form
         root.Controls.Add(heading, 0, 0);
         root.Controls.Add(safety, 0, 1);
         root.Controls.Add(status, 0, 2);
-        root.Controls.Add(details, 0, 3);
+        BuildSections();
+        detailsArea.Controls.Add(sections);
+        root.Controls.Add(detailsArea, 0, 3);
         var errorRow = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill, AutoSize = true,
@@ -99,10 +102,6 @@ internal sealed class TpmBitLockerDialog : Form
         };
         footer.Controls.Add(close);
         footer.Controls.Add(refresh);
-        advanced.Text = UpdateUiText.T("Advanced device security",
-            "Расширенные операции защиты", "אבטחת מכשיר מתקדמת");
-        advanced.AccessibleName = advanced.Text;
-        footer.Controls.Add(advanced);
         root.Controls.Add(footer, 0, 6);
         Controls.Add(ResponsiveLayout.Center(this, root, 1170));
         root.SizeChanged += (_, _) =>
@@ -122,12 +121,6 @@ internal sealed class TpmBitLockerDialog : Form
         AcceptButton = refresh;
         CancelButton = close;
         close.Click += (_, _) => Close();
-        advanced.LinkClicked += (_, _) =>
-        {
-            if (running) return;
-            using var window = new DeviceSecurityAdvancedForm();
-            window.ShowDialog(this);
-        };
         refresh.Click += async (_, _) => await RefreshAsync();
         errorCode.SelectedIndexChanged += (_, _) => DescribeSelectedCode();
         DescribeSelectedCode();
@@ -153,98 +146,159 @@ internal sealed class TpmBitLockerDialog : Form
     private static string YesNoUnknown(bool? x) =>
         x is null ? "UNKNOWN" : x.Value ? "YES" : "NO";
 
+    private void AddGroup(string en, string ru, string he,
+        params (string Key, string En, string Ru, string He)[] rows)
+    {
+        var panel = new TableLayoutPanel
+        {
+            ColumnCount = 2, RowCount = rows.Length + 1,
+            Dock = DockStyle.Fill, AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0, 0, 0, 9), Padding = new Padding(14, 10, 14, 11),
+            BackColor = SystemInformation.HighContrast ? SystemColors.Window : Color.White,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 46));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 54));
+        for (int i = 0; i < panel.RowCount; i++)
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var head = UiTheme.Caption(UpdateUiText.T(en, ru, he), heading: true);
+        head.Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold);
+        head.Margin = new Padding(0, 0, 0, 8);
+        panel.Controls.Add(head, 0, 0);
+        panel.SetColumnSpan(head, 2);
+        for (int i = 0; i < rows.Length; i++)
+        {
+            var item = rows[i];
+            var label = UiTheme.Caption(UpdateUiText.T(item.En, item.Ru, item.He));
+            label.Margin = new Padding(0, 5, 12, 5);
+            label.MaximumSize = new Size(330, 0);
+            label.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            var value = UiTheme.Caption("—");
+            value.Font = new Font("Segoe UI Semibold", 9.7f, FontStyle.Bold);
+            value.ForeColor = SystemInformation.HighContrast
+                ? SystemColors.WindowText : UiTheme.Navy;
+            value.Margin = new Padding(0, 5, 0, 5);
+            value.MaximumSize = new Size(390, 0);
+            value.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            statusValues.Add(item.Key, value);
+            panel.Controls.Add(label, 0, i + 1);
+            panel.Controls.Add(value, 1, i + 1);
+        }
+        sections.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        sections.Controls.Add(panel, 0, sections.RowCount);
+        sections.RowCount++;
+    }
+
+    private void BuildSections()
+    {
+        sections.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        AddGroup("TPM & SECURITY PROCESSOR", "TPM И ПРОЦЕССОР БЕЗОПАСНОСТИ",
+            "TPM ומעבד אבטחה",
+            ("tpm", "Detected", "Обнаружен", "זוהה"),
+            ("spec", "TPM specification", "Версия TPM", "גרסת TPM"),
+            ("ready", "Ready", "Готовность", "מוכן"),
+            ("enabled", "Enabled", "Включён", "מופעל"),
+            ("activated", "Activated", "Активирован", "הופעל"),
+            ("owned", "Owned / provisioned", "Инициализирован", "בעלות ואספקה"),
+            ("lockout", "TPM lockout", "Блокировка TPM", "נעילת TPM"),
+            ("manufacturer", "Manufacturer category", "Производитель", "קטגוריית יצרן"),
+            ("firmware", "TPM firmware (local only)", "Прошивка (локально)", "קושחה מקומית"));
+        AddGroup("SYSTEM DRIVE ENCRYPTION", "ШИФРОВАНИЕ СИСТЕМНОГО ДИСКА",
+            "הצפנת כונן המערכת",
+            ("protection", "BitLocker protection", "Защита BitLocker", "הגנת BitLocker"),
+            ("conversion", "BitLocker encryption", "Шифрование BitLocker", "הצפנת BitLocker"),
+            ("thirdparty", "Third-party products detected", "Сторонние продукты", "מוצרי צד שלישי"),
+            ("thirdpartydrive", "Third-party drive encryption", "Стороннее шифрование диска", "הצפנת כונן צד שלישי"));
+        AddGroup("WINDOWS SECURITY & PLATFORM", "БЕЗОПАСНОСТЬ WINDOWS",
+            "אבטחת Windows ופלטפורמה",
+            ("secure", "Secure Boot", "Безопасная загрузка", "אתחול מאובטח"),
+            ("bootmode", "Firmware mode", "Режим загрузки", "מצב קושחה"),
+            ("hvci_configured", "Memory Integrity configured", "Целостность памяти настроена", "שלמות הזיכרון הוגדרה"),
+            ("hvci_running", "Memory Integrity running", "Целостность памяти работает", "שלמות הזיכרון פועלת"),
+            ("vm", "Virtual machine guest", "Виртуальная машина", "מכונה וירטואלית"),
+            ("vm_platform", "Virtualization platform", "Платформа виртуализации", "פלטפורמת וירטואליזציה"),
+            ("os", "Windows release category", "Версия Windows", "גרסת Windows"));
+        AddGroup("IDENTITY, DPAPI & ATTESTATION", "ИДЕНТИФИКАЦИЯ И АТТЕСТАЦИЯ",
+            "זהות ואימות",
+            ("dpapi", "DPAPI policy", "Политика DPAPI", "מדיניות DPAPI"),
+            ("domain", "Domain joined", "Компьютер в домене", "חבר בתחום"),
+            ("dc", "Writable domain controller", "Доступен контроллер записи", "בקר תחום לכתיבה"),
+            ("aik", "AIK enrollment result", "Результат регистрации AIK", "תוצאת רישום AIK"),
+            ("ek", "EK certificate import", "Импорт сертификата EK", "ייבוא אישור EK"));
+    }
+
+    private static string HumanState(string value) => value switch
+    {
+        "YES" => UpdateUiText.T("Yes", "Да", "כן"),
+        "NO" => UpdateUiText.T("No", "Нет", "לא"),
+        "UNKNOWN" or "NOT_VERIFIED" => UpdateUiText.T(
+            "Not verified", "Не проверено", "לא אומת"),
+        "ON" => UpdateUiText.T("On", "Включено", "פועל"),
+        "OFF" => UpdateUiText.T("Off", "Выключено", "כבוי"),
+        "FULLY_DECRYPTED" => UpdateUiText.T("Not encrypted", "Не зашифрован",
+            "לא מוצפן"),
+        "FULLY_ENCRYPTED" => UpdateUiText.T("Fully encrypted", "Зашифрован",
+            "מוצפן"),
+        "NONE_DETECTED" => UpdateUiText.T("Not detected", "Не обнаружено", "לא זוהה"),
+        "NONE" => UpdateUiText.T("None", "Нет", "אין"),
+        "NOT_APPLICABLE" => UpdateUiText.T("Not applicable", "Не применяется",
+            "לא חל"),
+        _ => value.Replace('_', ' ')
+    };
+
     private void Render(TpmBitLockerSnapshot x)
     {
         status.Text = x.NeedsTpmReview
-            ? UpdateUiText.T("TPM state needs IT review. Do not clear TPM.",
-                "Состояние TPM требует проверки IT. Не очищайте TPM.",
-                "יש לבדוק את ה-TPM. אין לנקות אותו.")
+            ? UpdateUiText.T("TPM needs IT review. Do not clear it automatically.",
+                "TPM требует проверки IT. Не очищайте его автоматически.",
+                "יש לבדוק את TPM ללא ניקוי אוטומטי.")
             : x.NeedsAttestationReview
-                ? UpdateUiText.T("TPM attestation needs review (not evidence of broken TPM).",
-                    "Требуется проверка аттестации TPM; неисправность оборудования не доказана.",
-                    "נדרשת בדיקת אימות TPM.")
-                : x is { DomainJoinStatus: "YES", WritableDcStatus: "NOT_FOUND" }
-                ? UpdateUiText.T("Writable domain controller not found; DPAPI may require it.",
-                    "RWDC не найден. Для DPAPI доменного пользователя может потребоваться связь с DC.",
-                    "לא נמצא בקר תחום לכתיבה; ייתכן ש-DPAPI תלוי בו.")
+                ? UpdateUiText.T("TPM attestation needs review; hardware failure is not proven.",
+                    "Нужна проверка аттестации TPM, поломка не доказана.",
+                    "יש לבדוק אימות TPM; כשל חומרה לא הוכח.")
                 : x.NeedsBitLockerReview
-                ? UpdateUiText.T("Encrypted OS volume reports protection OFF. Review with IT.",
-                    "Системный раздел зашифрован, но защита OFF — проверьте с IT.",
-                    "מחיצת מערכת מוצפנת אך ההגנה כבויה.")
-                : UpdateUiText.T("Device state collected; UNKNOWN is not a failure.",
-                    "Данные получены; UNKNOWN не означает неисправность.",
-                    "הנתונים נאספו. UNKNOWN אינה שגיאה.");
-        var newline = Environment.NewLine;
-        string Line(string en, string ru, string he, string val) =>
-            UpdateUiText.T(en, ru, he) + ": " + val + newline;
-        details.Text =
-            Line("TPM present", "TPM обнаружен", "קיים TPM", x.TpmPresent) +
-            Line("TPM specification", "Версия TPM", "גרסת TPM", x.TpmVersion) +
-            Line("Security processor (TPM)", "Процессор безопасности (TPM)",
-                "מעבד אבטחה (TPM)",
-                x.TpmPresent == "NO" ? "NOT_PRESENT" :
-                x.TpmReady == true ? "AVAILABLE" :
-                x.TpmReady == false ? "NOT_READY" : "UNKNOWN") +
-            Line("TPM ready", "TPM готов", "TPM מוכן", YesNoUnknown(x.TpmReady)) +
-            Line("TPM lockout (local only)", "Блокировка TPM (локально)",
-                "חסימת TPM מקומית", x.TpmLockedOut) +
-            Line("TPM enabled", "TPM включён", "TPM מופעל", YesNoUnknown(x.TpmEnabled)) +
-            Line("TPM activated", "TPM активирован", "TPM פעיל", YesNoUnknown(x.TpmActivated)) +
-            Line("TPM owned", "TPM инициализирован", "בעלות TPM", YesNoUnknown(x.TpmOwned)) +
-            Line("TPM manufacturer class", "Производитель TPM (категория)",
-                "יצרן TPM", x.TpmManufacturer) +
-            Line("TPM firmware (local only)", "Прошивка TPM (только локально)",
-                "קושחת TPM מקומית", x.TpmFirmwareVersion) +
-            Line("Secure Boot", "Безопасная загрузка", "אתחול מאובטח",
-                x.SecureBootState) +
-            Line("Firmware boot mode", "Режим прошивки", "מצב אתחול קושחה",
-                x.FirmwareType) +
-            Line("Running in a VM", "Запущена в VM", "פועל במכונה וירטואלית",
-                x.VirtualMachineGuest) +
-            Line("Virtualization platform", "Платформа виртуализации",
-                "פלטפורמת וירטואליזציה", x.VirtualMachinePlatform) +
-            Line("Windows release", "Версия Windows", "גרסת Windows", x.WindowsRelease) +
-            Line("AIK enrollment recorded result", "Последний результат регистрации AIK",
-                "מצב רישום AIK", x.AikEnrollmentError) +
-            Line("EK certificate import indicator", "Признак импорта сертификата EK",
-                "מצב ייבוא אישור EK", x.EkCertStore) +
-            newline +
-            Line("OS BitLocker protection", "Защита BitLocker системного диска",
-                "הגנת BitLocker", x.OsVolumeProtection) +
-            Line("OS BitLocker encryption", "Шифрование BitLocker системного диска",
-                "הצפנת BitLocker בכונן המערכת", x.OsVolumeConversion) +
-            newline +
-            Line("Third-party disk encryption software",
-                "Сторонние средства шифрования",
-                "תוכנות הצפנת דיסקים חיצוניות",
-                x.ThirdPartyEncryptionProducts == "NONE_DETECTED" ? "NONE_DETECTED" :
-                ThirdPartyDiskEncryptionProbe.IsDetected(x.ThirdPartyEncryptionProducts)
-                    ? ThirdPartyDiskEncryptionProbe.DisplayNames(
-                        x.ThirdPartyEncryptionProducts) : "UNKNOWN") +
-            Line("Third-party system-drive encryption",
-                "Шифрование системного диска сторонними средствами",
-                "הצפנת כונן מערכת בתוכנה חיצונית",
-                "NOT_VERIFIED") +
-            UpdateUiText.T(
-                "Software/driver detection does not prove a drive is encrypted. A vendor-specific read-only status check is necessary.",
-                "Наличие программы или драйвера не доказывает шифрование диска. Нужна отдельная проверка средствами производителя.",
-                "זיהוי תוכנה או מנהל התקן אינו מוכיח שהדיסק מוצפן. יש לאמת באמצעות כלי היצרן.") + newline +
-            newline +
-            Line("Memory Integrity configured", "Memory Integrity настроен",
-                "תצורת Memory Integrity", x.MemoryIntegrityConfigured) +
-            Line("Memory Integrity running", "Memory Integrity работает",
-                "Memory Integrity פועל", x.MemoryIntegrityRuntime) +
-            Line("DPAPI ProtectionPolicy", "Политика DPAPI",
-                "מדיניות DPAPI", x.DpapiProtectionPolicy) +
-            Line("Domain joined", "Компьютер в домене",
-                "חיבור לדומיין", x.DomainJoinStatus) +
-            Line("Writable DC discovery", "Доступность RWDC",
-                "גישה לבקר תחום", x.WritableDcStatus) +
-            newline + UpdateUiText.T(
-                "This view does not read recovery keys and does not prove TPM hardware failure or Office authentication.",
-                "Ключи восстановления не считываются. Данные не доказывают поломку TPM или успешный вход в Office.",
-                "אין קריאת מפתחות שחזור; הממצאים אינם מוכיחים כשל חומרה או כניסה ל-Office.");
-
+                    ? UpdateUiText.T("Encrypted OS drive reports protection off.",
+                        "Системный диск зашифрован, но защита выключена.",
+                        "הכונן מוצפן אך ההגנה כבויה.")
+                    : UpdateUiText.T(
+                        "Read-only device evidence. Unknown is not a failure; Office sign-in is separate.",
+                        "Проверка без изменений. Неизвестно не означает ошибку; вход Office проверяется отдельно.",
+                        "נתוני מכשיר לקריאה בלבד. לא ידוע אינו כשל.");
+        void Set(string key, string value)
+        {
+            var cell = statusValues[key];
+            cell.Text = HumanState(value);
+            cell.AccessibleName = key + ": " + cell.Text;
+        }
+        Set("tpm", x.TpmPresent);
+        Set("spec", x.TpmVersion);
+        Set("ready", x.TpmReady is null ? "UNKNOWN" : x.TpmReady.Value ? "YES" : "NO");
+        Set("enabled", x.TpmEnabled is null ? "UNKNOWN" : x.TpmEnabled.Value ? "YES" : "NO");
+        Set("activated", x.TpmActivated is null ? "UNKNOWN" : x.TpmActivated.Value ? "YES" : "NO");
+        Set("owned", x.TpmOwned is null ? "UNKNOWN" : x.TpmOwned.Value ? "YES" : "NO");
+        Set("lockout", x.TpmLockedOut);
+        Set("manufacturer", x.TpmManufacturer);
+        Set("firmware", x.TpmFirmwareVersion);
+        Set("protection", x.OsVolumeProtection);
+        Set("conversion", x.OsVolumeConversion);
+        Set("thirdparty", ThirdPartyDiskEncryptionProbe.IsDetected(x.ThirdPartyEncryptionProducts)
+            ? ThirdPartyDiskEncryptionProbe.DisplayNames(x.ThirdPartyEncryptionProducts)
+            : x.ThirdPartyEncryptionProducts);
+        Set("thirdpartydrive", "NOT_VERIFIED");
+        Set("secure", x.SecureBootState);
+        Set("bootmode", x.FirmwareType);
+        Set("hvci_configured", x.MemoryIntegrityConfigured);
+        Set("hvci_running", x.MemoryIntegrityRuntime);
+        Set("vm", x.VirtualMachineGuest);
+        Set("vm_platform", x.VirtualMachinePlatform);
+        Set("os", x.WindowsRelease);
+        Set("dpapi", x.DpapiProtectionPolicy);
+        Set("domain", x.DomainJoinStatus);
+        Set("dc", x.WritableDcStatus);
+        Set("aik", x.AikEnrollmentError);
+        Set("ek", x.EkCertStore);
     }
 
     private async Task RefreshAsync()
@@ -282,8 +336,8 @@ internal sealed class TpmBitLockerDialog : Form
 
     internal bool SelfTest() =>
         errorCode.Items.Count == 9 &&
-        details.ReadOnly && !string.IsNullOrWhiteSpace(safety.Text) &&
-        advanced.Parent is FlowLayoutPanel &&
-        advanced.TabStop && advanced.Text.Length > 8 &&
+        statusValues.Count == 25 && detailsArea.AutoScroll &&
+        sections.Controls.Count == 4 &&
+        !string.IsNullOrWhiteSpace(safety.Text) &&
         UiTheme.VerifyButtons(this, 2);
 }
