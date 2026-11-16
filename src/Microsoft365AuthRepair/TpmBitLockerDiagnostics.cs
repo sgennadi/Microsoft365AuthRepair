@@ -17,6 +17,18 @@ internal sealed record TpmBitLockerSnapshot(
     string DpapiProtectionPolicy,
     string DomainJoinStatus = "UNKNOWN", string WritableDcStatus = "UNKNOWN")
 {
+    // Local-only attestation evidence; never collect EK public keys, EK
+    // certificates, raw registry values, AIK identity or certificate subjects.
+    internal string TpmManufacturer { get; init; } = "UNKNOWN";
+    internal string TpmFirmwareVersion { get; init; } = "UNKNOWN";
+    internal string WindowsRelease { get; init; } = "UNKNOWN";
+    internal string AikEnrollmentError { get; init; } = "UNKNOWN";
+    internal string EkCertStore { get; init; } = "UNKNOWN";
+
+    internal bool NeedsAttestationReview =>
+        AikEnrollmentError is "NOT_FOUND" or "TIMEOUT" or
+            "INVALID_PUBLIC_KEY" or "SERVER_ERROR" or "OTHER_ERROR";
+
     internal static TpmBitLockerSnapshot Unknown => new(
         "UNKNOWN", "UNKNOWN", null, null, null, null,
         "UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN");
@@ -38,6 +50,11 @@ internal sealed record TpmBitLockerSnapshot(
 
     internal static string DescribeError(string? raw) => raw?.Trim().ToUpperInvariant() switch
     {
+        "0X80070490" or "80070490" => "0x80070490 / ERROR_NOT_FOUND: an AIK attestation attempt may fail locally. " +
+            "This is NOT the timeout code and does NOT prove an EK certificate/public-key mismatch. " +
+            "Inspect recorded AIK state, Windows release, TPM firmware and OEM updates; do not clear TPM.",
+        "0X800705B4" or "800705B4" => "0x800705B4 / ERROR_TIMEOUT: an Autopilot or attestation operation timed out. " +
+            "A timeout may follow an earlier attestation failure; it does not by itself diagnose TPM hardware.",
         "0X80090016" or "80090016" or "-2146893802" => "0x80090016 / NTE_BAD_KEYSET: cryptographic keyset is missing or invalid. " +
             "Review the affected user's WAM/DPAPI and device registration. This is NOT proof of broken TPM hardware.",
         "0X80090030" or "80090030" => "0x80090030 / NTE_DEVICE_NOT_READY: the cryptographic device is not ready. " +
@@ -70,7 +87,16 @@ internal sealed record TpmBitLockerSnapshot(
             "NOT_SET", "ZERO", "ONE", "OTHER", "UNKNOWN"]) +
         "; DpapiDomainJoined: " + Safe(DomainJoinStatus, ["YES", "NO", "UNKNOWN"]) +
         "; DpapiWritableDc: " + Safe(WritableDcStatus, [
-            "AVAILABLE", "NOT_FOUND", "UNKNOWN", "NOT_APPLICABLE"]);
+            "AVAILABLE", "NOT_FOUND", "UNKNOWN", "NOT_APPLICABLE"]) +
+        "; TpmAikEnrollment: " + Safe(AikEnrollmentError, [
+            "NOT_FOUND", "TIMEOUT", "INVALID_PUBLIC_KEY", "SERVER_ERROR",
+            "OTHER_ERROR", "NONE_RECORDED", "UNKNOWN"]) +
+        "; TpmEkCertStore: " + Safe(EkCertStore, [
+            "PRESENT", "EMPTY", "NOT_FOUND", "UNKNOWN"]) +
+        "; TpmManufacturerClass: " + Safe(TpmManufacturer, [
+            "STM", "MSFT", "OTHER", "UNKNOWN"]) +
+        "; WindowsTpmRelease: " + Safe(WindowsRelease, [
+            "WIN11_24H2", "WIN11_25H2", "WIN11_NEWER", "OTHER", "UNKNOWN"]);
 
     private static string Bool(bool? value) =>
         value is null ? "UNKNOWN" : value.Value ? "YES" : "NO";
@@ -95,6 +121,8 @@ internal sealed record TpmBitLockerSnapshot(
             DescribeError("0x80090016").Contains("NOT proof", StringComparison.Ordinal) &&
             DescribeError("-2146893802") == DescribeError("0x80090016") &&
             DescribeError("0x80090030").Contains("NTE_DEVICE_NOT_READY", StringComparison.Ordinal) &&
+            DescribeError("0x80070490").Contains("NOT the timeout", StringComparison.Ordinal) &&
+            DescribeError("0x800705b4").Contains("ERROR_TIMEOUT", StringComparison.Ordinal) &&
             DescribeError("80090034").Contains("NTE_ENCRYPTION_FAILURE", StringComparison.Ordinal) &&
             !DescribeError("0xC0090016").Contains("0x80090016", StringComparison.Ordinal) &&
             !DescribeError("random text").Contains("failed", StringComparison.OrdinalIgnoreCase) &&
@@ -104,6 +132,11 @@ internal sealed record TpmBitLockerSnapshot(
                 .Contains("TpmVersion: UNKNOWN", StringComparison.Ordinal) &&
             (healthy with { DomainJoinStatus = "YES", WritableDcStatus = "NOT_FOUND" })
                 .ToSafeSummary().Contains("DpapiWritableDc: NOT_FOUND", StringComparison.Ordinal) &&
+            (healthy with { AikEnrollmentError = "NOT_FOUND" }).NeedsAttestationReview &&
+            !(healthy with { AikEnrollmentError = "UNKNOWN" }).NeedsAttestationReview &&
+            (healthy with { TpmFirmwareVersion = "123456SECRET",
+                TpmManufacturer = "private-device-id", AikEnrollmentError = "0x80070490" })
+                .ToSafeSummary().Contains("TpmAikEnrollment: UNKNOWN", StringComparison.Ordinal) &&
             (healthy with { WritableDcStatus = "dc01.internal.example" })
                 .ToSafeSummary().Contains("DpapiWritableDc: UNKNOWN", StringComparison.Ordinal) &&
             TpmBitLockerProbe.ValidDomainName("example.test") &&
@@ -139,13 +172,13 @@ internal static class TpmBitLockerProbe
     }
 
     private static (string Present, string Version, bool? Ready, bool? Enabled,
-        bool? Activated, bool? Owned) ReadTpm()
+        bool? Activated, bool? Owned, string Manufacturer, string Firmware) ReadTpm()
     {
         try
         {
             using var query = new ManagementObjectSearcher(
                 @"root\CIMV2\Security\MicrosoftTpm",
-                "SELECT IsEnabled_InitialValue, IsActivated_InitialValue, IsOwned_InitialValue, SpecVersion FROM Win32_Tpm");
+                "SELECT IsEnabled_InitialValue, IsActivated_InitialValue, IsOwned_InitialValue, SpecVersion, ManufacturerId, ManufacturerVersion FROM Win32_Tpm");
             using var items = query.Get();
             foreach (ManagementObject item in items)
             {
@@ -155,6 +188,8 @@ internal static class TpmBitLockerProbe
                     var version = value.StartsWith("2.0", StringComparison.Ordinal)
                         ? "2.0" : value.StartsWith("1.2", StringComparison.Ordinal)
                             ? "1.2" : "UNKNOWN";
+                    string vendor = VendorClass(item["ManufacturerId"]);
+                    string firmware = FirmwareVersion(item["ManufacturerVersion"] as string);
                     return ("YES", version,
                         LiveTpmFlag(item, "IsReady", "IsReady", null),
                         LiveTpmFlag(item, "IsEnabled", "IsEnabled",
@@ -162,14 +197,15 @@ internal static class TpmBitLockerProbe
                         LiveTpmFlag(item, "IsActivated", "IsActivated",
                             ReadBool(item, "IsActivated_InitialValue")),
                         LiveTpmFlag(item, "IsOwned", "IsOwned",
-                            ReadBool(item, "IsOwned_InitialValue")));
+                            ReadBool(item, "IsOwned_InitialValue")),
+                        vendor, firmware);
                 }
             }
             // A successful query with no instance normally means no TPM.
-            return ("NO", "UNKNOWN", null, null, null, null);
+            return ("NO", "UNKNOWN", null, null, null, null, "UNKNOWN", "UNKNOWN");
         }
         catch (Exception ex) when (WmiAccess(ex))
-        { return ("UNKNOWN", "UNKNOWN", null, null, null, null); }
+        { return ("UNKNOWN", "UNKNOWN", null, null, null, null, "UNKNOWN", "UNKNOWN"); }
     }
 
     private static string ProtectionState(object? value)
