@@ -74,7 +74,8 @@ internal sealed class TpmBitLockerDialog : Form
         };
         errorCode.Items.AddRange([
             "No error selected", "0x80090016 / -2146893802",
-            "0x80090031", "0x80090034", "0x80090035"
+            "0x80090030", "0x80090031", "0x80090034",
+            "0x80090035", "0xC0090016"
         ]);
         errorCode.SelectedIndex = 0;
         errorRow.Controls.Add(UiTheme.Caption(UpdateUiText.T(
@@ -127,8 +128,9 @@ internal sealed class TpmBitLockerDialog : Form
     {
         string code = errorCode.SelectedIndex switch
         {
-            1 => "0x80090016", 2 => "0x80090031",
-            3 => "0x80090034", 4 => "0x80090035", _ => ""
+            1 => "0x80090016", 2 => "0x80090030",
+            3 => "0x80090031", 4 => "0x80090034",
+            5 => "0x80090035", 6 => "0xC0090016", _ => ""
         };
         var suffix = TpmBitLockerSnapshot.DescribeError(code);
         errorDetails.Text = UpdateUiText.T("Interpretation (not a device diagnosis): ",
@@ -195,7 +197,7 @@ internal sealed class TpmBitLockerDialog : Form
     }
 
     internal bool SelfTest() =>
-        errorCode.Items.Count == 5 &&
+        errorCode.Items.Count == 7 &&
         details.ReadOnly && !string.IsNullOrWhiteSpace(safety.Text) &&
         UiTheme.VerifyButtons(this, 2);
 }
