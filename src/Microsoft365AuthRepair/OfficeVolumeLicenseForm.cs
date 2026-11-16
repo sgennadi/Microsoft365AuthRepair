@@ -410,9 +410,12 @@ internal sealed class OfficeVolumeLicenseForm : Form
         if (productName == "Unrecognized Office edition") productName = product.Name;
         var current = OfficeVolumeLicensing.IsActive(product)
             ? UpdateUiText.T("Activated", "Активирован", "מופעל")
-            : product.Status == "Unlicensed"
-                ? UpdateUiText.T("Not activated", "Не активирован", "לא מופעל")
-                : product.Status;
+            : !product.HasKey
+                ? UpdateUiText.T("WMI template — no key", "Шаблон WMI — нет ключа",
+                    "תבנית WMI ללא מפתח")
+                : product.Status == "Unlicensed"
+                    ? UpdateUiText.T("Not activated", "Не активирован", "לא מופעל")
+                    : product.Status;
         return productName + " — " + current +
             (product.HasKey ? " · *****-" + product.PartialKey : "") +
             (product.IsPreview ? " · Preview" : "");
@@ -424,7 +427,7 @@ internal sealed class OfficeVolumeLicenseForm : Form
         var preferred = OfficeVolumeLicensing.PreferredProducts(inventory);
         displayedProducts = showTechnicalRows
             ? OfficeVolumeLicensing.AllProductRecords(inventory)
-            : preferred;
+            : preferred; // Main view lists one installed edition, not every WMI license row.
         populatingProducts = true;
         try
         {
@@ -446,10 +449,12 @@ internal sealed class OfficeVolumeLicenseForm : Form
         int hidden = Math.Max(0, inventory.Products.Count - preferred.Count);
         otherRecordsLink.Visible = hidden > 0;
         otherRecordsLink.Text = showTechnicalRows
-            ? UpdateUiText.T("Hide extra WMI records", "Скрыть дополнительные записи WMI",
-                "הסתר רשומות WMI נוספות")
-            : UpdateUiText.T("Show other WMI records", "Показать остальные записи WMI",
-                "הצג רשומות WMI נוספות") + " (" + hidden + ")";
+            ? UpdateUiText.T("Hide technical license records (not Office installs)",
+                "Скрыть технические записи лицензий (не установки Office)",
+                "הסתר רשומות רישוי טכניות")
+            : UpdateUiText.T("Show technical license records (not Office installs)",
+                "Показать технические записи лицензий (не установки Office)",
+                "הצג רשומות רישוי טכניות") + " (" + hidden + ")";
         otherRecordsLink.AccessibleName = otherRecordsLink.Text;
         SelectProduct();
     }
@@ -628,9 +633,9 @@ internal sealed class OfficeVolumeLicenseForm : Form
                         "זוהתה גרסת Preview 2026 לא מאומתת. אין להתקין מפתחות 2024.")
                     : result.Products.Any(OfficeVolumeLicensing.IsActive)
                         ? UpdateUiText.T(
-                            "Activated Office license detected. Empty WMI templates are hidden by default.",
-                            "Обнаружена активированная лицензия Office. Пустые записи WMI скрыты.",
-                            "זוהה רישיון Office פעיל. רשומות WMI ריקות מוסתרות.")
+                            "Office activation detected. Extra WMI records are licensing variants/templates, NOT additional Office installations.",
+                            "Лицензия Office активирована. Дополнительные записи WMI — варианты/шаблоны лицензирования, НЕ отдельные установки Office.",
+                            "Office מופעל. רשומות WMI נוספות אינן התקנות נוספות של Office.")
                         : UpdateUiText.T(
                             "Office inventory complete. KMS discovery starts automatically.",
                             "Инвентаризация Office завершена. Поиск KMS запускается автоматически.",
