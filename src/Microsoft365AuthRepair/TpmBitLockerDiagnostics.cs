@@ -552,6 +552,123 @@ internal static class TpmBitLockerProbe
         }
     }
 
+    // Strict internal modes for one read-only task per subprocess. Running
+    // native WMI calls out-of-process allows a hung client to be killed
+    // without waiting 60 seconds or blocking unrelated checks.
+    internal static readonly string[] PartNames =
+    [
+        "TPM_WMI", "BITLOCKER_WMI", "DEVICE_GUARD_WMI",
+        "DOMAIN_RWDC", "TPM_LOCKOUT", "DPAPI_ATTESTATION"
+    ];
+
+    internal static TpmBitLockerSnapshot CapturePart(string name)
+    {
+        if (!PartNames.Contains(name, StringComparer.Ordinal))
+            throw new ArgumentOutOfRangeException(nameof(name));
+        var empty = TpmBitLockerSnapshot.Unknown;
+        switch (name)
+        {
+            case "TPM_WMI":
+                var t = ReadTpm();
+                return empty with {
+                    TpmPresent = t.Present, TpmVersion = t.Version,
+                    TpmReady = t.Ready, TpmEnabled = t.Enabled,
+                    TpmActivated = t.Activated, TpmOwned = t.Owned,
+                    TpmManufacturer = t.Manufacturer,
+                    TpmFirmwareVersion = t.Firmware,
+                    EkCertStore = t.EkStore
+                };
+            case "BITLOCKER_WMI":
+                var v = ReadSystemVolume();
+                return empty with {
+                    OsVolumeProtection = v.Protection,
+                    OsVolumeConversion = v.Conversion
+                };
+            case "DEVICE_GUARD_WMI":
+                return empty with {
+                    MemoryIntegrityRuntime = ReadHVCIRunning(),
+                    MemoryIntegrityConfigured = ReadHVCIConfigured()
+                };
+            case "DOMAIN_RWDC":
+                var d = ReadWritableDc();
+                return empty with {
+                    DomainJoinStatus = d.Joined, WritableDcStatus = d.WritableDc
+                };
+            case "TPM_LOCKOUT":
+                return empty with { TpmLockedOut = ReadTpmLockout() };
+            case "DPAPI_ATTESTATION":
+                var a = ReadAttestation();
+                return empty with {
+                    DpapiProtectionPolicy = ReadDpapiPolicy(),
+                    AikEnrollmentError = a.Error,
+                    EkCertStore = a.EkStore,
+                    WindowsRelease = ReadWindowsRelease()
+                };
+        }
+        throw new InvalidOperationException("Unexpected internal read-only probe.");
+    }
+
+    internal static TpmBitLockerSnapshot MergePart(
+        TpmBitLockerSnapshot snapshot, string part, TpmBitLockerSnapshot found) =>
+        part switch
+        {
+            "TPM_WMI" => snapshot with {
+                TpmPresent = found.TpmPresent, TpmVersion = found.TpmVersion,
+                TpmReady = found.TpmReady, TpmEnabled = found.TpmEnabled,
+                TpmActivated = found.TpmActivated, TpmOwned = found.TpmOwned,
+                TpmManufacturer = found.TpmManufacturer,
+                TpmFirmwareVersion = found.TpmFirmwareVersion,
+                EkCertStore = found.EkCertStore
+            },
+            "BITLOCKER_WMI" => snapshot with {
+                OsVolumeProtection = found.OsVolumeProtection,
+                OsVolumeConversion = found.OsVolumeConversion
+            },
+            "DEVICE_GUARD_WMI" => snapshot with {
+                MemoryIntegrityRuntime = found.MemoryIntegrityRuntime,
+                MemoryIntegrityConfigured = found.MemoryIntegrityConfigured
+            },
+            "DOMAIN_RWDC" => snapshot with {
+                DomainJoinStatus = found.DomainJoinStatus,
+                WritableDcStatus = found.WritableDcStatus
+            },
+            "TPM_LOCKOUT" => snapshot with {
+                TpmLockedOut = found.TpmPresent == "NO"
+                    ? "NOT_APPLICABLE" : found.TpmLockedOut
+            },
+            "DPAPI_ATTESTATION" => snapshot with {
+                DpapiProtectionPolicy = found.DpapiProtectionPolicy,
+                AikEnrollmentError = found.AikEnrollmentError,
+                EkCertStore = found.EkCertStore == "IMPORT_INCOMPLETE"
+                    ? found.EkCertStore : snapshot.EkCertStore,
+                WindowsRelease = found.WindowsRelease
+            },
+            _ => snapshot
+        };
+
+    // "Finished" means the provider returned a useful allowed status.
+    // UNKNOWN never implies hardware health or a verified BitLocker state.
+    internal static bool HasPartEvidence(string part, TpmBitLockerSnapshot state) =>
+        part switch
+        {
+            "TPM_WMI" => state.TpmPresent is "YES" or "NO",
+            "BITLOCKER_WMI" => state.OsVolumeProtection is "ON" or "OFF",
+            "DEVICE_GUARD_WMI" => state.MemoryIntegrityRuntime is
+                "RUNNING" or "NOT_RUNNING" ||
+                state.MemoryIntegrityConfigured is "ON" or "OFF" or "NOT_SET",
+            // Domain membership alone does not verify writable DC discovery.
+            "DOMAIN_RWDC" => state.DomainJoinStatus == "NO" ||
+                (state.DomainJoinStatus == "YES" &&
+                 state.WritableDcStatus is "AVAILABLE" or "NOT_FOUND"),
+            "TPM_LOCKOUT" => state.TpmLockedOut is "YES" or "NO",
+            // Windows build number is not evidence that DPAPI/AIK checks ran.
+            "DPAPI_ATTESTATION" => state.DpapiProtectionPolicy is
+                "NOT_SET" or "ZERO" or "ONE" or "OTHER" ||
+                state.AikEnrollmentError is "NOT_FOUND" or "TIMEOUT" or
+                    "OTHER_ERROR" or "NONE_RECORDED",
+            _ => false
+        };
+
     internal static TpmBitLockerSnapshot Capture()
     {
         // Individual probes fail closed to UNKNOWN. Lack of WMI permissions is

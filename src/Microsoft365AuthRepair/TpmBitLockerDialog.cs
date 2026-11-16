@@ -211,8 +211,16 @@ internal sealed class TpmBitLockerDialog : Form
             "Читаю состояние защиты Windows...", "קורא את מצב האבטחה...");
         try
         {
-            var snapshot = await Task.Run(TpmBitLockerProbe.Capture);
-            if (!IsDisposed && !Disposing) Render(snapshot);
+            var result = await IsolatedDeviceProbe.CaptureAsync();
+            if (!IsDisposed && !Disposing)
+            {
+                Render(result.Snapshot);
+                if (result.UnverifiedParts.Length > 0)
+                    status.Text = UpdateUiText.T(
+                        "Partial security state: some provider checks were unavailable.",
+                        "Частичные сведения: некоторые проверки недоступны.",
+                        "נתונים חלקיים: חלק מהבדיקות אינן זמינות.");
+            }
         }
         catch (Exception ex)
         {

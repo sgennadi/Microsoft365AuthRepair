@@ -14,6 +14,10 @@ internal static class Program
                 return Scheduling.Worker(args[1], args[2], args[3], args[4]);
             if (args.Length == 2 && args[0] == "--update-helper")
                 return UpdateHandoff.RunHelper(args[1]);
+            // Internal only. Fixed, read-only stages for bounded native
+            // Windows WMI/TPM providers; no identity or account changes.
+            if (args.Length == 2 && args[0] == "--read-only-device-probe")
+                return IsolatedDeviceProbe.RunReadOnlyWorker(args[1]);
             // First-logon auto-repair was removed: users without an existing
             // Windows profile have no previous WAM cache to recover.
             if (args.Length == 1 && args[0] == "--ui-self-test")
@@ -87,6 +91,7 @@ internal static class Program
                     ("Volume licensing UI", OfficeVolumeLicenseForm.SelfTest),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
                     ("Bounded read-only scan", ReadOnlyDiagnosticScan.SelfTest),
+                    ("Isolated provider security and timeout rules", IsolatedDeviceProbe.SelfTest),
                     ("Live stage-only activity and copy log", ActivityJournalView.SelfTest),
                     ("Main activity panel", () => form.HasActivityJournal),
                     ("Local-only Entra key evidence", EntraKeySignals.SelfTest),

@@ -10,9 +10,10 @@ namespace Microsoft365AuthRepair;
 internal enum ActivityStep
 {
     Ready, ReadOnlyCheck, WamEntra, OfficeLicensing, TpmBitLocker,
-    NetworkPreflight, Preflight, WamRegistration, OfficeReset,
-    CredentialCleanup, RegistryCleanup, CacheCleanup, BrokerVerification,
-    UserTaskScheduling
+    NetworkPreflight, TpmWmi, BitLockerWmi, DeviceGuardWmi,
+    DomainDc, TpmLockout, DpapiAttestation, Preflight,
+    WamRegistration, OfficeReset, CredentialCleanup, RegistryCleanup,
+    CacheCleanup, BrokerVerification, UserTaskScheduling
 }
 
 internal enum ActivityOutcome
@@ -113,6 +114,14 @@ internal sealed class ActivityJournalView : TableLayoutPanel
         ActivityStep.OfficeLicensing => UpdateUiText.T("Office licensing",
             "Лицензирование Office", "רישוי Office"),
         ActivityStep.TpmBitLocker => "TPM / BitLocker",
+        ActivityStep.TpmWmi => "TPM (WMI)",
+        ActivityStep.BitLockerWmi => "BitLocker (WMI)",
+        ActivityStep.DeviceGuardWmi => "Device Guard / HVCI (WMI)",
+        ActivityStep.DomainDc => UpdateUiText.T("Domain controller",
+            "Контроллер домена", "בקר תחום"),
+        ActivityStep.TpmLockout => UpdateUiText.T("TPM lockout",
+            "Блокировка TPM", "נעילת TPM"),
+        ActivityStep.DpapiAttestation => "DPAPI / AIK",
         ActivityStep.NetworkPreflight => UpdateUiText.T("Network / preflight",
             "Сеть / предварительная проверка", "רשת / בדיקה מקדימה"),
         ActivityStep.Preflight => UpdateUiText.T("Safety preflight",
@@ -201,11 +210,13 @@ internal sealed class ActivityJournalView : TableLayoutPanel
         view.Add(ActivityStep.ReadOnlyCheck, ActivityOutcome.Started);
         view.Add(ActivityStep.WamEntra, ActivityOutcome.Finished);
         view.Add(ActivityStep.TpmBitLocker, ActivityOutcome.NotVerified);
+        view.Add(ActivityStep.TpmWmi, ActivityOutcome.TimeLimit);
+        view.Add(ActivityStep.BitLockerWmi, ActivityOutcome.Finished);
         return view.HasCopyControl && view.CopyText.Contains("WAM / Entra",
             StringComparison.Ordinal) &&
             view.CopyText.Contains("TPM / BitLocker", StringComparison.Ordinal) &&
             !view.CopyText.Contains("TenantId", StringComparison.OrdinalIgnoreCase) &&
             !view.CopyText.Contains("UserSid", StringComparison.OrdinalIgnoreCase) &&
-            view.entries.Count == 4;
+            view.entries.Count == 6;
     }
 }
