@@ -134,6 +134,7 @@ internal sealed class MainForm : Form
         Visible = false
     };
     private readonly ProgressBar progress = new() { Dock = DockStyle.Top, Height = 5, Visible = false, Style = ProgressBarStyle.Marquee };
+    private readonly ActivityJournalView activityJournal = new();
     private readonly Button cancelDiagnostic = UiTheme.CreateActionButton(string.Empty);
     private readonly System.Windows.Forms.Timer diagnosticTimer = new() { Interval = 1000 };
     private CancellationTokenSource? diagnosticCancellation;
@@ -165,12 +166,12 @@ internal sealed class MainForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(20), AutoScroll = true,
-            ColumnCount = 1, RowCount = 16,
+            ColumnCount = 1, RowCount = 17,
             BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas
         };
         mainLayout = root;
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var row = 0; row < 15; row++)
+        for (var row = 0; row < 16; row++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         // Only the canvas receives unused space on a maximized window.
         // Never stretch a read-only textbox into an empty grey rectangle.
@@ -312,14 +313,18 @@ internal sealed class MainForm : Form
         banner.Controls.Add(cancelDiagnostic);
         root.Controls.Add(banner, 0, 6);
 
+        // Compact, always-visible live activity in the unused area below Ready.
+        // This panel contains only fixed stage labels and status categories.
+        activityJournal.Height = 188;
+        root.Controls.Add(activityJournal, 0, 7);
         // Immediately visible diagnosis, before any optional raw details.
-        root.Controls.Add(diagnosticResult, 0, 7);
+        root.Controls.Add(diagnosticResult, 0, 8);
         officeLicenseSummary.Visible = false;
         officeLicenseSummary.Margin = new Padding(4, 8, 0, 4);
-        root.Controls.Add(officeLicenseSummary, 0, 8);
-        root.Controls.Add(officeVolumeLink, 0, 9);
-        root.Controls.Add(technicalToggle, 0, 10);
-        root.Controls.Add(detail, 0, 11);
+        root.Controls.Add(officeLicenseSummary, 0, 9);
+        root.Controls.Add(officeVolumeLink, 0, 10);
+        root.Controls.Add(technicalToggle, 0, 11);
+        root.Controls.Add(detail, 0, 12);
         smartPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int i = 0; i < 7; i++)
             smartPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -335,14 +340,14 @@ internal sealed class MainForm : Form
         smartPanel.Controls.Add(entraReview, 0, 4);
         smartPanel.Controls.Add(deviceProtectionSummary, 0, 5);
         smartPanel.Controls.Add(deviceProtectionLink, 0, 6);
-        root.Controls.Add(smartPanel, 0, 12);
+        root.Controls.Add(smartPanel, 0, 13);
         activationDetail.Visible = false;
         activationDetail.Margin = new Padding(6, 8, 0, 4);
-        root.Controls.Add(activationDetail, 0, 13);
+        root.Controls.Add(activationDetail, 0, 14);
         verificationPanel.Controls.Add(verificationSummary);
         verificationPanel.Controls.Add(signInWorks);
         verificationPanel.Controls.Add(signInFailed);
-        root.Controls.Add(verificationPanel, 0, 14);
+        root.Controls.Add(verificationPanel, 0, 15);
         root.SizeChanged += (_, _) =>
         {
             int available = Math.Max(190, root.ClientSize.Width - root.Padding.Horizontal - 45);
@@ -645,6 +650,7 @@ internal sealed class MainForm : Form
             "Open the all-users task wizard and review protected worker cleanup",
             "Открыть мастер заданий всех пользователей и очистку worker-файлов",
             "פתח אשף משימות לכל המשתמשים וניקוי קובצי worker");
+        activityJournal.RefreshLanguage();
         languageLabel.Text = UpdateUiText.T("Language", "Язык", "שפה");
         languageLabel.AccessibleName = languageLabel.Text;
         language.AccessibleDescription = UpdateUiText.T(
@@ -900,6 +906,8 @@ internal sealed class MainForm : Form
 
     internal bool CanCollapseDiagnostics => diagnosticToggle.Visible;
     internal bool AreDiagnosticsCollapsed => diagnosticsCollapsed;
+    internal bool HasActivityJournal => activityJournal.HasCopyControl &&
+        activityJournal.CopyText.Contains("Microsoft 365 Auth Repair", StringComparison.Ordinal);
 
     private void ShowStatus(string message, UiGlyph glyph)
     {
@@ -1188,6 +1196,9 @@ internal sealed class MainForm : Form
         diagnosticResult.ClearResult();
         statusBanner!.Visible = true;
         SetBusy(true);
+        var operationStep = full ? ActivityStep.OfficeReset :
+            everyone ? ActivityStep.UserTaskScheduling : ActivityStep.WamRegistration;
+        activityJournal.Add(operationStep, ActivityOutcome.Started);
         ShowStatus(UiStrings.T("running"), UiGlyph.Working);
         try
         {
@@ -1202,6 +1213,8 @@ internal sealed class MainForm : Form
             technicalToggle.Visible = true;
             UpdateTechnicalLink();
             var failed = result.Contains("FAILED", StringComparison.Ordinal);
+            activityJournal.Add(operationStep, failed ? ActivityOutcome.Failed :
+                elevated ? ActivityOutcome.Scheduled : ActivityOutcome.Finished);
             // The local user has already finished repair synchronously.
             // A scheduled all-users / elevated worker has NOT necessarily
             // finished: never auto-claim a queued task as a successful repair.
@@ -1216,6 +1229,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
+            activityJournal.Add(operationStep, ActivityOutcome.Failed);
             ShowStatus(UiStrings.T("failed"), UiGlyph.Error);
             detail.Text = ex.GetType().Name + ": " + ex.Message;
             detail.Visible = false;
@@ -1288,6 +1302,15 @@ internal sealed class MainForm : Form
         _ => UpdateUiText.T("Not verified", "Не проверено", "לא נבדק")
     };
 
+    private static ActivityStep ActivityFromDiagnosticSection(string section) => section switch
+    {
+        "WAM_ENTRA" => ActivityStep.WamEntra,
+        "OFFICE_LICENSE" => ActivityStep.OfficeLicensing,
+        "TPM_BITLOCKER" => ActivityStep.TpmBitLocker,
+        "NETWORK_PREFLIGHT" => ActivityStep.NetworkPreflight,
+        _ => ActivityStep.ReadOnlyCheck
+    };
+
     private void ShowDiagnosticProgress()
     {
         var seconds = Math.Max(0, (int)(DateTimeOffset.UtcNow - diagnosticStartedUtc).TotalSeconds);
@@ -1325,6 +1348,7 @@ internal sealed class MainForm : Form
         // starting more background WMI calls.
         using var request = new CancellationTokenSource();
         diagnosticCancellation = request;
+        activityJournal.Add(ActivityStep.ReadOnlyCheck, ActivityOutcome.Started);
         diagnosticStartedUtc = DateTimeOffset.UtcNow;
         diagnosticCompletedCount = 0;
         diagnosticLastCompleted = string.Empty;
@@ -1342,6 +1366,10 @@ internal sealed class MainForm : Form
                     return;
                 diagnosticCompletedCount = update.Completed;
                 diagnosticLastCompleted = update.LastCompleted;
+                var section = ActivityFromDiagnosticSection(update.LastCompleted);
+                if (section != ActivityStep.ReadOnlyCheck)
+                    activityJournal.Add(section, update.Verified
+                        ? ActivityOutcome.Finished : ActivityOutcome.NotVerified);
                 ShowDiagnosticProgress();
             });
             var data = await ReadOnlyDiagnosticScan.RunAsync(
@@ -1363,8 +1391,18 @@ internal sealed class MainForm : Form
                 // A partial scan must not offer a one-click repair based on
                 // WAM alone when device/Office evidence was not obtained.
                 applyRecommendation.Visible = false;
-                string missing = string.Join( ",
+                string missing = string.Join(", ",
                     data.UnverifiedSections.Select(DiagnosticSectionLabel));
+                // Not-verified sections are real diagnostic outcomes. UI-only
+                // statuses do not contain identifiers or provider output.
+                foreach (var section in data.UnverifiedSections)
+                {
+                    var step = ActivityFromDiagnosticSection(section);
+                    if (step != ActivityStep.ReadOnlyCheck)
+                        activityJournal.Add(step, ActivityOutcome.NotVerified);
+                }
+                activityJournal.Add(ActivityStep.ReadOnlyCheck,
+                    data.ReachedDeadline ? ActivityOutcome.TimeLimit : ActivityOutcome.Partial);
                 detail.Text += Environment.NewLine + Environment.NewLine +
                     UpdateUiText.T("Unverified sections: ", "Непроверенные разделы: ",
                         "מקטעים שלא אומתו: ") + missing;
@@ -1376,11 +1414,16 @@ internal sealed class MainForm : Form
                     "תוצאה חלקית. לא אומת: " + missing +
                     ". סטטוס לא ידוע אינו הוכחה לתקינות או לתקלה."), UiGlyph.Info);
             }
+            else
+            {
+                activityJournal.Add(ActivityStep.ReadOnlyCheck, ActivityOutcome.Finished);
+            }
             mainLayout?.ScrollControlIntoView(diagnosticResult);
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
         {
             if (IsDisposed || Disposing) return;
+            activityJournal.Add(ActivityStep.ReadOnlyCheck, ActivityOutcome.Cancelled);
             ShowStatus(UpdateUiText.T(
                 "Read-only check cancelled. No Office or Windows security state was changed.",
                 "Проверка отменена. Office и параметры безопасности Windows не изменены.",
@@ -1389,6 +1432,7 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             if (IsDisposed || Disposing) return;
+            activityJournal.Add(ActivityStep.ReadOnlyCheck, ActivityOutcome.Failed);
             lastRawDiagnostic = null;
             lastOfficeLicense = null;
             lastOfficeActivation = null;
