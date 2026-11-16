@@ -25,6 +25,14 @@ internal sealed class MainForm : Form
     private OfficeLicenseSnapshot? lastOfficeLicense;
     private OfficeActivationHealth? lastOfficeActivation;
     private RepairPreflight? lastPreflight;
+    private TpmBitLockerSnapshot? lastDeviceProtection;
+    private readonly Label deviceProtectionSummary = UiTheme.Caption(string.Empty);
+    private readonly LinkLabel deviceProtectionLink = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(0, 4, 0, 6)
+    };
     private SmartRepairDecision? lastSmartDecision;
     private bool awaitingAppSignInCheck;
     private bool appSignInReportedWorking;
@@ -32,7 +40,7 @@ internal sealed class MainForm : Form
     private readonly TableLayoutPanel smartPanel = new()
     {
         AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1,
-        RowCount = 5, Margin = new Padding(0, 7, 0, 3),
+        RowCount = 7, Margin = new Padding(0, 7, 0, 3),
         Padding = new Padding(10, 8, 10, 8), Visible = false,
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : Color.FromArgb(240, 246, 252)
     };
@@ -304,7 +312,7 @@ internal sealed class MainForm : Form
         root.Controls.Add(technicalToggle, 0, 10);
         root.Controls.Add(detail, 0, 11);
         smartPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 7; i++)
             smartPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         smartPanel.Controls.Add(smartHeading, 0, 0);
         smartPanel.Controls.Add(smartExplanation, 0, 1);
@@ -316,6 +324,8 @@ internal sealed class MainForm : Form
         recommendationRow.Controls.Add(applyRecommendation);
         smartPanel.Controls.Add(recommendationRow, 0, 3);
         smartPanel.Controls.Add(entraReview, 0, 4);
+        smartPanel.Controls.Add(deviceProtectionSummary, 0, 5);
+        smartPanel.Controls.Add(deviceProtectionLink, 0, 6);
         root.Controls.Add(smartPanel, 0, 12);
         activationDetail.Visible = false;
         activationDetail.Margin = new Padding(6, 8, 0, 4);
@@ -330,6 +340,7 @@ internal sealed class MainForm : Form
             smartHeading.MaximumSize = new Size(available, 0);
             smartExplanation.MaximumSize = new Size(available, 0);
             preflightSummary.MaximumSize = new Size(available, 0);
+            deviceProtectionSummary.MaximumSize = new Size(available, 0);
             activationDetail.MaximumSize = new Size(available, 0);
             verificationSummary.MaximumSize = new Size(available, 0);
         };
@@ -378,6 +389,8 @@ internal sealed class MainForm : Form
         hints.SetToolTip(settings, "Configure all-users repair tasks and review old scheduled workers.");
         hints.SetToolTip(applyRecommendation, "Start only the specifically recommended WAM action with the existing independent confirmation.");
         hints.SetToolTip(entraReview, "Optional read-only Microsoft Graph sign-in audit using Device Code or an approved certificate.");
+        hints.SetToolTip(deviceProtectionLink,
+            "Read-only TPM, OS-volume BitLocker, Memory Integrity and DPAPI policy inspection. No recovery keys are read.");
         hints.SetToolTip(signInWorks, "You confirm that an actual Microsoft 365 application completed sign-in; this is not independently tested.");
         hints.SetToolTip(signInFailed, "App sign-in still failed. Review the error and optional Entra audit.");
 
@@ -427,6 +440,12 @@ internal sealed class MainForm : Form
             if (busy) return;
             using var reviewer = new EntraSignInReviewDialog();
             reviewer.ShowDialog(this);
+        };
+        deviceProtectionLink.LinkClicked += (_, _) =>
+        {
+            if (busy) return;
+            using var inspector = new TpmBitLockerDialog(lastDeviceProtection);
+            inspector.ShowDialog(this);
         };
         signInWorks.Click += (_, _) =>
         {
@@ -615,6 +634,11 @@ internal sealed class MainForm : Form
             "Entra sign-in log (optional)", "Журнал входов Entra (необязательно)",
             "יומן כניסה ל-Entra (אופציונלי)");
         entraReview.AccessibleName = entraReview.Text;
+        deviceProtectionLink.Text = UpdateUiText.T(
+            "TPM & BitLocker details (read-only)",
+            "TPM и BitLocker — подробности (только чтение)",
+            "פרטי TPM ו-BitLocker (לקריאה בלבד)");
+        deviceProtectionLink.AccessibleName = deviceProtectionLink.Text;
         signInWorks.Text = UpdateUiText.T(
             "App sign-in works", "Вход в приложение работает", "הכניסה לאפליקציה פועלת");
         signInFailed.Text = UpdateUiText.T(
@@ -714,7 +738,7 @@ internal sealed class MainForm : Form
         }
         var ownSession = !elevated || desktopUser.SameAsProcess;
         lastSmartDecision = SmartRepairEngine.Evaluate(report, lastOfficeLicense,
-            lastPreflight, ownSession);
+            lastPreflight, ownSession, lastDeviceProtection);
         smartHeading.Text = UpdateUiText.T(
             "SMART RECOMMENDATION: ", "РЕКОМЕНДАЦИЯ: ", "המלצה חכמה: ") +
             lastSmartDecision.Heading;
@@ -722,6 +746,17 @@ internal sealed class MainForm : Form
             Environment.NewLine + UpdateUiText.T("Next: ", "Дальше: ", "הבא: ") +
             lastSmartDecision.NextAction;
         preflightSummary.Text = FormatPreflight(lastPreflight);
+        deviceProtectionSummary.Text = lastDeviceProtection is null
+            ? UpdateUiText.T("TPM / BitLocker: not checked",
+                "TPM / BitLocker: не проверено", "TPM / BitLocker: לא נבדק")
+            : lastDeviceProtection.NeedsTpmReview
+                ? UpdateUiText.T("TPM state needs review; do not clear TPM.",
+                    "TPM требует проверки; не очищайте TPM.", "יש לבדוק TPM; אין לנקות.")
+                : lastDeviceProtection.NeedsBitLockerReview
+                    ? UpdateUiText.T("Encrypted OS volume protection appears OFF; ask IT.",
+                        "Защита зашифрованного системного раздела OFF — проверьте с IT.",
+                        "הגנת כונן מערכת מוצפן כבויה.")
+                    : "TPM / BitLocker: " + lastDeviceProtection.CompactSummary();
         applyRecommendation.Visible = lastSmartDecision.SafeToOfferRepair &&
             lastSmartDecision.Action == SmartRepairAction.ReRegisterWam &&
             scope.SelectedIndex == 0 && ownSession;
@@ -833,7 +868,7 @@ internal sealed class MainForm : Form
         busy = isBusy;
         repair.Enabled = reset.Enabled = diagnose.Enabled = diagnostics.Enabled =
             updates.Enabled = settings.Enabled = taskStatusLink.Enabled =
-            applyRecommendation.Enabled = entraReview.Enabled =
+            applyRecommendation.Enabled = entraReview.Enabled = deviceProtectionLink.Enabled =
             signInWorks.Enabled = signInFailed.Enabled = !isBusy;
         scope.Enabled = !isBusy;
         progress.Visible = isBusy;
@@ -1206,6 +1241,7 @@ internal sealed class MainForm : Form
         lastOfficeActivation = null;
         lastSmartDecision = null;
         lastPreflight = null;
+        lastDeviceProtection = null;
         recommendedHelpKey = null;
         officeLicenseSummary.Visible = false;
         officeVolumeLink.Visible = false;
@@ -1224,6 +1260,7 @@ internal sealed class MainForm : Form
             // Elevated admin HKCU is never presented as another user's Office.
             var ownAccount = !elevated || desktopUser.SameAsProcess;
             var preflightTask = RepairPreflightProbe.CollectAsync(ownAccount);
+            var deviceTask = Task.Run(TpmBitLockerProbe.Capture);
             var data = await Task.Run(() =>
             {
                 var raw = Repair.DiagnoseReport();
@@ -1253,6 +1290,9 @@ internal sealed class MainForm : Form
             lastOfficeLicense = data.license;
             lastOfficeActivation = data.activation;
             lastPreflight = preflight;
+            try { lastDeviceProtection = await deviceTask; }
+            catch (Exception) { lastDeviceProtection = TpmBitLockerSnapshot.Unknown; }
+            if (IsDisposed || Disposing) return;
             detail.Visible = false;
             DisplayDiagnosis(data.raw);
             mainLayout?.ScrollControlIntoView(diagnosticResult);
