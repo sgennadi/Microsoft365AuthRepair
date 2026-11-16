@@ -134,6 +134,12 @@ internal sealed class MainForm : Form
         Visible = false
     };
     private readonly ProgressBar progress = new() { Dock = DockStyle.Top, Height = 5, Visible = false, Style = ProgressBarStyle.Marquee };
+    private readonly Button cancelDiagnostic = UiTheme.CreateActionButton(string.Empty);
+    private readonly System.Windows.Forms.Timer diagnosticTimer = new() { Interval = 1000 };
+    private CancellationTokenSource? diagnosticCancellation;
+    private DateTimeOffset diagnosticStartedUtc;
+    private int diagnosticCompletedCount;
+    private string diagnosticLastCompleted = string.Empty;
     private TableLayoutPanel? mainLayout;
     private readonly System.Windows.Forms.Timer updateTimer = new() { Interval = 6 * 60 * 60 * 1000 };
     private bool busy;
@@ -301,6 +307,9 @@ internal sealed class MainForm : Form
         banner.Controls.Add(statusGlyph);
         banner.Controls.Add(status);
         banner.Controls.Add(diagnosticToggle);
+        cancelDiagnostic.Visible = false;
+        cancelDiagnostic.Margin = new Padding(9, 0, 0, 0);
+        banner.Controls.Add(cancelDiagnostic);
         root.Controls.Add(banner, 0, 6);
 
         // Immediately visible diagnosis, before any optional raw details.
@@ -382,6 +391,7 @@ internal sealed class MainForm : Form
         hints.SetToolTip(repair, "Re-register Microsoft.AAD.BrokerPlugin for the selected user. No credentials or sign-in caches are deleted; apps may briefly close.");
         hints.SetToolTip(reset, "Destructive: remove Office/WAM identity and sign-in caches for the selected users. Re-authentication required; explicit confirmation.");
         hints.SetToolTip(diagnose, "Read-only check of this application's Windows account and session, NOT every profile. It does not prove Office app sign-in works.");
+        hints.SetToolTip(cancelDiagnostic, "Stop waiting for diagnostics. No credentials, TPM or WAM are modified by the check.");
         hints.SetToolTip(signInErrors, "Offline Microsoft 365 error-code guide: no report is sent and no account is changed.");
         hints.SetToolTip(diagnostics, "Generate a sanitized report, review the exact JSON and explicitly choose whether to send.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
@@ -424,6 +434,30 @@ internal sealed class MainForm : Form
             if (busy || scope.SelectedIndex != 1 || !elevated) return;
             using var viewer = new AllUsersTaskStatusForm();
             viewer.ShowDialog(this);
+        };
+        diagnosticTimer.Tick += (_, _) =>
+        {
+            if (diagnosticCancellation is not null && busy &&
+                !diagnosticCancellation.IsCancellationRequested)
+                ShowDiagnosticProgress();
+        };
+        cancelDiagnostic.Click += (_, _) =>
+        {
+            if (diagnosticCancellation is null || diagnosticCancellation.IsCancellationRequested)
+                return;
+            diagnosticCancellation.Cancel();
+            cancelDiagnostic.Enabled = false;
+            diagnosticTimer.Stop();
+            ShowStatus(UpdateUiText.T(
+                "Stopping read-only checks. No changes were made.",
+                "Останавливаю ожидание диагностики. Изменений нет.",
+                "עצירת האבחון לקריאה בלבד. לא נעשו שינויים."), UiGlyph.Info);
+        };
+        FormClosed += (_, _) =>
+        {
+            diagnosticCancellation?.Cancel();
+            diagnosticTimer.Stop();
+            diagnosticTimer.Dispose();
         };
         repair.Click += async (_, _) => await RunRepairAsync(false);
         reset.Click += async (_, _) => await RunRepairAsync(true);
@@ -627,6 +661,8 @@ internal sealed class MainForm : Form
             "Крайняя мера: Reset Office sign-in удаляет кеш авторизации и потребует повторного входа.",
             "מוצא אחרון: איפוס Office מוחק מטמוני זהות ומחייב כניסה מחדש.");
         diagnose.Text = UpdateUiText.T("Check & Diagnose", "Проверить и объяснить", "בדוק ואבחן");
+        cancelDiagnostic.Text = UpdateUiText.T("Cancel check", "Отменить проверку", "ביטול בדיקה");
+        cancelDiagnostic.AccessibleName = cancelDiagnostic.Text;
         applyRecommendation.Text = UpdateUiText.T(
             "Re-register WAM (confirm first)", "Восстановить WAM (с подтверждением)",
             "תיקון WAM באישור");
@@ -879,6 +915,8 @@ internal sealed class MainForm : Form
             applyRecommendation.Enabled = entraReview.Enabled = deviceProtectionLink.Enabled =
             signInWorks.Enabled = signInFailed.Enabled = !isBusy;
         scope.Enabled = !isBusy;
+        cancelDiagnostic.Enabled = isBusy && diagnosticCancellation is not null &&
+            !diagnosticCancellation.IsCancellationRequested;
         progress.Visible = isBusy;
     }
 
@@ -1241,6 +1279,27 @@ internal sealed class MainForm : Form
         return string.Join(Environment.NewLine, results);
     }
 
+    private static string DiagnosticSectionLabel(string key) => key switch
+    {
+        "WAM_ENTRA" => UpdateUiText.T("WAM / Entra", "WAM / Entra", "WAM / Entra"),
+        "OFFICE_LICENSE" => UpdateUiText.T("Office licensing", "Лицензия Office", "רישוי Office"),
+        "TPM_BITLOCKER" => UpdateUiText.T("TPM / BitLocker", "TPM / BitLocker", "TPM / BitLocker"),
+        "NETWORK_PREFLIGHT" => UpdateUiText.T("Network / preflight", "Сеть / предпроверка", "רשת / בדיקה מקדימה"),
+        _ => UpdateUiText.T("Not verified", "Не проверено", "לא נבדק")
+    };
+
+    private void ShowDiagnosticProgress()
+    {
+        var seconds = Math.Max(0, (int)(DateTimeOffset.UtcNow - diagnosticStartedUtc).TotalSeconds);
+        var last = diagnosticLastCompleted.Length == 0 ? "" :
+            " · " + DiagnosticSectionLabel(diagnosticLastCompleted);
+        ShowStatus(UpdateUiText.T(
+            $"Read-only sign-in check: {diagnosticCompletedCount}/4 finished, {seconds}s{last}. Apps stay open.",
+            $"Проверка без изменений: {diagnosticCompletedCount}/4 завершено, {seconds} с{last}. Приложения не закрываются.",
+            $"בדיקה לקריאה בלבד: {diagnosticCompletedCount}/4 הושלמו, {seconds} שניות{last}. האפליקציות נשארות פתוחות."),
+            UiGlyph.Working);
+    }
+
     private async Task RunDiagnoseAsync()
     {
         if (busy) return;
@@ -1260,50 +1319,69 @@ internal sealed class MainForm : Form
         diagnosticToggle.Visible = false;
         diagnosticResult.ClearResult();
         statusBanner!.Visible = true;
+
+        // Bound the entire UI operation. The native Windows provider may hang;
+        // a later diagnostic reuses any in-flight machine query instead of
+        // starting more background WMI calls.
+        using var request = new CancellationTokenSource();
+        diagnosticCancellation = request;
+        diagnosticStartedUtc = DateTimeOffset.UtcNow;
+        diagnosticCompletedCount = 0;
+        diagnosticLastCompleted = string.Empty;
+        cancelDiagnostic.Visible = true;
         SetBusy(true);
-        ShowStatus(UiStrings.T("running"), UiGlyph.Working);
+        ShowDiagnosticProgress();
+        diagnosticTimer.Start();
         try
         {
-            // Separate machine-wide inventory from current-user checks.
-            // Elevated admin HKCU is never presented as another user's Office.
             var ownAccount = !elevated || desktopUser.SameAsProcess;
-            var preflightTask = RepairPreflightProbe.CollectAsync(ownAccount);
-            var deviceTask = Task.Run(TpmBitLockerProbe.Capture);
-            var data = await Task.Run(() =>
+            var sectionProgress = new Progress<DiagnosticSectionProgress>(update =>
             {
-                var raw = Repair.DiagnoseReport();
-                OfficeLicenseSnapshot? license = null;
-                OfficeActivationHealth? activation = null;
-                try
-                {
-                    license = OfficeLicenseDiagnostics.Capture(ownAccount);
-                    activation = OfficeActivationProbe.Capture(license, ownAccount);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                    or System.Security.SecurityException or InvalidOperationException
-                    or System.Management.ManagementException or TimeoutException
-                    or System.ComponentModel.Win32Exception)
-                {
-                    // Optional Office probe must not hide the WAM diagnosis.
-                }
-                return (raw, license, activation);
+                if (!ReferenceEquals(diagnosticCancellation, request) ||
+                    request.IsCancellationRequested || IsDisposed || Disposing)
+                    return;
+                diagnosticCompletedCount = update.Completed;
+                diagnosticLastCompleted = update.LastCompleted;
+                ShowDiagnosticProgress();
             });
-            RepairPreflight? preflight = null;
-            try { preflight = await preflightTask; }
-            catch (Exception ex) when (ex is IOException or InvalidOperationException
-                or HttpRequestException or UnauthorizedAccessException
-                or System.Security.SecurityException or OperationCanceledException) { }
-            if (IsDisposed || Disposing) return;
-            lastRawDiagnostic = data.raw;
-            lastOfficeLicense = data.license;
-            lastOfficeActivation = data.activation;
-            lastPreflight = preflight;
-            try { lastDeviceProtection = await deviceTask; }
-            catch (Exception) { lastDeviceProtection = TpmBitLockerSnapshot.Unknown; }
-            if (IsDisposed || Disposing) return;
+            var data = await ReadOnlyDiagnosticScan.RunAsync(
+                ownAccount, sectionProgress, request.Token);
+            if (IsDisposed || Disposing || request.IsCancellationRequested) return;
+
+            lastRawDiagnostic = data.WamReport;
+            lastOfficeLicense = data.OfficeLicense;
+            lastOfficeActivation = data.OfficeActivation;
+            lastPreflight = data.Preflight;
+            lastDeviceProtection = data.DeviceProtection;
             detail.Visible = false;
-            DisplayDiagnosis(data.raw);
+            DisplayDiagnosis(data.WamReport);
+
+            // Never claim success when any section timed out or could not be
+            // verified. Show partial evidence rather than an endless spinner.
+            if (data.UnverifiedSections.Length > 0)
+            {
+                string missing = string.Join(", ",
+                    data.UnverifiedSections.Select(DiagnosticSectionLabel));
+                detail.Text += Environment.NewLine + Environment.NewLine +
+                    UpdateUiText.T("Unverified sections: ", "Непроверенные разделы: ",
+                        "מקטעים שלא אומתו: ") + missing;
+                ShowStatus(UpdateUiText.T(
+                    "Partial read-only results. Not verified: " + missing +
+                    ". Unknown does not mean healthy or defective.",
+                    "Частичный результат. Не проверено: " + missing +
+                    ". Неизвестный статус не означает исправность или поломку.",
+                    "תוצאה חלקית. לא אומת: " + missing +
+                    ". סטטוס לא ידוע אינו הוכחה לתקינות או לתקלה."), UiGlyph.Info);
+            }
             mainLayout?.ScrollControlIntoView(diagnosticResult);
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested)
+        {
+            if (IsDisposed || Disposing) return;
+            ShowStatus(UpdateUiText.T(
+                "Read-only check cancelled. No Office or Windows security state was changed.",
+                "Проверка отменена. Office и параметры безопасности Windows не изменены.",
+                "הבדיקה בוטלה. Office והגדרות האבטחה לא שונו."), UiGlyph.Info);
         }
         catch (Exception ex)
         {
@@ -1326,7 +1404,14 @@ internal sealed class MainForm : Form
             technicalToggle.Visible = true;
             UpdateTechnicalLink();
         }
-        finally { if (!IsDisposed && !Disposing) SetBusy(false); }
+        finally
+        {
+            if (ReferenceEquals(diagnosticCancellation, request))
+                diagnosticCancellation = null;
+            diagnosticTimer.Stop();
+            cancelDiagnostic.Visible = false;
+            if (!IsDisposed && !Disposing) SetBusy(false);
+        }
     }
 
     private async Task CheckForUpdatesAsync()
