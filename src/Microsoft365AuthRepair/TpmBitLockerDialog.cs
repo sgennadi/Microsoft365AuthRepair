@@ -165,6 +165,8 @@ internal sealed class TpmBitLockerDialog : Form
             Line("TPM present", "TPM обнаружен", "קיים TPM", x.TpmPresent) +
             Line("TPM specification", "Версия TPM", "גרסת TPM", x.TpmVersion) +
             Line("TPM ready", "TPM готов", "TPM מוכן", YesNoUnknown(x.TpmReady)) +
+            Line("TPM lockout (local only)", "Блокировка TPM (локально)",
+                "חסימת TPM מקומית", x.TpmLockedOut) +
             Line("TPM enabled", "TPM включён", "TPM מופעל", YesNoUnknown(x.TpmEnabled)) +
             Line("TPM activated", "TPM активирован", "TPM פעיל", YesNoUnknown(x.TpmActivated)) +
             Line("TPM owned", "TPM инициализирован", "בעלות TPM", YesNoUnknown(x.TpmOwned)) +
