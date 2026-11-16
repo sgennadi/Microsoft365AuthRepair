@@ -42,6 +42,7 @@ internal static class WamHealthAnalysis
         var auth = ReadValue(raw, "DeviceAuthStatus");
         var prt = ReadValue(raw, "AzureAdPrt");
         var wam = ReadValue(raw, "WamDefaultSet");
+        var keys = IdentityKeySignals.FromReport(raw);
         var hasCloudRejection = raw.Contains("AADSTS50155", StringComparison.OrdinalIgnoreCase);
         var brokerMissing = Begins(broker, "MISSING");
         var brokerPresent = Begins(broker, "PRESENT");
@@ -65,6 +66,32 @@ internal static class WamHealthAnalysis
                 "Run the app as the affected Windows user (without elevation) and check again.",
                 "Запустите программу от имени проблемного пользователя Windows без повышения прав и повторите проверку.",
                 "הפעל את התוכנה בחשבון המשתמש הרלוונטי ללא הרשאות מנהל ובדוק שוב."));
+        }
+
+        // TPM and Entra device-key evidence can explain failure even when the
+        // AAD BrokerPlugin exists. These findings never trigger an automated
+        // TPM clear, Windows Hello reset or BitLocker protector change.
+        if (keys.TpmNeedsReview)
+        {
+            findings.Add(T(
+                "TPM is locked out or not ready. This is a hardware security state, not an Office cache defect.",
+                "TPM заблокирован либо не готов. Это состояние защиты устройства, а не ошибка кеша Office.",
+                "ה-TPM נעול או אינו מוכן. זו אינה תקלה במטמון Office."));
+            advice.Add(T(
+                "Ask IT to inspect tpm.msc and firmware status. If locked out, allow the documented cooldown; preserve BitLocker recovery information. Never clear TPM automatically.",
+                "Проверьте с IT tpm.msc и прошивку. При блокировке дождитесь восстановления доступа; сохраните ключи BitLocker. Не очищайте TPM автоматически.",
+                "בדוק tpm.msc וקושחה עם התמיכה; שמור מפתחות שחזור BitLocker. אין לנקות TPM אוטומטית."));
+        }
+        if (keys.DeviceKeyNeedsReview)
+        {
+            findings.Add(T(
+                "Entra device-key signing failed or automatic device recovery is indicated. Device sign-in may need supported recovery.",
+                "Не проходит проверка подписи ключом устройства Entra либо требуется восстановление регистрации.",
+                "בדיקת מפתח המכשיר נכשלה או שנדרש שחזור רישום המכשיר."));
+            advice.Add(T(
+                "Ask IT to check Entra device state and dsregcmd diagnostics. KeySignTest needs elevation; missing output is UNKNOWN, not a failed test. Do not delete cryptographic keys.",
+                "Проверьте в IT регистрацию Entra и dsregcmd. Для KeySignTest нужны права администратора; отсутствие результата — не ошибка. Не удаляйте ключи.",
+                "בדוק רישום Entra ו-dsregcmd. בדיקת KeySignTest דורשת הרשאת מנהל; אין למחוק מפתחות."));
         }
 
         if (cloudFailure)
@@ -152,10 +179,11 @@ internal static class WamHealthAnalysis
         }
 
         WamHealthLevel level;
-        if (currentDesktopContext && brokerMissing && !cloudFailure)
+        if (currentDesktopContext && brokerMissing && !cloudFailure && !keys.RequiresReview)
             level = WamHealthLevel.RepairRecommended;
         else if (currentDesktopContext && brokerPresent && joined == "YES" &&
-            auth == "SUCCESS" && prt == "YES" && wam == "YES" && !hasCloudRejection)
+            auth == "SUCCESS" && prt == "YES" && wam == "YES" && !hasCloudRejection &&
+            !keys.RequiresReview)
             level = WamHealthLevel.Healthy;
         else
             level = WamHealthLevel.AttentionRequired;
@@ -198,6 +226,14 @@ internal static class WamHealthAnalysis
         sb.AppendLine("  DeviceAuthStatus: " + auth);
         sb.AppendLine("  AzureAdPrt: " + prt);
         sb.AppendLine("  WamDefaultSet: " + wam);
+        sb.AppendLine("  TpmPresent: " + keys.TpmPresent);
+        sb.AppendLine("  TpmReady: " + keys.TpmReady);
+        sb.AppendLine("  TpmLockedOut: " + keys.TpmLockedOut);
+        sb.AppendLine("  BitLockerProtection: " + keys.BitLockerProtection);
+        sb.AppendLine("  TpmProtected: " + keys.TpmProtected);
+        sb.AppendLine("  KeySignTest: " + keys.KeySignTest);
+        sb.AppendLine("  AadRecoveryEnabled: " + keys.AadRecoveryEnabled);
+        sb.AppendLine("  NgcSet: " + keys.NgcSet);
         sb.AppendLine();
         foreach (var item in findings) sb.AppendLine("• " + item);
         sb.AppendLine();
@@ -209,10 +245,10 @@ internal static class WamHealthAnalysis
             "Проверка без изменений. Данные авторизации не изменены и никуда не отправлены.",
             "בדיקה לקריאה בלבד. לא בוצעו שינויים ולא נשלח מידע."));
 
-        // Six explicitly categorized, localized values for an immediately
-        // readable dashboard. No tenant, user, device identity or raw dsregcmd
-        // data appears in these signals. Not joined is neutral: it can be
-        // intentional for on-premises or personal computers.
+        // Ten strictly categorized, localized values for the dashboard.
+        // This never displays tenant IDs, recovery passwords, device IDs or raw
+        // dsregcmd data. Disabled BitLocker or absent Hello is not itself an
+        // Office sign-in failure.
         var unknown = T("Unknown", "Неизвестно", "לא ידוע");
         var yes = T("Yes", "Да", "כן");
         var no = T("No", "Нет", "לא");
@@ -238,7 +274,31 @@ internal static class WamHealthAnalysis
             new("WamDefaultSet", T("WAM account", "Учётная запись WAM", "חשבון WAM"),
                 wam == "YES" ? T("Set", "Настроена", "מוגדר") :
                 wam == "NO" ? T("Not set", "Не настроена", "לא מוגדר") : unknown,
-                wam == "YES" ? WamSignalState.Good : wam == "NO" ? WamSignalState.Attention : WamSignalState.Unknown)
+                wam == "YES" ? WamSignalState.Good : wam == "NO" ? WamSignalState.Attention : WamSignalState.Unknown),
+            new("TpmReadiness", "TPM",
+                keys.TpmNeedsReview ? T("Needs review", "Требует проверки", "דורש בדיקה") :
+                keys.TpmPresent == "NO" ? T("Not present", "Отсутствует", "לא קיים") :
+                keys.TpmReady == "YES" && keys.TpmLockedOut == "NO" ? T("Ready", "Готов", "מוכן") : unknown,
+                keys.TpmNeedsReview ? WamSignalState.Attention :
+                keys.TpmPresent == "NO" ? WamSignalState.Neutral :
+                keys.TpmReady == "YES" && keys.TpmLockedOut == "NO" ? WamSignalState.Good : WamSignalState.Unknown),
+            new("DeviceKey", T("Device key", "Ключ устройства", "מפתח מכשיר"),
+                keys.DeviceKeyNeedsReview ? T("Needs review", "Требует проверки", "דורש בדיקה") :
+                keys.KeySignTest == "PASSED" && keys.AadRecoveryEnabled == "NO" ?
+                    T("Sign test passed", "Проверен", "בדיקה תקינה") : unknown,
+                keys.DeviceKeyNeedsReview ? WamSignalState.Attention :
+                keys.KeySignTest == "PASSED" && keys.AadRecoveryEnabled == "NO" ?
+                    WamSignalState.Good : WamSignalState.Unknown),
+            new("NgcSet", "Windows Hello",
+                keys.NgcSet == "YES" ? T("Configured", "Настроен", "מוגדר") :
+                keys.NgcSet == "NO" ? T("Not configured", "Не настроен", "לא מוגדר") : unknown,
+                keys.NgcSet == "YES" ? WamSignalState.Good :
+                keys.NgcSet == "NO" ? WamSignalState.Neutral : WamSignalState.Unknown),
+            new("BitLockerProtection", "BitLocker",
+                keys.BitLockerProtection == "ON" ? T("Protection on", "Защита включена", "הגנה פעילה") :
+                keys.BitLockerProtection == "OFF" ? T("Protection off", "Защита отключена", "הגנה כבויה") : unknown,
+                keys.BitLockerProtection == "ON" ? WamSignalState.Good :
+                keys.BitLockerProtection == "OFF" ? WamSignalState.Neutral : WamSignalState.Unknown)
         };
         return new WamHealthResult(level, summary, sb.ToString())
         {
@@ -259,11 +319,19 @@ internal static class WamHealthAnalysis
         var known = Evaluate(healthy, true);
         var noJoin = Evaluate(healthy.Replace("AzureAdJoined : YES", "AzureAdJoined : NO"), true);
         var unknown = Evaluate("", true);
-        return known.Signals.Count == 6 &&
+        var tpmLocked = Evaluate(healthy + "\nTpmPresent: YES\nTpmReady: YES\nTpmLockedOut: YES", true);
+        var keyFailed = Evaluate(healthy + "\nKeySignTest: FAILED\nAadRecoveryEnabled: YES", true);
+        var noTpm = Evaluate(healthy + "\nTpmPresent: NO", true);
+        return known.Signals.Count == 10 &&
             known.Signals[0].State == WamSignalState.Good &&
             known.Signals[3].State == WamSignalState.Good &&
             noJoin.Signals[1].State == WamSignalState.Neutral &&
             unknown.Signals.All(x => x.State == WamSignalState.Unknown) &&
+            tpmLocked.Level == WamHealthLevel.AttentionRequired &&
+            tpmLocked.Signals[6].State == WamSignalState.Attention &&
+            keyFailed.Level == WamHealthLevel.AttentionRequired &&
+            keyFailed.Signals[7].State == WamSignalState.Attention &&
+            noTpm.Signals[6].State == WamSignalState.Neutral &&
             known.Level == WamHealthLevel.Healthy &&
             Evaluate(healthy, true).NextSteps.Count > 0 &&
             Evaluate(healthy, true).Findings.Count > 0 &&
