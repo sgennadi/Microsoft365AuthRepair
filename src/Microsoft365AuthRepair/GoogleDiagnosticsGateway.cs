@@ -96,7 +96,41 @@ internal static class M365DiagnosticPayload
             ["office_preview_records"] = Allowed("OfficePreviewRecords",
                 ["NONE", "ONE", "TWO", "THREE_PLUS", "NOT_APPLICABLE", "UNKNOWN"]),
             ["office_preview_key_records"] = Allowed("OfficePreviewKeyRecords",
-                ["NONE", "ONE", "TWO", "THREE_PLUS", "NOT_APPLICABLE", "UNKNOWN"])
+                ["NONE", "ONE", "TWO", "THREE_PLUS", "NOT_APPLICABLE", "UNKNOWN"]),
+            // TPM/BitLocker never send recovery keys, protector GUIDs, TPM
+            // serials, raw WMI objects, OS drive labels or personal identities.
+            ["tpm_present"] = Allowed("TpmPresent", ["YES", "NO", "UNKNOWN"]),
+            ["tpm_version"] = Allowed("TpmVersion", ["1.2", "2.0", "UNKNOWN"]),
+            ["tpm_ready"] = Allowed("TpmReady", ["YES", "NO", "UNKNOWN"]),
+            ["bitlocker_os_protection"] = Allowed("BitLockerProtection", ["ON", "OFF", "UNKNOWN"]),
+            ["bitlocker_os_conversion"] = Allowed("BitLockerConversion",
+                ["FULLY_DECRYPTED", "FULLY_ENCRYPTED", "ENCRYPTING", "DECRYPTING",
+                 "ENCRYPTION_PAUSED", "DECRYPTION_PAUSED", "UNKNOWN"]),
+            ["memory_integrity_runtime"] = Allowed("MemoryIntegrityRuntime",
+                ["RUNNING", "NOT_RUNNING", "UNKNOWN"]),
+            ["dpapi_protection_policy"] = Allowed("DpapiProtectionPolicy",
+                ["NOT_SET", "ZERO", "ONE", "OTHER", "UNKNOWN"]),
+            ["dpapi_domain_joined"] = Allowed("DpapiDomainJoined", ["YES", "NO", "UNKNOWN"]),
+            ["dpapi_writable_dc"] = Allowed("DpapiWritableDc", [
+                "AVAILABLE", "NOT_FOUND", "UNKNOWN", "NOT_APPLICABLE"]),
+            ["tpm_aik_enrollment"] = Allowed("TpmAikEnrollment", [
+                "NOT_FOUND", "TIMEOUT", "INVALID_PUBLIC_KEY", "SERVER_ERROR",
+                "OTHER_ERROR", "NONE_RECORDED", "UNKNOWN"]),
+            ["tpm_ek_cert_store"] = Allowed("TpmEkCertStore", [
+                "IMPORT_INCOMPLETE", "UNKNOWN"]),
+            ["tpm_manufacturer_class"] = Allowed("TpmManufacturerClass", [
+                "STM", "MSFT", "OTHER", "UNKNOWN"]),
+            ["windows_tpm_release"] = Allowed("WindowsTpmRelease", [
+                "WIN11_24H2", "WIN11_25H2", "WIN11_NEWER", "OTHER", "UNKNOWN"]),
+            ["secure_boot_state"] = Allowed("SecureBootState",
+                ["ON", "OFF", "UNSUPPORTED", "UNKNOWN"]),
+            ["memory_integrity_configured"] = Allowed("MemoryIntegrityConfigured",
+                ["ON", "OFF", "NOT_SET", "UNKNOWN"]),
+            // Old saved reports lack this field. Do not misrepresent them as
+            // complete: explicit NOT_VERIFIED is the safe compatibility value.
+            ["device_probe_coverage"] = Allowed("DeviceProbeCoverage",
+                ["COMPLETE", "PARTIAL", "NOT_VERIFIED"]) is var coverage &&
+                coverage != "UNKNOWN" ? coverage : "NOT_VERIFIED"
         };
     }
 
@@ -174,7 +208,20 @@ internal static class M365DiagnosticPayload
                 " OfficeInstalled: YES; OfficeEdition: PROPLUS_2024; OfficeActivation: LICENSED;" +
                 " OfficeWmiRecords: THREE_PLUS; OfficeLicensedRecords: ONE;" +
                 " OfficePreviewRecords: TWO; OfficePreviewKeyRecords: NONE;" +
-                " OfficeKmsHost: internal.example; OfficeKey: XJ2XN-FW8RK-P4HMP-DKDBV-GCVGB"
+                " TpmPresent: YES; TpmVersion: 2.0; TpmReady: YES;" +
+                " BitLockerProtection: ON; BitLockerConversion: FULLY_ENCRYPTED;" +
+                " MemoryIntegrityRuntime: RUNNING; DpapiProtectionPolicy: NOT_SET;" +
+                " DpapiDomainJoined: YES; DpapiWritableDc: AVAILABLE;" +
+                " TpmAikEnrollment: NOT_FOUND; TpmEkCertStore: IMPORT_INCOMPLETE;" +
+                " TpmManufacturerClass: STM; WindowsTpmRelease: WIN11_24H2;" +
+                " SecureBootState: OFF; MemoryIntegrityConfigured: ON;" +
+                " DeviceProbeCoverage: PARTIAL;" +
+                " TpmLockedOut: YES; KeySignTest: FAILED; AadRecoveryEnabled: YES;" +
+                " NgcKeyId: PRIVATE_NGC_KEY_ID; KeyContainerId: PRIVATE_CONTAINER_ID;" +
+                " TPMFirmwareVersion: secret.device.build;" +
+                " BitLockerRecoveryKey: 111111-222222-333333-444444-555555-666666;" +
+                " TpmOwnerAuth: secret-password; OfficeKmsHost: internal.example;" +
+                " OfficeKey: XJ2XN-FW8RK-P4HMP-DKDBV-GCVGB"
         } });
         var outgoing = Prepare(source).Json;
         using var parsed = JsonDocument.Parse(outgoing);
@@ -187,6 +234,34 @@ internal static class M365DiagnosticPayload
             signals.GetProperty("office_wmi_records").GetString() == "THREE_PLUS" &&
             signals.GetProperty("office_preview_records").GetString() == "TWO" &&
             signals.GetProperty("office_preview_key_records").GetString() == "NONE" &&
+            signals.GetProperty("tpm_present").GetString() == "YES" &&
+            signals.GetProperty("tpm_version").GetString() == "2.0" &&
+            signals.GetProperty("tpm_ready").GetString() == "YES" &&
+            signals.GetProperty("bitlocker_os_protection").GetString() == "ON" &&
+            signals.GetProperty("bitlocker_os_conversion").GetString() == "FULLY_ENCRYPTED" &&
+            signals.GetProperty("memory_integrity_runtime").GetString() == "RUNNING" &&
+            signals.GetProperty("dpapi_protection_policy").GetString() == "NOT_SET" &&
+            signals.GetProperty("dpapi_domain_joined").GetString() == "YES" &&
+            signals.GetProperty("dpapi_writable_dc").GetString() == "AVAILABLE" &&
+            signals.GetProperty("tpm_aik_enrollment").GetString() == "NOT_FOUND" &&
+            signals.GetProperty("tpm_ek_cert_store").GetString() == "IMPORT_INCOMPLETE" &&
+            signals.GetProperty("tpm_manufacturer_class").GetString() == "STM" &&
+            signals.GetProperty("windows_tpm_release").GetString() == "WIN11_24H2" &&
+            signals.GetProperty("secure_boot_state").GetString() == "OFF" &&
+            signals.GetProperty("memory_integrity_configured").GetString() == "ON" &&
+            signals.GetProperty("device_probe_coverage").GetString() == "PARTIAL" &&
+            signals.EnumerateObject().Count() == 29 &&
+            !outgoing.Contains("secret.device.build", StringComparison.Ordinal) &&
+            !outgoing.Contains("TPMFirmwareVersion", StringComparison.Ordinal) &&
+            !outgoing.Contains("TpmLockedOut", StringComparison.Ordinal) &&
+            !outgoing.Contains("KeySignTest", StringComparison.Ordinal) &&
+            !outgoing.Contains("AadRecoveryEnabled", StringComparison.Ordinal) &&
+            !outgoing.Contains("PRIVATE_NGC_KEY_ID", StringComparison.Ordinal) &&
+            !outgoing.Contains("PRIVATE_CONTAINER_ID", StringComparison.Ordinal) &&
+            !outgoing.Contains("111111-222222-", StringComparison.Ordinal) &&
+            !outgoing.Contains("secret-password", StringComparison.Ordinal) &&
+            !outgoing.Contains("BitLockerRecoveryKey", StringComparison.Ordinal) &&
+            !outgoing.Contains("TpmOwnerAuth", StringComparison.Ordinal) &&
             !outgoing.Contains("internal.example", StringComparison.Ordinal) &&
             !outgoing.Contains("XJ2XN-", StringComparison.Ordinal) &&
             !outgoing.Contains("OfficeKmsHost", StringComparison.Ordinal) &&
@@ -298,12 +373,12 @@ internal sealed class GoogleDiagnosticsGateway : IDisposable
                 schema.ValueKind != JsonValueKind.Number ||
                 !schema.TryGetInt32(out var version))
                 return (false, "GATEWAY_SCHEMA_UNAVAILABLE");
-            if (version < 3 ||
+            if (version < 4 ||
                 !root.TryGetProperty("capabilities", out var capabilities) ||
                 capabilities.ValueKind != JsonValueKind.Array ||
                 !capabilities.EnumerateArray().Any(x => x.ValueKind == JsonValueKind.String &&
-                    x.GetString() == "microsoft365-auth-repair/v1"))
-                return (false, "DEPLOY_GATEWAY_V3");
+                    x.GetString() == "microsoft365-auth-repair/v2"))
+                return (false, "DEPLOY_GATEWAY_V4");
             return (true, "GATEWAY_V3_ONLINE");
         }
         catch (JsonException)
@@ -317,6 +392,13 @@ internal sealed class GoogleDiagnosticsGateway : IDisposable
     {
         if (!ApprovedEndpoint(Endpoint))
             throw new InvalidOperationException("Approved shared diagnostics endpoint is unavailable.");
+        // v3 accepts only six M365 fields and rejects an expanded report.
+        // Never upload an operator-approved payload to an incompatible
+        // receiver or silently discard evidence to force it through.
+        var readiness = await CheckReceiverAsync(ct).ConfigureAwait(false);
+        if (!readiness.Ready)
+            throw new InvalidOperationException(readiness.Code.StartsWith("GATEWAY_",
+                StringComparison.Ordinal) ? readiness.Code : "GATEWAY_" + readiness.Code);
         using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Microsoft365AuthRepair", "1.0"));

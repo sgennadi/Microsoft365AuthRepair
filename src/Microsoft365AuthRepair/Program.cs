@@ -14,6 +14,10 @@ internal static class Program
                 return Scheduling.Worker(args[1], args[2], args[3], args[4]);
             if (args.Length == 2 && args[0] == "--update-helper")
                 return UpdateHandoff.RunHelper(args[1]);
+            // Internal only. Fixed, read-only stages for bounded native
+            // Windows WMI/TPM providers; no identity or account changes.
+            if (args.Length == 2 && args[0] == "--read-only-device-probe")
+                return IsolatedDeviceProbe.RunReadOnlyWorker(args[1]);
             // First-logon auto-repair was removed: users without an existing
             // Windows profile have no previous WAM cache to recover.
             if (args.Length == 1 && args[0] == "--ui-self-test")
@@ -28,10 +32,12 @@ internal static class Program
                     new PreparedDiagnostic("00000000-0000-4000-8000-000000000001", "{}"), null);
                 using var taskStatus = new AllUsersTaskStatusForm();
                 using var entraReview = new EntraSignInReviewDialog();
+                using var tpmInspector = new TpmBitLockerDialog(TpmBitLockerSnapshot.Unknown);
                 using var wizard = new AllUsersWizard(ScheduledWorkerMode.Exe,
                     initialScheduleOnly: false, elevated: false);
                 using var signInGuide = new SignInErrorDialog();
                 using var volumeLicensing = new OfficeVolumeLicenseForm();
+                using var advancedSecurity = new DeviceSecurityAdvancedForm();
                 form.CreateControl();
                 updater.CreateControl();
                 reports.CreateControl();
@@ -39,8 +45,10 @@ internal static class Program
                 wizard.CreateControl();
                 taskStatus.CreateControl();
                 entraReview.CreateControl();
+                tpmInspector.CreateControl();
                 signInGuide.CreateControl();
                 volumeLicensing.CreateControl();
+                advancedSecurity.CreateControl();
                 // On a headless Windows CI runner the GUI has no console.
                 // Record boolean test names only; never log user identities.
                 var tests = new (string Name, Func<bool> Run)[]
@@ -58,12 +66,18 @@ internal static class Program
                         signInGuide.Icon is not null && signInGuide.ShowIcon),
                     ("Volume licensing icon", () => UiIcons.Verify(volumeLicensing)),
                     ("Entra review icon", () => UiIcons.Verify(entraReview)),
+                    ("TPM inspector icon", () => UiIcons.Verify(tpmInspector)),
+                    ("Device Advanced icon", () => UiIcons.Verify(advancedSecurity)),
                     ("Responsive geometry", ResponsiveLayout.SelfTest),
                     ("Updater channel precedence", UpdaterIntegration.SelfTest),
                     ("Updater default channel", () => updater.IncludesPreviews == UpdaterIntegration.InstalledIsPreview),
                     ("Update notes layout", () => updater.ChangeListHasSeparateLines),
                     ("Review approval default", () => sendReview.ConsentInitiallyChecked &&
                         sendReview.ConfirmedIssue is null),
+                    ("Review JSON is unselected and can be copied manually",
+                        () => sendReview.PreviewStartsUnselected),
+                    ("WAM Office results, journal toggle and main viewport",
+                        form.ResultsAndScrollLayoutSelfTest),
                     ("All users wizard", AllUsersWizard.SelfTest),
                     ("Read-only task status window", taskStatus.SelfTest),
                     ("Task history reconciliation", TaskRunHistory.SelfTest),
@@ -73,18 +87,34 @@ internal static class Program
                     ("Office subscription activation parser", OfficeActivationProbe.SelfTest),
                     ("BitKeyBridge-style Graph session policy", GraphSignInSession.SelfTest),
                     ("Optional Entra review UI", entraReview.SelfTest),
+                    ("TPM and BitLocker local-only diagnostics", TpmBitLockerSnapshot.SelfTest),
+                    ("TPM inspector responsive controls", tpmInspector.SelfTest),
                     ("Sign-in error codes", SignInIssueAdvisor.SelfTest),
                     ("Sign-in guide", SignInErrorDialog.SelfTest),
                     ("Microsoft Learn knowledge base", SignInKnowledgeBase.SelfTest),
                     ("Native vNext license checks", OfficeLicenseDiagnostics.SelfTest),
                     ("Office 2024 Volume product identity", OfficeVolumeLicensing.SelfTest),
-                    ("Privacy-safe Office report evidence", OfficeDiagnosticEvidence.SelfTest),
+                    ("Office report evidence privacy", OfficeDiagnosticEvidence.SelfTest),
                     ("Volume licensing UI", OfficeVolumeLicenseForm.SelfTest),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
+                    ("Bounded read-only scan", ReadOnlyDiagnosticScan.SelfTest),
+                    ("Isolated provider security and timeout rules", IsolatedDeviceProbe.SelfTest),
+                    ("Secure Boot and virtual-guest classification", PlatformSecurityProbe.SelfTest),
+                    ("Live stage-only activity and copy log", ActivityJournalView.SelfTest),
+                    ("Main activity panel", () => form.HasActivityJournal),
+                    ("Local-only Entra key evidence", EntraKeySignals.SelfTest),
                     ("WAM result card", DiagnosticResultCard.SelfTest),
+                    ("TPM and BitLocker main card", DeviceSecurityCard.SelfTest),
+                    ("Main screen TPM link", () => form.HasDeviceSecuritySection),
+                    ("Live device evidence and compact Cancel link", () =>
+                        form.HasLiveDeviceSecurityAndCompactCancel),
                     ("What's New format", UpdateUiText.SelfTest),
                     ("Diagnostic payload", M365DiagnosticPayload.SelfTest),
                     ("Updater helper", UpdateHandoff.SelfTest),
+                    ("Advanced security commands and recovery-key restrictions",
+                        DeviceSecurityAdvancedActions.SelfTest),
+                    ("Advanced security explicit confirmation and buttons",
+                        advancedSecurity.SelfTest),
                     ("User scope", UserScopeSupport.SelfTest),
                     ("Scheduled worker resource", Scheduling.SelfTest),
                     ("Protected worker maintenance rules", ScheduledWorkerMaintenance.SelfTest),
@@ -97,7 +127,10 @@ internal static class Program
                     ("Task status buttons", () => UiTheme.VerifyButtons(taskStatus, 2)),
                     ("Sign-in guide buttons", () => UiTheme.VerifyButtons(signInGuide, 1)),
                     ("Volume licensing buttons", () => UiTheme.VerifyButtons(volumeLicensing, 2)),
-                    ("Entra review buttons", () => UiTheme.VerifyButtons(entraReview, 4))
+                    ("Entra review buttons", () => UiTheme.VerifyButtons(entraReview, 4)),
+                    ("TPM inspector buttons", () => UiTheme.VerifyButtons(tpmInspector, 2)),
+                    ("Advanced device security buttons", () =>
+                        UiTheme.VerifyButtons(advancedSecurity, 7))
                 };
                 var outcomes = new List<string>();
                 bool passed = true;

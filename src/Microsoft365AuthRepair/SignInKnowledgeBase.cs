@@ -18,6 +18,7 @@ internal static class SignInKnowledgeBase
     private const string OfficeLicense = "https://learn.microsoft.com/en-us/deployoffice/licensing-activation/vnextdiag";
     private const string SharedComputer = "https://learn.microsoft.com/en-us/microsoft-365-apps/licensing-activation/troubleshoot-shared-computer-activation";
     private const string Connectivity = "https://learn.microsoft.com/en-us/microsoft-365/enterprise/assessing-network-connectivity";
+    private const string TpmTroubleshooting = "https://learn.microsoft.com/en-us/troubleshoot/windows-client/windows-security/bitlocker-and-tpm-other-known-issues";
 
     private static string T(string en, string ru, string he) => UpdateUiText.T(en, ru, he);
 
@@ -135,6 +136,23 @@ internal static class SignInKnowledgeBase
               "תקן פרטי כניסה או פנה לתמיכה. איפוס WAM לא ייצור חשבון."),
             "Microsoft Learn — Entra error-code reference",
             ErrorCodes),
+        new("expired-grant",
+            T("Expired Microsoft 365 sign-in grant", "Истёкший токен входа Microsoft 365",
+              "פג תוקף הרשאת הכניסה של Microsoft 365"),
+            T("AADSTS70008, AADSTS700082 or AADSTS700084 appears while the application attempts to renew authentication.",
+              "При обновлении авторизации появляется AADSTS70008, AADSTS700082 или AADSTS700084.",
+              "בעת רענון הכניסה מופיע AADSTS70008, AADSTS700082 או AADSTS700084."),
+            T("Start an interactive sign-in from the affected application. If it repeats, review the corresponding Entra event and token/session policies without sharing personal identifiers publicly.",
+              "Запустите интерактивный вход из проблемного приложения. При повторении проверьте событие Entra и политики токенов/сессий, не публикуя идентификаторы.",
+              "התחבר מחדש ביישום. אם התקלה חוזרת, בדוק אירוע Entra ומדיניות אסימונים ללא פרסום מזהים."),
+            T("Refresh tokens or authorization grants expire or are revoked during normal operation; this does not mean TPM, BitLocker, WAM or the Microsoft 365 license is broken.",
+              "Токены и коды авторизации истекают или отзываются в обычном режиме; это не означает поломку TPM, BitLocker, WAM или лицензии Microsoft 365.",
+              "אסימונים וקודי הרשאה פוקעים או מתבטלים; זו אינה הוכחה לתקלה ב-TPM, ב-BitLocker או ברישוי."),
+            T("Sign in interactively and complete any approved MFA prompt. Avoid a full Office reset and TPM clear for an expired grant alone. Ask IT to check Entra logs only if reauthentication fails.",
+              "Повторно войдите вручную и завершите MFA. Не очищайте TPM и не делайте полный сброс Office из-за одного истёкшего токена. При повторении проверьте журналы Entra.",
+              "התחבר מחדש והשלים MFA. אל תנקה TPM או תאפס Office בשל אסימון שפג תוקפו."),
+            "Microsoft Learn — Entra authentication error codes",
+            ErrorCodes),
         new("session",
             T("Incomplete or expired session", "Незавершённый вход или истёкшая сессия", "הפעלה לא הושלמה או שפג תוקפה"),
             T("AADSTS50058 or 70046 while silently signing in.",
@@ -199,11 +217,27 @@ internal static class SignInKnowledgeBase
               "פעל לפי בדיקת הקישוריות. אין לבטל הגנת רשת או בדיקת תעודות אוטומטית."),
             "Microsoft Learn — network assessment",
             Connectivity),
+        new("tpm-lockout",
+            T("TPM unavailable / temporary lockout", "TPM не готов / временная блокировка", "TPM לא מוכן / חסימה זמנית"),
+            T("0x80090030 or 0x80090031 appears; TPM reports not ready or locked out.",
+              "Ошибка 0x80090030 или 0x80090031; TPM не готов или заблокирован.",
+              "שגיאת 0x80090030 או 0x80090031, או TPM נעול."),
+            T("Read Get-Tpm TpmPresent/TpmReady/LockedOut and check tpm.msc. KeySignTest requires elevation and may be unavailable.",
+              "Проверьте Get-Tpm: TpmPresent/TpmReady/LockedOut и tpm.msc. Для KeySignTest нужны права администратора.",
+              "בדוק Get-Tpm ו-tpm.msc. בדיקת KeySignTest דורשת הרשאת מנהל."),
+            T("TPM lockout can be a temporary anti-hammering state. A not-ready device can have hardware, firmware or provisioning causes; neither proves corruption of Office caches.",
+              "Блокировка TPM может быть временной защитой от перебора. Неготовность может быть связана с прошивкой или инициализацией, но не доказывает проблему кеша Office.",
+              "חסימת TPM עשויה להיות זמנית; אין הוכחה לבעיה במטמון Office."),
+            T("Stop repeated key attempts; allow the cooldown and consult IT/vendor for supported recovery. Verify BitLocker recovery availability. Do not auto-clear TPM or reset PIN.",
+              "Прекратите повторные попытки, дождитесь снятия блокировки и обратитесь к IT или производителю. Проверьте доступность BitLocker recovery. Не сбрасывайте TPM и PIN автоматически.",
+              "יש להמתין לסיום החסימה ולפנות לתמיכה. אין לאפס TPM או PIN אוטומטית."),
+            "Microsoft Learn — BitLocker and TPM known issues",
+            TpmTroubleshooting),
         new("device-key",
             T("Windows Hello / device key issue", "Windows Hello / ключи устройства", "Windows Hello / מפתחות מכשיר"),
-            T("Sign-in reports 0x80090016 or another cryptographic key error.",
-              "При входе показано 0x80090016 или другая ошибка криптографического ключа.",
-              "התחברות מציגה 0x80090016 או שגיאת מפתח."),
+            T("Sign-in reports 0x80090011, 0x80090016 or 0x80090034; KeySignTest fails or AadRecoveryEnabled is YES.",
+              "При входе появляется 0x80090011/16/34 либо KeySignTest=FAILED или AadRecoveryEnabled=YES.",
+              "שגיאת מפתח או כשל בבדיקת מפתח המכשיר."),
             T("Inspect Windows Hello / device key health, recovery flags and KeySignTest with appropriate rights; preserve BitLocker recovery information.",
               "Проверьте Windows Hello, состояние ключей устройства, KeySignTest и ключи восстановления BitLocker.",
               "בדוק Windows Hello, מצב מפתחות ושמור מידע שחזור BitLocker."),
@@ -247,8 +281,11 @@ internal static class SignInKnowledgeBase
                 => Get("mfa"),
             "AADSTS50126" or "AADSTS50055" or "AADSTS50057" or "AADSTS50034"
                 => Get("account"),
+            "AADSTS70008" or "AADSTS700082" or "AADSTS700084" =>
+                Get("expired-grant"),
             "AADSTS50058" or "AADSTS70046" => Get("session"),
-            "80090016" => Get("device-key"),
+            "80090011" or "80090016" or "80090034" => Get("device-key"),
+            "80090030" or "80090031" => Get("tpm-lockout"),
             _ => null
         };
 
@@ -263,6 +300,8 @@ internal static class SignInKnowledgeBase
 
         if (State("DeviceAuthStatus") == WamSignalState.Attention)
             return Get("device-trust");
+        if (State("EntraDeviceKey") == WamSignalState.Attention)
+            return Get("device-key");
         if (State("BrokerPlugin") == WamSignalState.Attention)
             return Get("work-wam");
         if (State("AzureAdPrt") == WamSignalState.Attention)
@@ -300,10 +339,17 @@ internal static class SignInKnowledgeBase
                 !string.IsNullOrWhiteSpace(x.SafeAction)) &&
             ByCode("AADSTS53003")?.Key == "conditional-access" &&
             ByCode("AADSTS50076")?.Key == "mfa" &&
+            ByCode("AADSTS70008")?.Key == "expired-grant" &&
+            ByCode("AADSTS700082")?.Key == "expired-grant" &&
             ByCode("AADSTS50155")?.Key == "device-trust" &&
+            ByCode("80090031")?.Key == "tpm-lockout" &&
+            ByCode("80090034")?.Key == "device-key" &&
             ByCode("0x80090016") == null &&
             Recommend(sample, true).Key == "work-wam" &&
             Recommend(failedDevice, true).Key == "device-trust" &&
+            Recommend(WamHealthAnalysis.Evaluate(
+                "BrokerPlugin: MISSING\nKeySignTest: FAILED", true), true).Key ==
+                "device-key" &&
             Recommend(sample, false).Key == "general" &&
             !IsMicrosoftLearn("https://evil.example.com/learn.microsoft.com");
     }

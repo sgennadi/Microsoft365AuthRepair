@@ -1,3 +1,14 @@
+## 1.0.2 — 2026-11-16 — Stable
+
+1. **Fix GUI clipping:** independent scrollable viewport with content-sized WinForms rows; readable WAM/Office results above TPM/BitLocker; no cut-off lower diagnostic sections on smaller monitors.
+2. **Make show/hide functional:** WAM/Office and Activity use explicit expanded state and zero-height collapsed rows, rather than relying on child Visible while nested in a not-yet-shown form. Preserve device-security status when WAM/Office is collapsed.
+3. **Fix the report review highlight:** JSON opens unselected at the top, with focus on Keep local. Manual selection, Ctrl+A and Ctrl+C still work. Send requires explicit user action.
+4. **Security diagnostics:** independent read-only, bounded TPM/BitLocker WMI/DPAPI/Secure Boot/HVCI/VM status with partial-coverage reporting. Administrator-only BitLocker actions remain separately gated; no automated TPM Clear.
+5. **Anonymous reporting:** 29 strictly enumerated Entra/WAM, Office and device statuses. Existing public Google gateway must advertise v4/M365 v2; no silent downgrade to the older six-field contract or upload before consent.
+6. **Stable build:** separate Windows x64 and ARM64 self-contained ZIPs, matching SHA-256 manifest, UI and read-only worker regression checks. Live Office sign-in and real EN/RU/HE high-DPI field review remain outside CI.
+
+[Stable v1.0.2 notes](docs/releases/v1.0.2.md)
+
 ## 1.0.1 — 2026-11-16 — Stable
 
 1. Smart Repair Center: evidence-based WAM/Entra/Office recommendations and non-destructive preflight.
