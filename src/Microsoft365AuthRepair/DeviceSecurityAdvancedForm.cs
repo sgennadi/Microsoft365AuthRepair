@@ -138,6 +138,10 @@ internal sealed class DeviceSecurityAdvancedForm : Form
         UiIcons.TrackDpi(this);
         CancelButton = close;
 
+        FormClosing += (_, args) =>
+        {
+            if (working) args.Cancel = true; // Never hide an active sensitive action
+        };
         close.Click += (_, _) => Close();
         bitlocker.Click += (_, _) => OpenBitLocker();
         export.Click += async (_, _) => await ExportAsync();
@@ -267,9 +271,7 @@ internal sealed class DeviceSecurityAdvancedForm : Form
                 $"Сохранено ключей восстановления: {count}. Храните файл офлайн.",
                 $"נשמרו {count} סיסמאות שחזור לקובץ מקומי.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-            or InvalidOperationException or System.Management.ManagementException
-            or System.Security.SecurityException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             result.Text = T("Export unavailable. The file was not confirmed. Verify BitLocker access and administrator rights.",
                 "Не удалось подтвердить экспорт. Проверьте права администратора и состояние BitLocker.",
@@ -313,9 +315,7 @@ internal sealed class DeviceSecurityAdvancedForm : Form
                     "Windows не приняла команду. Успех не подтверждён; проверьте настройки BitLocker.",
                     "הפעולה לא אושרה. בדוק את הגדרות BitLocker.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-            or InvalidOperationException or TimeoutException or
-            System.ComponentModel.Win32Exception or System.Security.SecurityException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             result.Text = T("Command result unknown or blocked. Recheck the device status before doing anything else.",
                 "Команда заблокирована или результат неизвестен. Сначала проверьте фактическое состояние диска.",
@@ -336,8 +336,7 @@ internal sealed class DeviceSecurityAdvancedForm : Form
             "ОПАСНО: Clear TPM может уничтожить ключи и доступ к зашифрованным дискам. Проверьте восстановление BitLocker, резервные копии и разрешение IT. Программа ТОЛЬКО откроет системную консоль; очистку выполняют вручную в Windows.",
             "סכנה: ניקוי TPM עלול לשלול גישה למפתחות ונתונים. ייפתח רק ממשק Windows, ללא ניקוי אוטומטי."))) return;
         try { DeviceSecurityAdvancedActions.OpenTpmManagement(); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-            or InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             result.Text = T("Windows TPM console unavailable.", "Консоль TPM недоступна.",
                 "קונסולת TPM אינה זמינה.");
@@ -348,8 +347,7 @@ internal sealed class DeviceSecurityAdvancedForm : Form
     private void OpenBitLocker()
     {
         try { DeviceSecurityAdvancedActions.OpenBitLockerManagement(); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-            or InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             result.Text = T("Windows BitLocker settings unavailable.",
                 "Настройки BitLocker недоступны.", "הגדרות BitLocker אינן זמינות.");
