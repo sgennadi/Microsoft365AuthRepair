@@ -542,7 +542,7 @@ internal static class TpmBitLockerProbe
         {
             var output = ExternalCommand.RunPowerShell(script, 20);
             var status = output.StdOut.Trim().ToUpperInvariant();
-            return output.ExitCode == 0 && status is "YES" or "NO" ? status : "UNKNOWN";
+            return output.ExitCode == 0 && (status is "YES" or "NO") ? status : "UNKNOWN";
         }
         catch (Exception ex) when (ex is IOException or TimeoutException or
             InvalidOperationException or UnauthorizedAccessException or
