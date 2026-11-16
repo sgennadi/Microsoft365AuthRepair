@@ -79,11 +79,32 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         LinkBehavior = LinkBehavior.HoverUnderline,
         Margin = new Padding(10, 8, 3, 5)
     };
+    // Visible near the top of the card, even when the 14 status tiles
+    // extend below the fold on a 200% DPI or narrow display.
+    private readonly LinkLabel bitlockerSettingsLink = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(10, 8, 12, 5)
+    };
+    private readonly LinkLabel advancedLink = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(10, 8, 8, 5)
+    };
+    private readonly FlowLayoutPanel quickActions = new()
+    {
+        Dock = DockStyle.Fill,
+        AutoSize = true, WrapContents = true,
+        FlowDirection = FlowDirection.LeftToRight,
+        Margin = new Padding(0, 0, 0, 5)
+    };
     private readonly TableLayoutPanel header = new()
     {
         Dock = DockStyle.Fill,
         AutoSize = true,
-        ColumnCount = 2, RowCount = 1,
+        ColumnCount = 1, RowCount = 1,
         Margin = Padding.Empty
     };
     private readonly TableLayoutPanel signalGrid = new()
@@ -101,6 +122,8 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
     private bool collecting;
 
     internal event EventHandler? DetailsRequested;
+    internal event EventHandler? AdvancedRequested;
+    internal event EventHandler? BitLockerSettingsRequested;
 
     internal DeviceSecurityCard()
     {
@@ -108,7 +131,7 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
         ColumnCount = 1;
-        RowCount = 4;
+        RowCount = 5;
         Margin = new Padding(0, 9, 0, 5);
         Padding = new Padding(14, 10, 14, 11);
         BorderStyle = BorderStyle.FixedSingle;
@@ -116,11 +139,10 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             ? SystemColors.Window : Color.White;
         Visible = false;
         ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 5; i++)
             RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         title.Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold);
         title.ForeColor = SystemInformation.HighContrast
@@ -133,14 +155,21 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             ? SystemColors.WindowText : UiTheme.Muted;
         caution.Margin = new Padding(3, 7, 3, 2);
         header.Controls.Add(title, 0, 0);
-        header.Controls.Add(detailsLink, 1, 0);
+        quickActions.Controls.Add(detailsLink);
+        quickActions.Controls.Add(bitlockerSettingsLink);
+        quickActions.Controls.Add(advancedLink);
         Controls.Add(header, 0, 0);
-        Controls.Add(explanation, 0, 1);
-        Controls.Add(signalGrid, 0, 2);
-        Controls.Add(caution, 0, 3);
+        Controls.Add(quickActions, 0, 1);
+        Controls.Add(explanation, 0, 2);
+        Controls.Add(signalGrid, 0, 3);
+        Controls.Add(caution, 0, 4);
 
         detailsLink.LinkClicked += (_, _) =>
             DetailsRequested?.Invoke(this, EventArgs.Empty);
+        bitlockerSettingsLink.LinkClicked += (_, _) =>
+            BitLockerSettingsRequested?.Invoke(this, EventArgs.Empty);
+        advancedLink.LinkClicked += (_, _) =>
+            AdvancedRequested?.Invoke(this, EventArgs.Empty);
         SizeChanged += (_, _) => UpdateGeometry();
         signalGrid.SizeChanged += (_, _) => UpdateGeometry();
         UpdateLanguage();
@@ -158,6 +187,20 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         detailsLink.AccessibleName = T("Open TPM and BitLocker read-only details",
             "Открыть подробности TPM и BitLocker (только чтение)",
             "פתח פרטי TPM ו-BitLocker לקריאה בלבד");
+        bitlockerSettingsLink.Text = T("Windows BitLocker settings",
+            "Настройки BitLocker в Windows", "הגדרות BitLocker של Windows");
+        bitlockerSettingsLink.AccessibleName = bitlockerSettingsLink.Text;
+        bitlockerSettingsLink.AccessibleDescription = T(
+            "Open Windows native settings; changing security requires Windows authorization.",
+            "Открыть настройки Windows; изменение защиты требует разрешения Windows.",
+            "פתיחת הגדרות Windows; שינוי האבטחה מחייב אישור מערכת.");
+        advancedLink.Text = T("Advanced device security",
+            "Расширенные операции защиты", "אבטחת מכשיר מתקדמת");
+        advancedLink.AccessibleName = advancedLink.Text;
+        advancedLink.AccessibleDescription = T(
+            "Optional security actions are in a separately confirmed administrator window.",
+            "Дополнительные операции выполняются в отдельном окне с подтверждением администратора.",
+            "פעולות נוספות מתבצעות בחלון נפרד עם אישור מנהל.");
         explanation.Text = collecting ? T(
             "Checking device security… results appear as providers finish.",
             "Проверяем защиту устройства… результаты появляются по мере завершения этапов.",
@@ -386,6 +429,9 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
     {
         current = snapshot ?? TpmBitLockerSnapshot.Unknown;
         collecting = inProgress;
+        // The read-only detail link remains available while scanning.
+        // Avoid launching external security tools during a pending check.
+        bitlockerSettingsLink.Enabled = advancedLink.Enabled = !inProgress;
         UpdateLanguage();
         Visible = true;
         UpdateValues(current);
@@ -396,6 +442,7 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
     {
         current = null;
         collecting = false;
+        bitlockerSettingsLink.Enabled = advancedLink.Enabled = false;
         Visible = false;
     }
 
@@ -439,8 +486,15 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         finally { reshaping = false; }
     }
 
-    internal bool HasReadOnlyDetailsLink => detailsLink.Parent == header &&
+    internal bool HasReadOnlyDetailsLink => detailsLink.Parent == quickActions &&
         !string.IsNullOrWhiteSpace(detailsLink.Text);
+    internal bool HasDirectSecurityShortcuts =>
+        quickActions.Parent == this && quickActions.WrapContents &&
+        bitlockerSettingsLink.Parent == quickActions &&
+        advancedLink.Parent == quickActions &&
+        !string.IsNullOrWhiteSpace(bitlockerSettingsLink.Text) &&
+        !string.IsNullOrWhiteSpace(advancedLink.Text) &&
+        advancedLink.TabStop && bitlockerSettingsLink.TabStop;
 
     internal static bool SelfTest()
     {
@@ -458,11 +512,14 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             WritableDcStatus = "AVAILABLE"
         };
         card.ShowResult(TpmBitLockerSnapshot.Unknown, inProgress: true);
-        if (!card.collecting || card.Unknown !=
+        if (card.advancedLink.Enabled || card.bitlockerSettingsLink.Enabled ||
+            !card.collecting || card.Unknown !=
             T("Checking…", "Проверяется…", "בבדיקה…"))
             return false;
         card.ShowResult(sample);
-        if (!card.HasReadOnlyDetailsLink || card.tiles.Length != 14 ||
+        if (!card.HasReadOnlyDetailsLink || !card.HasDirectSecurityShortcuts ||
+            !card.advancedLink.Enabled || !card.bitlockerSettingsLink.Enabled ||
+            card.tiles.Length != 14 ||
             card.signalGrid.Controls.Count != 14 ||
             !card.tiles[0].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase) ||
             !card.tiles[3].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase) ||
@@ -484,6 +541,6 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         card.ShowResult(TpmBitLockerSnapshot.Unknown);
         return card.tiles.All(t =>
             t.AccessibleDescription.Contains("No verified status", StringComparison.Ordinal)) &&
-            card.Controls.Count == 4;
+            card.Controls.Count == 5;
     }
 }

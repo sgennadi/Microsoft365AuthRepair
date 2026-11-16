@@ -1,3 +1,9 @@
+## Preview.28 — direct security shortcuts
+
+The TPM & BitLocker Device Security card now puts three compact, keyboard-accessible shortcuts **above** the 14 status tiles: **View full details** (read-only), **Windows BitLocker settings** (native Windows UI), and **Advanced device security** (separate confirmation-gated window). They wrap on narrow/200%-DPI screens, remain disabled while the read-only scan is running except for details, and do not silently elevate. The Advanced action for opening TPM management uses a neutral icon because opening the console is not itself a Clear TPM. Existing admin confirmations, secrets privacy and Stable 1.0.1 remain unchanged.
+
+[Preview.28 release notes](docs/releases/v1.0.2-preview.28.md)
+
 ## Preview.27 — safer BitLocker status, gated administrator tools and update backup cleanup
 
 1. Read OS-volume BitLocker **ConversionStatus** directly from its snapshot property before falling back to the administrator-only `GetConversionStatus` method. Protection and conversion stay independent and bounded; unknown stays Not verified. The Device Security view also separately detects known third-party FDE software/drivers (including VeraCrypt, DiskCryptor, Sophos, Symantec and Trellix), but cannot claim the OS disk is encrypted merely because software is installed; vendor-specific status remains Not verified.
