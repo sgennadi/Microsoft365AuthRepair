@@ -3,37 +3,60 @@ using System.Windows.Forms;
 
 namespace Microsoft365AuthRepair;
 
-// Deliberately separate from the read-only TPM/BitLocker inspector. Neither
-// regular Check & Diagnose nor viewing a result opens this panel. Every risky
-// operation requires administrator rights, an opt-in checkbox, typed intent
-// and a second explicit Windows confirmation. No action is ever automatic.
+// Separate, explicitly gated administrator tools. The layout is responsive
+// and the footer remains accessible when the content scrolls at 200% DPI.
+// No diagnostic check invokes an action from this window automatically.
 internal sealed class DeviceSecurityAdvancedForm : Form
 {
     private static string T(string en, string ru, string he) => UpdateUiText.T(en, ru, he);
+
     private readonly Label title = UiTheme.Caption(string.Empty, heading: true);
     private readonly Label warning = UiTheme.Caption(string.Empty);
     private readonly Label rights = UiTheme.Caption(string.Empty);
+    private readonly Label authorizationHeading = UiTheme.Caption(string.Empty);
+    private readonly Label safeHeading = UiTheme.Caption(string.Empty);
+    private readonly Label protectionHeading = UiTheme.Caption(string.Empty);
+    private readonly Label dangerHeading = UiTheme.Caption(string.Empty);
     private readonly Label instruction = UiTheme.Caption(string.Empty);
     private readonly Label result = UiTheme.Caption(string.Empty);
+
+    private readonly Label exportDescription = UiTheme.Caption(string.Empty);
+    private readonly Label bitlockerDescription = UiTheme.Caption(string.Empty);
+    private readonly Label tpmDescription = UiTheme.Caption(string.Empty);
+    private readonly Label suspendDescription = UiTheme.Caption(string.Empty);
+    private readonly Label resumeDescription = UiTheme.Caption(string.Empty);
+    private readonly Label decryptDescription = UiTheme.Caption(string.Empty);
+
+    // Never default this to checked. The exact phrase is never pre-filled.
     private readonly CheckBox approved = new()
     {
-        AutoSize = true, Margin = new Padding(5, 12, 5, 12),
+        AutoSize = true, Margin = new Padding(2, 7, 2, 6),
         AccessibleName = "I understand the risk and have a safe recovery-key backup"
     };
     private readonly TextBox confirmation = new()
     {
-        Width = 260, Margin = new Padding(4, 2, 4, 12),
-        AccessibleName = "Type the exact action name to confirm"
+        Width = 286, CharacterCasing = CharacterCasing.Upper,
+        RightToLeft = RightToLeft.No,
+        Margin = new Padding(2, 3, 2, 4),
+        AccessibleName = "Exact action phrase"
     };
     private readonly Button export = UiTheme.CreateActionButton(string.Empty);
+    private readonly Button bitlocker = UiTheme.CreateActionButton(string.Empty);
+    private readonly Button tpm = UiTheme.CreateActionButton(string.Empty);
     private readonly Button suspend = UiTheme.CreateActionButton(string.Empty);
     private readonly Button resume = UiTheme.CreateActionButton(string.Empty);
     private readonly Button decrypt = UiTheme.CreateActionButton(string.Empty, destructive: true);
-    // Launching the native TPM console is not itself a TPM Clear. Preserve
-    // the full confirmation gate but avoid a misleading destructive red button.
-    private readonly Button tpm = UiTheme.CreateActionButton(string.Empty);
-    private readonly Button bitlocker = UiTheme.CreateActionButton(string.Empty);
     private readonly Button close = UiTheme.CreateActionButton(string.Empty);
+
+    private readonly Panel scroll;
+    private readonly TableLayoutPanel content;
+    private readonly TableLayoutPanel footer;
+    private readonly TableLayoutPanel authorization;
+    private readonly TableLayoutPanel safeSection;
+    private readonly TableLayoutPanel protectionSection;
+    private readonly TableLayoutPanel dangerSection;
+    private readonly List<TableLayoutPanel> actionRows = new();
+    private bool adjustingLayout;
     private bool working;
 
     internal DeviceSecurityAdvancedForm()
@@ -41,111 +64,123 @@ internal sealed class DeviceSecurityAdvancedForm : Form
         Font = UiTheme.BodyFont();
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(710, 570);
-        Size = new Size(980, 770);
+        MinimumSize = new Size(630, 480);
+        Size = new Size(830, 700);
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
         Text = "Microsoft 365 Auth Repair — Advanced device security";
-        ResponsiveLayout.FitInitialWindow(this, new Size(980, 770),
-            new Size(1280, 950), 0.86, 0.82);
+        ResponsiveLayout.FitInitialWindow(this, new Size(830, 690),
+            new Size(870, 770), widthFraction: 0.44, heightFraction: 0.66);
 
-        var root = new TableLayoutPanel
+        scroll = new Panel
         {
-            Dock = DockStyle.Fill, AutoScroll = true,
-            Padding = new Padding(22, 16, 22, 16),
-            Margin = Padding.Empty, ColumnCount = 1, RowCount = 12
+            Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty,
+            Padding = new Padding(17, 13, 17, 14),
+            BackColor = BackColor
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 11; i++)
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.Controls.Add(title, 0, 0);
-        root.Controls.Add(warning, 0, 1);
-        root.Controls.Add(rights, 0, 2);
-        root.Controls.Add(approved, 0, 3);
-        root.Controls.Add(instruction, 0, 4);
-        root.Controls.Add(confirmation, 0, 5);
+        content = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top, AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1, RowCount = 7, Margin = Padding.Empty,
+            BackColor = BackColor
+        };
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < content.RowCount; i++)
+            content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        var exportRow = ActionRow(export, T(
-            "Export OS-volume numerical recovery password(s) to a NEW local NTFS .txt file. Plaintext secrets: store offline and never share.",
-            "Экспортировать 48-значные пароли восстановления системного диска в НОВЫЙ локальный NTFS-файл .txt. Это открытые секреты — храните офлайн.",
-            "ייצא סיסמאות שחזור לקובץ טקסט חדש בכונן NTFS מקומי. יש לשמור במצב לא מקוון."));
-        var suspendRow = ActionRow(suspend, T(
-            "Temporarily suspend OS-drive BitLocker key protection until one reboot. The drive may be exposed while suspended.",
-            "Временно приостановить защиту ключа BitLocker системного диска на одну перезагрузку. Пока защита отключена, данные менее защищены.",
-            "השהה הגנת BitLocker עד לאתחול הבא; ההגנה מופחתת."));
-        var resumeRow = ActionRow(resume, T(
-            "Resume existing OS-drive BitLocker key protectors. Does not start encryption.",
-            "Возобновить действие защитников ключа BitLocker. Не запускает шифрование.",
-            "חדש מגיני BitLocker קיימים ללא התחלת הצפנה."));
-        var decryptRow = ActionRow(decrypt, T(
-            "Start system-drive decryption and permanently turn BitLocker OFF. Key protectors will be removed after decryption completes.",
-            "Начать расшифровку системного диска и отключение BitLocker. После завершения защитники ключа будут удалены.",
-            "התחל פענוח כונן המערכת וכיבוי BitLocker; מגיני המפתח יוסרו בסיום."));
-        var tpmRow = ActionRow(tpm, T(
-            "Open the Windows TPM management console for a MANUAL Clear TPM. Clearing can invalidate Windows Hello, device keys and BitLocker recovery paths.",
-            "Открыть системную консоль TPM для РУЧНОГО Clear TPM. Очистка может сделать недоступными Windows Hello, ключи устройства и шифрование.",
-            "פתח את ניהול TPM של Windows לניקוי ידני בלבד. ניקוי עלול לבטל מפתחות ונתוני כניסה."));
-        root.Controls.Add(exportRow, 0, 6);
-        root.Controls.Add(suspendRow, 0, 7);
-        root.Controls.Add(resumeRow, 0, 8);
-        root.Controls.Add(decryptRow, 0, 9);
-        root.Controls.Add(tpmRow, 0, 10);
+        title.Margin = new Padding(0, 2, 0, 3);
+        warning.Margin = new Padding(0, 4, 0, 5);
+        rights.Margin = new Padding(0, 0, 0, 7);
+        warning.ForeColor = SystemInformation.HighContrast
+            ? SystemColors.WindowText : UiTheme.Muted;
 
-        var bottom = new TableLayoutPanel
-        {
-            AutoSize = true, Dock = DockStyle.Fill,
-            ColumnCount = 1, RowCount = 2,
-            Margin = new Padding(0, 15, 0, 0)
-        };
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        bottom.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        bottom.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var links = new FlowLayoutPanel
-        {
-            AutoSize = true, WrapContents = true,
-            FlowDirection = FlowDirection.LeftToRight, Dock = DockStyle.Fill
-        };
-        links.Controls.Add(bitlocker);
-        links.Controls.Add(close);
-        bottom.Controls.Add(links, 0, 0);
-        result.MaximumSize = new Size(800, 0);
-        bottom.Controls.Add(result, 0, 1);
-        root.Controls.Add(bottom, 0, 11);
-        Controls.Add(ResponsiveLayout.Center(this, root, 1100));
+        authorization = CreateSection(authorizationHeading);
+        authorization.RowCount = 4;
+        authorization.RowStyles.Clear();
+        for (int i = 0; i < 4; i++)
+            authorization.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        instruction.Margin = new Padding(2, 0, 2, 3);
+        authorization.Controls.Add(approved, 0, 1);
+        authorization.Controls.Add(instruction, 0, 2);
+        authorization.Controls.Add(confirmation, 0, 3);
 
-        var rows = new[] { exportRow, suspendRow, resumeRow, decryptRow, tpmRow };
-        root.SizeChanged += (_, _) =>
+        safeSection = CreateSection(safeHeading,
+            ActionRow(export, exportDescription),
+            ActionRow(bitlocker, bitlockerDescription),
+            ActionRow(tpm, tpmDescription));
+        protectionSection = CreateSection(protectionHeading,
+            ActionRow(suspend, suspendDescription),
+            ActionRow(resume, resumeDescription));
+        dangerSection = CreateSection(dangerHeading, true,
+            ActionRow(decrypt, decryptDescription));
+
+        content.Controls.Add(title, 0, 0);
+        content.Controls.Add(warning, 0, 1);
+        content.Controls.Add(rights, 0, 2);
+        content.Controls.Add(authorization, 0, 3);
+        content.Controls.Add(safeSection, 0, 4);
+        content.Controls.Add(protectionSection, 0, 5);
+        content.Controls.Add(dangerSection, 0, 6);
+        scroll.Controls.Add(content);
+
+        // One anchored footer, instead of stretching the last action row or
+        // burying Close in the scrollable operation list.
+        footer = new TableLayoutPanel
         {
-            int width = Math.Max(300, root.ClientSize.Width - root.Padding.Horizontal - 20);
-            title.MaximumSize = new Size(width, 0);
-            warning.MaximumSize = new Size(width, 0);
-            rights.MaximumSize = new Size(width, 0);
-            instruction.MaximumSize = new Size(width, 0);
-            result.MaximumSize = new Size(width, 0);
-            foreach (var row in rows)
-                if (row.Controls[1] is Label label)
-                    label.MaximumSize = new Size(Math.Max(170, width - 350), 0);
+            Dock = DockStyle.Fill, AutoSize = true,
+            ColumnCount = 2, RowCount = 1, Margin = Padding.Empty,
+            Padding = new Padding(17, 7, 17, 9),
+            BackColor = SystemInformation.HighContrast ? SystemColors.Window : Color.White
         };
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        footer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        result.Margin = new Padding(0, 8, 14, 6);
+        result.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        result.AccessibleName = "Last advanced device-security operation status";
+        close.Margin = new Padding(6, 3, 0, 3);
+        close.Anchor = AnchorStyles.Right;
+        footer.Controls.Add(result, 0, 0);
+        footer.Controls.Add(close, 1, 0);
+
+        var shell = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2,
+            Margin = Padding.Empty, BackColor = BackColor
+        };
+        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        shell.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        shell.Controls.Add(scroll, 0, 0);
+        shell.Controls.Add(footer, 0, 1);
+        Controls.Add(ResponsiveLayout.Center(this, shell, 870));
+
         SetText();
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
+        // Confirmation phrases always use Latin ASCII even in RTL layout.
+        confirmation.RightToLeft = RightToLeft.No;
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(export, UiGlyph.Save);
+        UiIcons.Assign(bitlocker, UiGlyph.Settings);
+        UiIcons.Assign(tpm, UiGlyph.Settings);
         UiIcons.Assign(suspend, UiGlyph.Reset);
         UiIcons.Assign(resume, UiGlyph.Repair);
         UiIcons.Assign(decrypt, UiGlyph.Error, destructive: true);
-        UiIcons.Assign(tpm, UiGlyph.Settings);
-        UiIcons.Assign(bitlocker, UiGlyph.Settings);
         UiIcons.Assign(close, UiGlyph.Reset);
         UiIcons.TrackDpi(this);
         CancelButton = close;
 
+        scroll.SizeChanged += (_, _) => AdjustGeometry();
+        DpiChanged += (_, _) => AdjustGeometry();
+        Shown += (_, _) => AdjustGeometry();
         FormClosing += (_, args) =>
         {
-            if (working) args.Cancel = true; // Never hide an active sensitive action
+            if (working) args.Cancel = true; // Do not hide active sensitive work.
         };
         close.Click += (_, _) => Close();
         bitlocker.Click += (_, _) => OpenBitLocker();
+        tpm.Click += (_, _) => OpenTpm();
         export.Click += async (_, _) => await ExportAsync();
         suspend.Click += async (_, _) => await RunCommandAsync(
             "SUSPEND", BitLockerAdminAction.SuspendOneRestart);
@@ -153,64 +188,219 @@ internal sealed class DeviceSecurityAdvancedForm : Form
             "RESUME", BitLockerAdminAction.Resume);
         decrypt.Click += async (_, _) => await RunCommandAsync(
             "DECRYPT", BitLockerAdminAction.Decrypt);
-        tpm.Click += (_, _) => OpenTpm();
+        AdjustGeometry();
         UpdateAvailability();
     }
 
-    private static TableLayoutPanel ActionRow(Button action, string description)
+    private static TableLayoutPanel CreateSection(Label heading,
+        params TableLayoutPanel[] actionRows) => CreateSection(heading, false, actionRows);
+
+    private static TableLayoutPanel CreateSection(Label heading,
+        bool danger, params TableLayoutPanel[] rows)
+    {
+        var section = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1, RowCount = rows.Length + 1,
+            Margin = new Padding(0, 9, 0, 0),
+            Padding = new Padding(15, 8, 15, 10),
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = SystemInformation.HighContrast ? SystemColors.Window
+                : danger ? Color.FromArgb(255, 249, 249) : Color.White
+        };
+        section.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i <= rows.Length; i++)
+            section.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        heading.Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold);
+        heading.ForeColor = SystemInformation.HighContrast ? SystemColors.WindowText
+            : danger ? Color.FromArgb(155, 42, 49) : UiTheme.Navy;
+        heading.Margin = new Padding(0, 1, 0, 5);
+        section.Controls.Add(heading, 0, 0);
+        for (int i = 0; i < rows.Length; i++)
+            section.Controls.Add(rows[i], 0, i + 1);
+        return section;
+    }
+
+    private TableLayoutPanel ActionRow(Button command, Label description)
     {
         var row = new TableLayoutPanel
         {
-            AutoSize = true, Dock = DockStyle.Fill,
+            Dock = DockStyle.Fill, AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2, RowCount = 1,
-            Margin = new Padding(0, 7, 0, 7)
+            Margin = new Padding(0, 2, 0, 2)
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         row.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        action.Margin = new Padding(3, 4, 14, 4);
-        var label = UiTheme.Caption(description);
-        label.MaximumSize = new Size(540, 0);
-        label.Margin = new Padding(0, 6, 4, 6);
-        row.Controls.Add(action, 0, 0);
-        row.Controls.Add(label, 1, 0);
+        command.Margin = new Padding(0, 3, 13, 3);
+        description.Margin = new Padding(0, 5, 0, 5);
+        description.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        description.MaximumSize = new Size(440, 0);
+        row.Controls.Add(command, 0, 0);
+        row.Controls.Add(description, 1, 0);
+        actionRows.Add(row);
         return row;
+    }
+
+    private static void SetStacked(TableLayoutPanel row, bool stacked)
+    {
+        if ((row.ColumnCount == 1) == stacked) return;
+        var command = row.Controls.OfType<Button>().Single();
+        var description = row.Controls.OfType<Label>().Single();
+        row.SuspendLayout();
+        row.Controls.Clear();
+        row.ColumnStyles.Clear();
+        row.RowStyles.Clear();
+        row.ColumnCount = stacked ? 1 : 2;
+        row.RowCount = stacked ? 2 : 1;
+        row.ColumnStyles.Add(new ColumnStyle(
+            stacked ? SizeType.Percent : SizeType.AutoSize, stacked ? 100f : 0f));
+        if (!stacked)
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        if (stacked) row.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        row.Controls.Add(command, 0, 0);
+        row.Controls.Add(description, stacked ? 0 : 1, stacked ? 1 : 0);
+        row.ResumeLayout(performLayout: true);
+    }
+
+    // At high DPI/narrow widths, stack a description below its action instead
+    // of clipping Russian/Hebrew text or introducing a horizontal scrollbar.
+    private void AdjustGeometry()
+    {
+        if (adjustingLayout) return;
+        int visible = scroll.ClientSize.Width - scroll.Padding.Horizontal;
+        if (visible < 100) return;
+        adjustingLayout = true;
+        try
+        {
+            float scale = Math.Max(96, DeviceDpi) / 96f;
+            int inner = Math.Max(200, visible - 34);
+            var commands = new[] { export, bitlocker, tpm, suspend, resume, decrypt };
+            int commandWidth = Math.Max((int)Math.Ceiling(225 * scale),
+                commands.Max(button => button.GetPreferredSize(Size.Empty).Width));
+            bool stacked = inner < (int)Math.Ceiling(640 * scale) ||
+                inner - commandWidth < (int)Math.Ceiling(235 * scale);
+            int height = Math.Max((int)Math.Ceiling(44 * scale),
+                commands.Max(button => button.GetPreferredSize(Size.Empty).Height));
+            foreach (var row in actionRows)
+            {
+                SetStacked(row, stacked);
+                var command = row.Controls.OfType<Button>().Single();
+                var description = row.Controls.OfType<Label>().Single();
+                command.AutoSize = false;
+                command.Size = new Size(Math.Min(commandWidth, inner - 8), height);
+                command.Margin = stacked
+                    ? new Padding(0, 3, 0, 2)
+                    : new Padding(0, 3, 13, 3);
+                description.MaximumSize = new Size(Math.Max(160,
+                    stacked ? inner - 10 : inner - commandWidth - 22), 0);
+                description.Margin = stacked
+                    ? new Padding(0, 2, 0, 7)
+                    : new Padding(0, 5, 0, 5);
+            }
+            int line = Math.Max(190, visible - 5);
+            foreach (var label in new[] { title, warning, rights, authorizationHeading,
+                instruction, safeHeading, protectionHeading, dangerHeading })
+                label.MaximumSize = new Size(line, 0);
+            approved.MaximumSize = new Size(Math.Max(185, visible - 38), 0);
+            confirmation.Width = Math.Min((int)Math.Ceiling(300 * scale),
+                Math.Max(185, visible - 40));
+            result.MaximumSize = new Size(Math.Max(150,
+                footer.ClientSize.Width - close.Width - footer.Padding.Horizontal - 30), 0);
+        }
+        finally { adjustingLayout = false; }
     }
 
     private void SetText()
     {
-        title.Text = T("Advanced device security", "Расширенные операции защиты",
-            "פעולות אבטחה מתקדמות");
+        title.Text = T("Advanced device security", "Расширенная защита устройства",
+            "אבטחת מכשיר מתקדמת");
         warning.Text = T(
-            "DANGER — these are optional administrator operations, unrelated to fixing an expired Microsoft 365 token. A TPM clear, BitLocker decryption or unprotected key may cause data loss or loss of recovery access. Check backups and your organization's policy first.",
-            "ОПАСНО — это дополнительные действия администратора, не предназначенные для исправления истёкшего токена Microsoft 365. Очистка TPM и изменение BitLocker могут привести к потере данных и доступа. Сначала проверьте резервные копии и политику организации.",
-            "אזהרה — פעולות מנהל שאינן מתקנות אסימון Microsoft 365 שפג תוקפו. שינוי TPM או BitLocker עלול לגרום לאובדן נתונים.");
+            "Optional administrator tools — not required to repair Microsoft 365 sign-in. Confirm recovery access and organizational approval before changing device protection.",
+            "Дополнительные инструменты администратора, не предназначенные для исправления входа Microsoft 365. Перед изменениями проверьте доступ к ключам восстановления и разрешение IT.",
+            "כלי מנהל אופציונליים, שאינם נדרשים לתיקון כניסה ל-Microsoft 365. ודא גישה לשחזור ואישור ארגוני.");
         rights.Text = Identity.IsElevated()
-            ? T("Administrator enabled · only the Windows system volume is targeted.",
-                "Права администратора есть · действия относятся только к системному диску.",
-                "הרשאות מנהל פעילות · רק כונן המערכת נבחר.")
-            : T("Administrator rights required for actions. Reopen this application as administrator only when authorized.",
-                "Для операций нужны права администратора. Запустите программу от администратора только с разрешения IT.",
-                "נדרשות הרשאות מנהל. הפעל מחדש כמנהל רק באישור.");
-        approved.Text = T("I understand the risk and have verified safe recovery-key backup / access.",
-            "Понимаю риски и проверил наличие доступных резервных ключей восстановления.",
-            "אני מבין את הסיכונים ווידאתי גיבוי מאובטח של מפתחות שחזור.");
+            ? T("Administrator active · operations target only the Windows system drive.",
+                "Администратор · операции относятся только к системному диску Windows.",
+                "מנהל פעיל · הפעולות מוגבלות לכונן המערכת של Windows.")
+            : T("Read-only view · to use protected actions, reopen as an authorized administrator.",
+                "Режим просмотра · для защищённых операций запустите с разрешения IT от администратора.",
+                "תצוגה בלבד · להפעלת פעולות מוגנות יש לפתוח כמנהל מורשה.");
+
+        authorizationHeading.Text = T("AUTHORIZATION", "ПОДТВЕРЖДЕНИЕ", "אישור פעולה");
+        approved.Text = T(
+            "I understand the risks and have verified a safe recovery-key backup or recovery access.",
+            "Понимаю риски и проверил безопасную копию ключа восстановления или возможность восстановления.",
+            "אני מבין את הסיכונים ווידאתי גיבוי בטוח של מפתח השחזור או גישת שחזור.");
         instruction.Text = T(
-            "To authorize an action, check the box and type exactly: EXPORT, SUSPEND, RESUME, DECRYPT or CLEAR TPM. A second confirmation will appear.",
-            "Для действия поставьте галочку и введите: EXPORT, SUSPEND, RESUME, DECRYPT или CLEAR TPM. Затем появится дополнительное подтверждение.",
-            "סמן אישור והקלד EXPORT, SUSPEND, RESUME, DECRYPT או CLEAR TPM. יופיע אישור נוסף.");
-        export.Text = T("Export recovery key", "Экспорт ключа восстановления", "ייצוא מפתח שחזור");
-        suspend.Text = T("Suspend (1 reboot)", "Приостановить (1 запуск)", "השהה לאתחול אחד");
+            "Type the phrase for your action: EXPORT, SUSPEND, RESUME, DECRYPT or CLEAR TPM. A final Windows-style confirmation follows.",
+            "Введите фразу выбранного действия: EXPORT, SUSPEND, RESUME, DECRYPT или CLEAR TPM. Далее появится последнее подтверждение.",
+            "הקלד את ביטוי הפעולה: EXPORT, SUSPEND, RESUME, DECRYPT או CLEAR TPM. לאחר מכן יופיע אישור נוסף.");
+        confirmation.PlaceholderText = T("Exact action phrase", "Точная фраза действия",
+            "ביטוי הפעולה המדויק");
+        confirmation.AccessibleName = T("Exact action phrase", "Точная фраза подтверждения",
+            "ביטוי האישור המדויק");
+
+        safeHeading.Text = T("SAFE / INFORMATIONAL", "ИНФОРМАЦИЯ И ДОСТУП",
+            "מידע וגישה");
+        protectionHeading.Text = T("PROTECTION CONTROLS", "УПРАВЛЕНИЕ ЗАЩИТОЙ",
+            "ניהול הגנה");
+        dangerHeading.Text = T("DANGER ZONE", "ОПАСНЫЕ ОПЕРАЦИИ", "אזור סיכון");
+
+        export.Text = T("Export recovery key", "Экспорт ключа", "ייצוא מפתח שחזור");
+        exportDescription.Text = T(
+            "Create a new restricted local NTFS file with an OS recovery password. This is a secret: store it offline.",
+            "Создать защищённый локальный NTFS-файл с паролем восстановления. Это секрет — храните офлайн.",
+            "צור קובץ NTFS מקומי מוגן עם סיסמת שחזור. יש לשמור אותו במצב לא מקוון.");
+        bitlocker.Text = T("Windows BitLocker settings", "Настройки BitLocker", "הגדרות BitLocker");
+        bitlockerDescription.Text = T(
+            "Open native Windows settings. No protection changes are made by this shortcut.",
+            "Открыть системные настройки Windows без изменения защиты.",
+            "פתח את הגדרות Windows ללא שינוי של ההגנה.");
+        tpm.Text = T("Open TPM management", "Управление TPM", "פתח ניהול TPM");
+        tpmDescription.Text = T(
+            "Open the Windows TPM console. A manual Clear there can destroy device keys; this shortcut requires CLEAR TPM confirmation.",
+            "Открыть консоль TPM. Ручная очистка там может удалить ключи; для открытия требуется подтверждение CLEAR TPM.",
+            "פתח את מסוף TPM. ניקוי ידני עלול למחוק מפתחות; נדרש אישור CLEAR TPM.");
+
+        suspend.Text = T("Suspend (1 reboot)", "Пауза (1 перезагрузка)",
+            "השהה לאתחול אחד");
+        suspendDescription.Text = T(
+            "Temporarily suspend system-drive key protection for one reboot.",
+            "Временно приостановить защиту системного диска на одну перезагрузку.",
+            "השהה זמנית את הגנת הכונן לאתחול אחד.");
         resume.Text = T("Resume protection", "Возобновить защиту", "חדש הגנה");
+        resumeDescription.Text = T(
+            "Resume existing BitLocker key protectors. This does not begin encryption.",
+            "Возобновить работу защитников ключа. Это не запускает шифрование.",
+            "חדש מגיני מפתח קיימים; פעולה זו אינה מתחילה הצפנה.");
+
         decrypt.Text = T("Decrypt / Turn off", "Расшифровать / Отключить", "פענח / כבה");
-        tpm.Text = T("Open TPM management", "Открыть управление TPM",
-            "פתח ניהול TPM");
-        bitlocker.Text = T("Windows BitLocker settings", "Настройки BitLocker в Windows",
-            "הגדרות BitLocker");
+        decryptDescription.Text = T(
+            "Begin full OS-drive decryption and turn BitLocker off. Verify backup and IT authorization first.",
+            "Начать полную расшифровку системного диска и выключить BitLocker. Сначала проверьте копию ключа и разрешение IT.",
+            "התחל פענוח מלא וכבה את BitLocker. יש לוודא גיבוי ואישור IT מראש.");
+
         close.Text = T("Close", "Закрыть", "סגור");
-        result.Text = T("No advanced action has been started.",
-            "Расширенные действия ещё не выполнялись.",
-            "לא בוצעה פעולה מתקדמת.");
+        result.Text = T("Ready · no operation has been requested.",
+            "Готово · операции не запускались.",
+            "מוכן · טרם התבקשה פעולה.");
+        foreach (var pair in new[] {
+            (Action: export, Description: exportDescription),
+            (Action: bitlocker, Description: bitlockerDescription),
+            (Action: tpm, Description: tpmDescription),
+            (Action: suspend, Description: suspendDescription),
+            (Action: resume, Description: resumeDescription),
+            (Action: decrypt, Description: decryptDescription)
+        })
+        {
+            pair.Action.AccessibleName = pair.Action.Text;
+            pair.Action.AccessibleDescription = pair.Description.Text;
+        }
+        close.AccessibleName = close.Text;
     }
 
     private void UpdateAvailability()
@@ -358,9 +548,24 @@ internal sealed class DeviceSecurityAdvancedForm : Form
 
     internal bool SelfTest() =>
         UiTheme.VerifyButtons(this, 7) &&
-        export.Parent is TableLayoutPanel &&
-        decrypt.Parent is TableLayoutPanel &&
-        tpm.Parent is TableLayoutPanel &&
-        !approved.Checked &&
-        confirmation.Text.Length == 0;
+        scroll.AutoScroll && scroll.Dock == DockStyle.Fill &&
+        content.Controls.Contains(authorization) &&
+        content.Controls.Contains(safeSection) &&
+        content.Controls.Contains(protectionSection) &&
+        content.Controls.Contains(dangerSection) &&
+        export.Parent is TableLayoutPanel exportRow && exportRow.Parent == safeSection &&
+        bitlocker.Parent is TableLayoutPanel bitlockerRow && bitlockerRow.Parent == safeSection &&
+        tpm.Parent is TableLayoutPanel tpmRow && tpmRow.Parent == safeSection &&
+        suspend.Parent is TableLayoutPanel suspendRow && suspendRow.Parent == protectionSection &&
+        resume.Parent is TableLayoutPanel resumeRow && resumeRow.Parent == protectionSection &&
+        decrypt.Parent is TableLayoutPanel decryptRow && decryptRow.Parent == dangerSection &&
+        footer.GetControlFromPosition(0, 0) == result &&
+        footer.GetControlFromPosition(1, 0) == close &&
+        authorization.Controls.Contains(approved) &&
+        authorization.Controls.Contains(confirmation) &&
+        actionRows.Count == 6 &&
+        !approved.Checked && confirmation.Text.Length == 0 &&
+        confirmation.CharacterCasing == CharacterCasing.Upper &&
+        decrypt is ModernButton { Role: ModernButton.Kind.Destructive } &&
+        tpm is ModernButton { Role: ModernButton.Kind.Secondary };
 }

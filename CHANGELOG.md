@@ -1,3 +1,14 @@
+## 1.0.2-preview.29 — 2026-11-16 — Preview
+
+1. Rebuild Advanced device security as a compact, resizable, high-DPI/RTL-friendly dialog with a scrollable main area and fixed status/Close footer.
+2. Group actions into Safe / informational, Protection controls, and a visually separate Danger zone for OS-volume decryption.
+3. Place the unchecked risk acknowledgment and typed action phrase in a dedicated Authorization section; use uppercase ASCII confirmation phrases for EN/RU/HE.
+4. Align equal-width action buttons with short descriptive labels; automatically stack labels below buttons when the window is narrow.
+5. Keep existing administrator restrictions, explicit second confirmations, BitLocker recovery-password handling and protections. No automatic TPM Clear, BitLocker state changes, or sign-in reset.
+6. Add Windows GUI regression checks for section ownership, confirmation defaults, dangerous-button styling and sticky footer. Stable 1.0.1 remains unchanged.
+
+[Preview.29 release notes](docs/releases/v1.0.2-preview.29.md)
+
 ## 1.0.2-preview.28 — 2026-11-16 — Preview
 
 1. Bring **View full details**, **Windows BitLocker settings**, and **Advanced device security** together to the top of the TPM/BitLocker card; shortcuts wrap for narrow/200%-DPI layouts.
