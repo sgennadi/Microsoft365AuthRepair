@@ -34,9 +34,9 @@ internal sealed record TpmBitLockerSnapshot(
 
     internal static string DescribeError(string? raw) => raw?.Trim().ToUpperInvariant() switch
     {
-        "0X80090016" => "0x80090016 / NTE_BAD_KEYSET: cryptographic keyset is missing or invalid. " +
+        "0X80090016" or "80090016" or "-2146893802" => "0x80090016 / NTE_BAD_KEYSET: cryptographic keyset is missing or invalid. " +
             "Review the affected user's WAM/DPAPI and device registration. This is NOT proof of broken TPM hardware.",
-        "0X80090031" => "0x80090031 / NTE_AUTHENTICATION_IGNORED: may indicate a temporary TPM lockout. " +
+        "0X80090031" or "80090031" or "-2146893775" => "0x80090031 / NTE_AUTHENTICATION_IGNORED: may indicate a temporary TPM lockout. " +
             "Allow cooldown and review TPM state. Do not clear TPM automatically.",
         "0X80090034" => "0x80090034: a cryptographic provider error was reported. " +
             "Inspect Windows DPAPI/WAM events and account context; hardware failure is not established.",
@@ -44,6 +44,27 @@ internal sealed record TpmBitLockerSnapshot(
             "Ask IT to inspect Hello for Business and device policy; avoid changing TPM or policy blindly.",
         _ => "No recognized code selected. TPM/BitLocker state does not by itself diagnose Office sign-in."
     };
+
+    // Public diagnostic allowlist: only coarse hardware-protection states.
+    // All values are locally constrained to the fixed options below.
+    internal string ToSafeSummary() =>
+        "TpmPresent: " + Safe(TpmPresent, ["YES", "NO", "UNKNOWN"]) +
+        "; TpmVersion: " + Safe(TpmVersion, ["1.2", "2.0", "UNKNOWN"]) +
+        "; TpmReady: " + Bool(TpmReady) +
+        "; BitLockerProtection: " + Safe(OsVolumeProtection, ["ON", "OFF", "UNKNOWN"]) +
+        "; BitLockerConversion: " + Safe(OsVolumeConversion, [
+            "FULLY_DECRYPTED", "FULLY_ENCRYPTED", "ENCRYPTING", "DECRYPTING",
+            "ENCRYPTION_PAUSED", "DECRYPTION_PAUSED", "UNKNOWN"]) +
+        "; MemoryIntegrityRuntime: " + Safe(MemoryIntegrityRuntime, [
+            "RUNNING", "NOT_RUNNING", "UNKNOWN"]) +
+        "; DpapiProtectionPolicy: " + Safe(DpapiProtectionPolicy, [
+            "NOT_SET", "ZERO", "ONE", "OTHER", "UNKNOWN"]);
+
+    private static string Bool(bool? value) =>
+        value is null ? "UNKNOWN" : value.Value ? "YES" : "NO";
+
+    private static string Safe(string value, string[] allowed) =>
+        allowed.Contains(value, StringComparer.Ordinal) ? value : "UNKNOWN";
 
     internal static bool SelfTest()
     {
@@ -60,8 +81,12 @@ internal sealed record TpmBitLockerSnapshot(
             (healthy with { TpmEnabled = false }).NeedsTpmReview &&
             (healthy with { TpmReady = false }).NeedsTpmReview &&
             DescribeError("0x80090016").Contains("NOT proof", StringComparison.Ordinal) &&
+            DescribeError("-2146893802") == DescribeError("0x80090016") &&
             !DescribeError("random text").Contains("failed", StringComparison.OrdinalIgnoreCase) &&
-            !healthy.CompactSummary().Contains("Recovery", StringComparison.OrdinalIgnoreCase);
+            !healthy.CompactSummary().Contains("Recovery", StringComparison.OrdinalIgnoreCase) &&
+            !healthy.ToSafeSummary().Contains("Recovery", StringComparison.OrdinalIgnoreCase) &&
+            (healthy with { TpmVersion = "SECRET_DEVICE_NAME" }).ToSafeSummary()
+                .Contains("TpmVersion: UNKNOWN", StringComparison.Ordinal);
     }
 }
 
