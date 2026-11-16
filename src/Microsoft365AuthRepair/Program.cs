@@ -96,6 +96,8 @@ internal static class Program
                     ("Main activity panel", () => form.HasActivityJournal),
                     ("Local-only Entra key evidence", EntraKeySignals.SelfTest),
                     ("WAM result card", DiagnosticResultCard.SelfTest),
+                    ("TPM and BitLocker main card", DeviceSecurityCard.SelfTest),
+                    ("Main screen TPM link", () => form.HasDeviceSecuritySection),
                     ("What's New format", UpdateUiText.SelfTest),
                     ("Diagnostic payload", M365DiagnosticPayload.SelfTest),
                     ("Updater helper", UpdateHandoff.SelfTest),
