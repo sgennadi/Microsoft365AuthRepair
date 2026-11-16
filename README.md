@@ -1,3 +1,9 @@
+## Preview.29 — compact Advanced device-security window
+
+**Advanced device security** has a restrained, responsive WinForms layout: authorization is in one clearly labeled section; local recovery-key export and native Windows consoles are grouped as Tools & Windows settings, separately from protection controls; **Decrypt / Turn off** is isolated in a subtle Danger zone. Action buttons align with their descriptions on roomy screens and stack above them when the window is narrow or shown at 200% DPI. The footer keeps status on the left and **Close** on the right without scrolling. Exact typed phrases, administrator checks, final warnings, secret-file protections and read-only diagnostics are unchanged.
+
+[Preview.29 release notes](docs/releases/v1.0.2-preview.29.md)
+
 ## Preview.28 — direct security shortcuts
 
 The TPM & BitLocker Device Security card now puts three compact, keyboard-accessible shortcuts **above** the 14 status tiles: **View full details** (read-only), **Windows BitLocker settings** (native Windows UI), and **Advanced device security** (separate confirmation-gated window). They wrap on narrow/200%-DPI screens, remain disabled while the read-only scan is running except for details, and do not silently elevate. The Advanced action for opening TPM management uses a neutral icon because opening the console is not itself a Clear TPM. Existing admin confirmations, secrets privacy and Stable 1.0.1 remain unchanged.
