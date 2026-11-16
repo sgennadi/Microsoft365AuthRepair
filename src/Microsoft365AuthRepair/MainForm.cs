@@ -1510,7 +1510,10 @@ internal sealed class MainForm : Form
             {
                 activityJournal.Add(ActivityStep.ReadOnlyCheck, ActivityOutcome.Finished);
             }
-            mainLayout?.ScrollControlIntoView(diagnosticResult);
+            // The TPM/BitLocker card is the first result surface and should
+            // remain visible when the scan ends. Auto-scrolling to the WAM card
+            // used to move it off-screen on high-DPI/narrow displays.
+            mainLayout?.ScrollControlIntoView(deviceSecurityCard);
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
         {
