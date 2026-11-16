@@ -24,6 +24,9 @@ internal sealed record TpmBitLockerSnapshot(
     internal string WindowsRelease { get; init; } = "UNKNOWN";
     internal string AikEnrollmentError { get; init; } = "UNKNOWN";
     internal string EkCertStore { get; init; } = "UNKNOWN";
+    // Get-Tpm LockedOut is read locally only. It is deliberately absent from
+    // ToSafeSummary() and never sent to the public diagnostics gateway.
+    internal string TpmLockedOut { get; init; } = "UNKNOWN";
 
     internal bool NeedsAttestationReview =>
         AikEnrollmentError is "NOT_FOUND" or "TIMEOUT" or
@@ -35,9 +38,10 @@ internal sealed record TpmBitLockerSnapshot(
         "UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN");
 
     internal bool NeedsTpmReview =>
-        TpmPresent == "YES" &&
-        (TpmReady == false || TpmEnabled == false ||
-         TpmActivated == false || TpmOwned == false);
+        TpmLockedOut == "YES" ||
+        (TpmPresent == "YES" &&
+         (TpmReady == false || TpmEnabled == false ||
+          TpmActivated == false || TpmOwned == false));
 
     internal bool NeedsBitLockerReview =>
         OsVolumeConversion == "FULLY_ENCRYPTED" && OsVolumeProtection == "OFF";
@@ -119,6 +123,10 @@ internal sealed record TpmBitLockerSnapshot(
             (healthy with { OsVolumeProtection = "OFF" }).NeedsBitLockerReview &&
             (healthy with { TpmEnabled = false }).NeedsTpmReview &&
             (healthy with { TpmReady = false }).NeedsTpmReview &&
+            (healthy with { TpmLockedOut = "YES" }).NeedsTpmReview &&
+            !(healthy with { TpmLockedOut = "UNKNOWN" }).NeedsTpmReview &&
+            !(healthy with { TpmLockedOut = "YES" }).ToSafeSummary()
+                .Contains("TpmLockedOut", StringComparison.Ordinal) &&
             DescribeError("0x80090016").Contains("NOT proof", StringComparison.Ordinal) &&
             DescribeError("-2146893802") == DescribeError("0x80090016") &&
             DescribeError("0x80090030").Contains("NTE_DEVICE_NOT_READY", StringComparison.Ordinal) &&
@@ -520,6 +528,30 @@ internal static class TpmBitLockerProbe
         return ("UNKNOWN", "UNKNOWN");
     }
 
+    // Optional read-only supplemental probe for a state not exposed by the
+    // existing Win32_Tpm IsReady/Enabled/Owned calls. UNKNOWN is never a fault.
+    // The script never accesses TPM owner authorization or BitLocker keys.
+    internal static string ReadTpmLockout()
+    {
+        const string script =
+            "$ErrorActionPreference='Stop'; $t=Get-Tpm -ErrorAction Stop; " +
+            "if($null -eq $t){'UNKNOWN'} " +
+            "elseif($t.LockedOut -is [bool]){if($t.LockedOut){'YES'}else{'NO'}} " +
+            "else{'UNKNOWN'}";
+        try
+        {
+            var output = ExternalCommand.RunPowerShell(script, 20);
+            var status = output.StdOut.Trim().ToUpperInvariant();
+            return output.ExitCode == 0 && status is "YES" or "NO" ? status : "UNKNOWN";
+        }
+        catch (Exception ex) when (ex is IOException or TimeoutException or
+            InvalidOperationException or UnauthorizedAccessException or
+            System.Security.SecurityException or System.ComponentModel.Win32Exception)
+        {
+            return "UNKNOWN";
+        }
+    }
+
     internal static TpmBitLockerSnapshot Capture()
     {
         // Individual probes fail closed to UNKNOWN. Lack of WMI permissions is
@@ -537,6 +569,7 @@ internal static class TpmBitLockerProbe
             TpmFirmwareVersion = tpm.Firmware,
             WindowsRelease = ReadWindowsRelease(),
             AikEnrollmentError = attestation.Error,
+            TpmLockedOut = tpm.Present == "NO" ? "NOT_APPLICABLE" : ReadTpmLockout(),
             EkCertStore = tpm.EkStore == "IMPORT_INCOMPLETE"
                 ? "IMPORT_INCOMPLETE" : attestation.EkStore
         };
