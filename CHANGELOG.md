@@ -1,3 +1,15 @@
+## 1.0.2-preview.30 — 2026-11-16 — Preview
+
+1. Remove redundant top TPM & BitLocker shortcut; keep the device-security card independent of WAM/Office collapse state.
+2. Make activity-log navigation a real Show/Hide toggle with the journal expanded during a check and collapsed afterward.
+3. Replace the raw TPM/BitLocker detail textbox with four structured, read-only sections: TPM, system-drive encryption, Windows security and identity/attestation.
+4. Collect report device-security status with bounded isolated providers, reporting COMPLETE / PARTIAL / NOT_VERIFIED coverage accurately.
+5. Extend the consent-reviewed outgoing M365 event to 29 fixed safe enum signals with Secure Boot, HVCI configuration and probe coverage; no secrets or raw data.
+6. Require shared Apps Script Gateway v4 + M365 v2 capability before Send anonymously to prevent v3 invalid_evidence failures. Existing local queued reports remain valid.
+7. Extend WinForms and diagnostic privacy self-tests; Windows x64/ARM64 releases remain preview-only. Stable v1.0.1 untouched.
+
+[Preview.30 notes](docs/releases/v1.0.2-preview.30.md)
+
 ## 1.0.2-preview.29 — 2026-11-16 — Preview
 
 1. Rebuild Advanced device security as a compact, resizable, high-DPI/RTL-friendly dialog with a scrollable main area and fixed status/Close footer.
