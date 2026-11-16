@@ -137,7 +137,6 @@ internal sealed class MainForm : Form
     };
     private readonly ProgressBar progress = new() { Dock = DockStyle.Top, Height = 5, Visible = false, Style = ProgressBarStyle.Marquee };
     private readonly ActivityJournalView activityJournal = new();
-    private readonly Button cancelDiagnostic = UiTheme.CreateActionButton(string.Empty);
     private readonly System.Windows.Forms.Timer diagnosticTimer = new() { Interval = 1000 };
     private CancellationTokenSource? diagnosticCancellation;
     private DateTimeOffset diagnosticStartedUtc;
@@ -311,19 +310,14 @@ internal sealed class MainForm : Form
         banner.Controls.Add(status);
         banner.Controls.Add(diagnosticToggle);
         banner.Controls.Add(deviceProtectionLink);
-        cancelDiagnostic.Visible = false;
-        cancelDiagnostic.Margin = new Padding(9, 0, 0, 0);
-        banner.Controls.Add(cancelDiagnostic);
         root.Controls.Add(banner, 0, 6);
 
-        // Compact, always-visible live activity in the unused area below Ready.
-        // This panel contains only fixed stage labels and status categories.
+        // Device status is visible DURING Check & Diagnose, ahead of the
+        // activity journal, so the collected TPM results are not buried.
+        root.Controls.Add(deviceSecurityCard, 0, 7);
         activityJournal.Height = 188;
-        root.Controls.Add(activityJournal, 0, 7);
-        // The security card is part of the primary Check & Diagnose result,
-        // not hidden inside Smart Recommendation or the technical log.
-        root.Controls.Add(diagnosticResult, 0, 8);
-        root.Controls.Add(deviceSecurityCard, 0, 9);
+        root.Controls.Add(activityJournal, 0, 8);
+        root.Controls.Add(diagnosticResult, 0, 9);
         officeLicenseSummary.Visible = false;
         officeLicenseSummary.Margin = new Padding(4, 8, 0, 4);
         root.Controls.Add(officeLicenseSummary, 0, 10);
@@ -398,7 +392,6 @@ internal sealed class MainForm : Form
         hints.SetToolTip(repair, "Re-register Microsoft.AAD.BrokerPlugin for the selected user. No credentials or sign-in caches are deleted; apps may briefly close.");
         hints.SetToolTip(reset, "Destructive: remove Office/WAM identity and sign-in caches for the selected users. Re-authentication required; explicit confirmation.");
         hints.SetToolTip(diagnose, "Read-only check of this application's Windows account and session, NOT every profile. It does not prove Office app sign-in works.");
-        hints.SetToolTip(cancelDiagnostic, "Stop waiting for diagnostics. No credentials, TPM or WAM are modified by the check.");
         hints.SetToolTip(signInErrors, "Offline Microsoft 365 error-code guide: no report is sent and no account is changed.");
         hints.SetToolTip(diagnostics, "Generate a sanitized report, review the exact JSON and explicitly choose whether to send.");
         hints.SetToolTip(updates, "Check Stable / Preview releases and safely update with rollback.");
@@ -448,12 +441,12 @@ internal sealed class MainForm : Form
                 !diagnosticCancellation.IsCancellationRequested)
                 ShowDiagnosticProgress();
         };
-        cancelDiagnostic.Click += (_, _) =>
+        activityJournal.CancelRequested += (_, _) =>
         {
             if (diagnosticCancellation is null || diagnosticCancellation.IsCancellationRequested)
                 return;
             diagnosticCancellation.Cancel();
-            cancelDiagnostic.Enabled = false;
+            activityJournal.SetCancellationAvailable(false);
             diagnosticTimer.Stop();
             ShowStatus(UpdateUiText.T(
                 "Stopping read-only checks. No changes were made.",
@@ -484,14 +477,15 @@ internal sealed class MainForm : Form
         };
         deviceProtectionLink.LinkClicked += (_, _) =>
         {
-            if (busy || lastRawDiagnostic is null) return;
-            if (diagnosticsCollapsed) SetDiagnosticsCollapsed(false);
+            if (lastDeviceProtection is null) return;
+            if (diagnosticsCollapsed && lastRawDiagnostic is not null)
+                SetDiagnosticsCollapsed(false);
             mainLayout?.ScrollControlIntoView(deviceSecurityCard);
         };
         deviceSecurityCard.DetailsRequested += (_, _) =>
         {
-            if (busy || lastRawDiagnostic is null) return;
-            // Reuse the successful scan, do not start another TPM WMI query.
+            if (lastDeviceProtection is null) return;
+            // Inspect the current snapshot without starting any new WMI query.
             using var inspector = new TpmBitLockerDialog(lastDeviceProtection);
             inspector.ShowDialog(this);
         };
@@ -676,8 +670,7 @@ internal sealed class MainForm : Form
             "Крайняя мера: Reset Office sign-in удаляет кеш авторизации и потребует повторного входа.",
             "מוצא אחרון: איפוס Office מוחק מטמוני זהות ומחייב כניסה מחדש.");
         diagnose.Text = UpdateUiText.T("Check & Diagnose", "Проверить и объяснить", "בדוק ואבחן");
-        cancelDiagnostic.Text = UpdateUiText.T("Cancel check", "Отменить проверку", "ביטול בדיקה");
-        cancelDiagnostic.AccessibleName = cancelDiagnostic.Text;
+        activityJournal.RefreshLanguage();
         applyRecommendation.Text = UpdateUiText.T(
             "Re-register WAM (confirm first)", "Восстановить WAM (с подтверждением)",
             "תיקון WAM באישור");
@@ -904,6 +897,11 @@ internal sealed class MainForm : Form
     internal bool HasDeviceSecuritySection =>
         deviceSecurityCard.Parent == mainLayout && deviceSecurityCard.HasReadOnlyDetailsLink &&
         deviceProtectionLink.Parent is FlowLayoutPanel;
+    internal bool HasLiveDeviceSecurityAndCompactCancel =>
+        mainLayout is not null &&
+        mainLayout.GetPositionFromControl(deviceSecurityCard).Row == 7 &&
+        mainLayout.GetPositionFromControl(activityJournal).Row == 8 &&
+        activityJournal.HasCompactCancellation;
 
     private void ShowStatus(string message, UiGlyph glyph)
     {
@@ -916,11 +914,14 @@ internal sealed class MainForm : Form
         busy = isBusy;
         repair.Enabled = reset.Enabled = diagnose.Enabled = diagnostics.Enabled =
             updates.Enabled = settings.Enabled = taskStatusLink.Enabled =
-            applyRecommendation.Enabled = entraReview.Enabled = deviceProtectionLink.Enabled =
+            applyRecommendation.Enabled = entraReview.Enabled =
             signInWorks.Enabled = signInFailed.Enabled = !isBusy;
+        // Read-only device details remain accessible while checking.
+        deviceProtectionLink.Enabled = !isBusy || diagnosticCancellation is not null;
         scope.Enabled = !isBusy;
-        cancelDiagnostic.Enabled = isBusy && diagnosticCancellation is not null &&
-            !diagnosticCancellation.IsCancellationRequested;
+        activityJournal.SetCancellationAvailable(isBusy &&
+            diagnosticCancellation is not null &&
+            !diagnosticCancellation.IsCancellationRequested);
         progress.Visible = isBusy;
     }
 
@@ -1361,6 +1362,11 @@ internal sealed class MainForm : Form
         diagnosticToggle.Visible = false;
         diagnosticResult.ClearResult();
         statusBanner!.Visible = true;
+        // The TPM/BitLocker area must not remain blank while other checks run.
+        var liveDevice = TpmBitLockerSnapshot.Unknown;
+        lastDeviceProtection = liveDevice;
+        deviceSecurityCard.ShowResult(liveDevice, inProgress: true);
+        deviceProtectionLink.Visible = true;
 
         // Bound the entire UI operation. The native Windows provider may hang;
         // a later diagnostic reuses any in-flight machine query instead of
@@ -1375,7 +1381,6 @@ internal sealed class MainForm : Form
         diagnosticStartedUtc = DateTimeOffset.UtcNow;
         diagnosticCompletedCount = 0;
         diagnosticLastCompleted = string.Empty;
-        cancelDiagnostic.Visible = true;
         SetBusy(true);
         ShowDiagnosticProgress();
         diagnosticTimer.Start();
@@ -1394,6 +1399,13 @@ internal sealed class MainForm : Form
                 {
                     activityJournal.Add(section, ActivityOutcome.Started);
                     return;
+                }
+                if (update.Snapshot is not null)
+                {
+                    liveDevice = TpmBitLockerProbe.MergePart(
+                        liveDevice, update.Part, update.Snapshot);
+                    lastDeviceProtection = liveDevice;
+                    deviceSecurityCard.ShowResult(liveDevice, inProgress: true);
                 }
                 if (!recordedSections.Add(section)) return;
                 var result = update.State switch
@@ -1470,6 +1482,8 @@ internal sealed class MainForm : Form
         catch (OperationCanceledException) when (request.IsCancellationRequested)
         {
             if (IsDisposed || Disposing) return;
+            // Keep completed read-only evidence and mark unfinished values unknown.
+            deviceSecurityCard.ShowResult(liveDevice);
             activityJournal.Add(ActivityStep.ReadOnlyCheck, ActivityOutcome.Cancelled);
             ShowStatus(UpdateUiText.T(
                 "Read-only check cancelled. No Office or Windows security state was changed.",
@@ -1479,6 +1493,7 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             if (IsDisposed || Disposing) return;
+            deviceSecurityCard.ShowResult(liveDevice);
             activityJournal.Add(ActivityStep.ReadOnlyCheck, ActivityOutcome.Failed);
             lastRawDiagnostic = null;
             lastOfficeLicense = null;
@@ -1503,7 +1518,7 @@ internal sealed class MainForm : Form
             if (ReferenceEquals(diagnosticCancellation, request))
                 diagnosticCancellation = null;
             diagnosticTimer.Stop();
-            cancelDiagnostic.Visible = false;
+            activityJournal.SetCancellationAvailable(false);
             if (!IsDisposed && !Disposing) SetBusy(false);
         }
     }
