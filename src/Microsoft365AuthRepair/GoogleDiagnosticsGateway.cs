@@ -109,7 +109,19 @@ internal static class M365DiagnosticPayload
             ["memory_integrity_runtime"] = Allowed("MemoryIntegrityRuntime",
                 ["RUNNING", "NOT_RUNNING", "UNKNOWN"]),
             ["dpapi_protection_policy"] = Allowed("DpapiProtectionPolicy",
-                ["NOT_SET", "ZERO", "ONE", "OTHER", "UNKNOWN"])
+                ["NOT_SET", "ZERO", "ONE", "OTHER", "UNKNOWN"]),
+            ["dpapi_domain_joined"] = Allowed("DpapiDomainJoined", ["YES", "NO", "UNKNOWN"]),
+            ["dpapi_writable_dc"] = Allowed("DpapiWritableDc", [
+                "AVAILABLE", "NOT_FOUND", "UNKNOWN", "NOT_APPLICABLE"]),
+            ["tpm_aik_enrollment"] = Allowed("TpmAikEnrollment", [
+                "NOT_FOUND", "TIMEOUT", "INVALID_PUBLIC_KEY", "SERVER_ERROR",
+                "OTHER_ERROR", "NONE_RECORDED", "UNKNOWN"]),
+            ["tpm_ek_cert_store"] = Allowed("TpmEkCertStore", [
+                "PRESENT", "EMPTY", "NOT_FOUND", "UNKNOWN"]),
+            ["tpm_manufacturer_class"] = Allowed("TpmManufacturerClass", [
+                "STM", "MSFT", "OTHER", "UNKNOWN"]),
+            ["windows_tpm_release"] = Allowed("WindowsTpmRelease", [
+                "WIN11_24H2", "WIN11_25H2", "WIN11_NEWER", "OTHER", "UNKNOWN"])
         };
     }
 
@@ -190,6 +202,10 @@ internal static class M365DiagnosticPayload
                 " TpmPresent: YES; TpmVersion: 2.0; TpmReady: YES;" +
                 " BitLockerProtection: ON; BitLockerConversion: FULLY_ENCRYPTED;" +
                 " MemoryIntegrityRuntime: RUNNING; DpapiProtectionPolicy: NOT_SET;" +
+                " DpapiDomainJoined: YES; DpapiWritableDc: AVAILABLE;" +
+                " TpmAikEnrollment: NOT_FOUND; TpmEkCertStore: NOT_FOUND;" +
+                " TpmManufacturerClass: STM; WindowsTpmRelease: WIN11_24H2;" +
+                " TPMFirmwareVersion: secret.device.build;" +
                 " BitLockerRecoveryKey: 111111-222222-333333-444444-555555-666666;" +
                 " TpmOwnerAuth: secret-password; OfficeKmsHost: internal.example;" +
                 " OfficeKey: XJ2XN-FW8RK-P4HMP-DKDBV-GCVGB"
@@ -212,6 +228,14 @@ internal static class M365DiagnosticPayload
             signals.GetProperty("bitlocker_os_conversion").GetString() == "FULLY_ENCRYPTED" &&
             signals.GetProperty("memory_integrity_runtime").GetString() == "RUNNING" &&
             signals.GetProperty("dpapi_protection_policy").GetString() == "NOT_SET" &&
+            signals.GetProperty("dpapi_domain_joined").GetString() == "YES" &&
+            signals.GetProperty("dpapi_writable_dc").GetString() == "AVAILABLE" &&
+            signals.GetProperty("tpm_aik_enrollment").GetString() == "NOT_FOUND" &&
+            signals.GetProperty("tpm_ek_cert_store").GetString() == "NOT_FOUND" &&
+            signals.GetProperty("tpm_manufacturer_class").GetString() == "STM" &&
+            signals.GetProperty("windows_tpm_release").GetString() == "WIN11_24H2" &&
+            !outgoing.Contains("secret.device.build", StringComparison.Ordinal) &&
+            !outgoing.Contains("TPMFirmwareVersion", StringComparison.Ordinal) &&
             !outgoing.Contains("111111-222222-", StringComparison.Ordinal) &&
             !outgoing.Contains("secret-password", StringComparison.Ordinal) &&
             !outgoing.Contains("BitLockerRecoveryKey", StringComparison.Ordinal) &&
