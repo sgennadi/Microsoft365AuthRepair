@@ -738,7 +738,7 @@ internal sealed class MainForm : Form
         }
         var ownSession = !elevated || desktopUser.SameAsProcess;
         lastSmartDecision = SmartRepairEngine.Evaluate(report, lastOfficeLicense,
-            lastPreflight, ownSession);
+            lastPreflight, ownSession, lastDeviceProtection);
         smartHeading.Text = UpdateUiText.T(
             "SMART RECOMMENDATION: ", "РЕКОМЕНДАЦИЯ: ", "המלצה חכמה: ") +
             lastSmartDecision.Heading;
