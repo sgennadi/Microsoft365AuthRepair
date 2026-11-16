@@ -28,7 +28,7 @@ internal static class ReadOnlyDiagnosticScan
     private static readonly object Sync = new();
     private static Task<string?>? wamInFlight;
     private static Task<OfficeResult?>? officeInFlight;
-    private static Task<TpmBitLockerSnapshot?>? tpmInFlight;
+
 
     // A timed-out WMI query may remain in a native Windows provider. Reuse
     // the pending task rather than endlessly spawning additional queries.
@@ -66,9 +66,6 @@ internal static class ReadOnlyDiagnosticScan
             return new OfficeResult(license, activation);
         });
 
-    private static Task<TpmBitLockerSnapshot?> StartTpm() =>
-        SingleFlight(ref tpmInFlight, TpmBitLockerProbe.Capture);
-
     private static T? Successful<T>(Task<T?> task) where T : class =>
         task.IsCompletedSuccessfully ? task.Result : null;
 
@@ -87,6 +84,7 @@ internal static class ReadOnlyDiagnosticScan
         bool currentDesktopUser,
         IProgress<DiagnosticSectionProgress>? progress,
         CancellationToken cancellationToken = default,
+        IProgress<DeviceProbeProgress>? deviceProgress = null,
         TimeSpan? maxWait = null)
     {
         var wait = maxWait ?? TimeSpan.FromSeconds(MaxWaitSeconds);
@@ -105,11 +103,13 @@ internal static class ReadOnlyDiagnosticScan
                 sink.Report(new(n, TotalSections, section, verified));
         }
 
-        // Start independent components concurrently. A slow Office licensing
-        // provider must not hold up WAM or BitLocker results.
+        // Start independent components concurrently. TPM, BitLocker, Device
+        // Guard and RWDC are isolated in individually timed subprocesses, so
+        // one blocked WMI provider does not consume the global 60-second budget.
         var wam = StartWam();
         var office = StartOffice(currentDesktopUser);
-        var tpm = StartTpm();
+        var tpm = IsolatedDeviceProbe.CaptureAsync(deviceProgress,
+            cancellationToken);
         var network = Task.Run(async () =>
         {
             try
@@ -122,7 +122,8 @@ internal static class ReadOnlyDiagnosticScan
         var completion = Task.WhenAll(
             Track(wam, ok => Finished("WAM_ENTRA", ok)),
             Track(office, ok => Finished("OFFICE_LICENSE", ok)),
-            Track(tpm, ok => Finished("TPM_BITLOCKER", ok)),
+            Track(tpm, ok => Finished("TPM_BITLOCKER",
+                ok && tpm.Result.UnverifiedParts.Length == 0)),
             Track(network, ok => Finished("NETWORK_PREFLIGHT", ok)));
 
         bool deadlineReached = false;
@@ -139,12 +140,13 @@ internal static class ReadOnlyDiagnosticScan
 
         var wamReport = Successful(wam);
         var officeInfo = Successful(office);
-        var deviceInfo = Successful(tpm);
+        var deviceInfo = tpm.IsCompletedSuccessfully ? tpm.Result : null;
         var networkInfo = Successful(network);
         var missing = new List<string>();
         if (wamReport is null) missing.Add("WAM_ENTRA");
         if (officeInfo is null) missing.Add("OFFICE_LICENSE");
         if (deviceInfo is null) missing.Add("TPM_BITLOCKER");
+        else missing.AddRange(deviceInfo.UnverifiedParts);
         if (networkInfo is null) missing.Add("NETWORK_PREFLIGHT");
 
         // Never pretend that missing dsregcmd or a failed WMI query confirms
@@ -153,7 +155,7 @@ internal static class ReadOnlyDiagnosticScan
             "DeviceAuthStatus: UNKNOWN\nAzureAdPrt: UNKNOWN\nWamDefaultSet: UNKNOWN";
 
         return new(wamReport, officeInfo?.License, officeInfo?.Activation,
-            networkInfo, deviceInfo ?? TpmBitLockerSnapshot.Unknown,
+            networkInfo, deviceInfo?.Snapshot ?? TpmBitLockerSnapshot.Unknown,
             missing.ToArray(), deadlineReached);
     }
 
@@ -166,6 +168,7 @@ internal static class ReadOnlyDiagnosticScan
             null, null, null, TpmBitLockerSnapshot.Unknown,
             ["OFFICE_LICENSE"], true);
         return Successful(good) == "OK" && Successful(pending.Task) is null &&
+            IsolatedDeviceProbe.SelfTest() &&
             TotalSections == 4 && MaxWaitSeconds == 60 &&
             source.ReachedDeadline && source.UnverifiedSections.Length == 1 &&
             source.WamReport.Contains("UNKNOWN", StringComparison.Ordinal);
