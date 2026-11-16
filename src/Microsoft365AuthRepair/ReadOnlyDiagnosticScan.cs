@@ -15,7 +15,7 @@ internal sealed record ReadOnlyDiagnosticResult(
     string[] UnverifiedSections,
     bool ReachedDeadline);
 
-internal sealed record DiagnosticSectionProgress(int Completed, int Total, string LastCompleted);
+internal sealed record DiagnosticSectionProgress(int Completed, int Total, string LastCompleted, bool Verified);
 
 internal static class ReadOnlyDiagnosticScan
 {
@@ -72,11 +72,14 @@ internal static class ReadOnlyDiagnosticScan
     private static T? Successful<T>(Task<T?> task) where T : class =>
         task.IsCompletedSuccessfully ? task.Result : null;
 
-    private static Task Track(Task task, Action completed)
+    private static Task Track<T>(Task<T?> task, Action<bool> completed)
+        where T : class
     {
-        // ContinueWith schedules a tiny progress callback even if a probe
-        // faults, is cancelled, or completes after the time budget.
-        return task.ContinueWith(_ => completed(), CancellationToken.None,
+        // Never confuse a completed but failed provider with verified data.
+        // Result is only inspected on a successfully completed Task.
+        return task.ContinueWith(t =>
+            completed(t.IsCompletedSuccessfully && t.Result is not null),
+            CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
@@ -95,11 +98,11 @@ internal static class ReadOnlyDiagnosticScan
         // window for the lifetime of that provider query.
         var progressWeak = progress is null ? null :
             new WeakReference<IProgress<DiagnosticSectionProgress>>(progress);
-        void Finished(string section)
+        void Finished(string section, bool verified)
         {
             int n = Interlocked.Increment(ref completed);
             if (progressWeak?.TryGetTarget(out var sink) == true)
-                sink.Report(new(n, TotalSections, section));
+                sink.Report(new(n, TotalSections, section, verified));
         }
 
         // Start independent components concurrently. A slow Office licensing
@@ -117,10 +120,10 @@ internal static class ReadOnlyDiagnosticScan
             catch (Exception ex) when (ex is not OutOfMemoryException) { return null; }
         });
         var completion = Task.WhenAll(
-            Track(wam, () => Finished("WAM_ENTRA")),
-            Track(office, () => Finished("OFFICE_LICENSE")),
-            Track(tpm, () => Finished("TPM_BITLOCKER")),
-            Track(network, () => Finished("NETWORK_PREFLIGHT")));
+            Track(wam, ok => Finished("WAM_ENTRA", ok)),
+            Track(office, ok => Finished("OFFICE_LICENSE", ok)),
+            Track(tpm, ok => Finished("TPM_BITLOCKER", ok)),
+            Track(network, ok => Finished("NETWORK_PREFLIGHT", ok)));
 
         bool deadlineReached = false;
         try
