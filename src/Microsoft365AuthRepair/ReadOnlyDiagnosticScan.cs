@@ -166,7 +166,13 @@ internal static class ReadOnlyDiagnosticScan
         var source = new ReadOnlyDiagnosticResult("BrokerPlugin: UNKNOWN",
             null, null, null, TpmBitLockerSnapshot.Unknown,
             ["OFFICE_LICENSE"], true);
+        var partialTpm = new DeviceProbeProgress("TPM_WMI", "FINISHED",
+            TpmBitLockerSnapshot.Unknown with { TpmPresent = "YES" });
+        var merged = TpmBitLockerProbe.MergePart(
+            TpmBitLockerSnapshot.Unknown, partialTpm.Part, partialTpm.Snapshot!);
         return Successful(good) == "OK" && Successful(pending.Task) is null &&
+            partialTpm.State == "FINISHED" && merged.TpmPresent == "YES" &&
+            merged.OsVolumeProtection == "UNKNOWN" &&
             IsolatedDeviceProbe.SelfTest() &&
             TotalSections == 4 && MaxWaitSeconds == 60 &&
             source.ReachedDeadline && source.UnverifiedSections.Length == 1 &&
