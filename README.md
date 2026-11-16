@@ -1,3 +1,7 @@
+## Preview.20 — v1.0.2-preview.20 (test only)
+
+This preview extends the existing read-only TPM/BitLocker inspector with local TPM **lockout state** and adds **Entra device-key signing/recovery** and **Windows Hello enrollment** indicators in Check & Diagnose. A failed KeySignTest or AadRecoveryEnabled=YES directs IT to device-trust review instead of a blind WAM reset; KeySignTest requires elevation and absence is **UNKNOWN**, not failure. No key IDs, TPM owner data, Windows Hello secrets or TPM lockout state are uploaded in anonymous reports. [Preview.20 notes](docs/releases/v1.0.2-preview.20.md).
+
 ## Preview.19 — v1.0.2-preview.19 (test only)
 
 TPM & BitLocker read-only diagnostics are available from **Check & Diagnose → TPM & BitLocker details**. Inspect TPM readiness, system-drive encryption/protection, Memory Integrity, DPAPI policy, writable DC discovery and existing AIK enrollment/EK provisioning status. The inspector explains `0x80090016`, `0x80090034`, `0x80090030`, `0x80070490` (NOT_FOUND) and `0x800705B4` (timeout) as distinct issues.
