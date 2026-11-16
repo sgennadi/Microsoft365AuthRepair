@@ -20,13 +20,17 @@ internal static class IsolatedDeviceProbe
     private sealed record Wire(string Part, TpmBitLockerSnapshot Snapshot,
         string TpmManufacturer, string TpmFirmwareVersion,
         string WindowsRelease, string AikEnrollmentError, string EkCertStore,
-        string TpmLockedOut);
+        string TpmLockedOut,
+        string SecureBootState, string FirmwareType,
+        string VirtualMachineGuest, string VirtualMachinePlatform);
 
     private static Wire Pack(string part, TpmBitLockerSnapshot snapshot) =>
         new(part, snapshot, snapshot.TpmManufacturer,
             snapshot.TpmFirmwareVersion, snapshot.WindowsRelease,
             snapshot.AikEnrollmentError, snapshot.EkCertStore,
-            snapshot.TpmLockedOut);
+            snapshot.TpmLockedOut, snapshot.SecureBootState,
+            snapshot.FirmwareType, snapshot.VirtualMachineGuest,
+            snapshot.VirtualMachinePlatform);
 
     private static string Allowed(string? value, params string[] allowed) =>
         value is not null && allowed.Contains(value, StringComparer.Ordinal)
@@ -82,7 +86,17 @@ internal static class IsolatedDeviceProbe
                 EkCertStore = Allowed(wire.EkCertStore,
                     "IMPORT_INCOMPLETE", "UNKNOWN"),
                 TpmLockedOut = Allowed(wire.TpmLockedOut,
-                    "YES", "NO", "UNKNOWN")
+                    "YES", "NO", "UNKNOWN"),
+                SecureBootState = Allowed(wire.SecureBootState,
+                    "ON", "OFF", "UNSUPPORTED", "UNKNOWN"),
+                FirmwareType = Allowed(wire.FirmwareType,
+                    "UEFI", "BIOS", "UNKNOWN"),
+                VirtualMachineGuest = Allowed(wire.VirtualMachineGuest,
+                    "YES", "NO", "UNKNOWN"),
+                VirtualMachinePlatform = Allowed(wire.VirtualMachinePlatform,
+                    "VMWARE", "HYPER_V", "VIRTUALBOX", "KVM_QEMU",
+                    "XEN", "PARALLELS", "AWS_EC2", "GOOGLE_CLOUD",
+                    "NUTANIX", "OTHER_VM", "NONE", "UNKNOWN")
             };
             // A child is our own signed-by-release app. Nonetheless, validate
             // the narrow set of fields that can enter the parent process.
@@ -110,6 +124,15 @@ internal static class IsolatedDeviceProbe
                     "NOT_FOUND" or "UNKNOWN" or "NOT_APPLICABLE" => state,
                 "TPM_LOCKOUT" when state.TpmLockedOut is "YES" or "NO" or
                     "UNKNOWN" => state,
+                "SECURE_BOOT" when state.SecureBootState is "ON" or
+                    "OFF" or "UNSUPPORTED" or "UNKNOWN" &&
+                    state.FirmwareType is "UEFI" or "BIOS" or "UNKNOWN" => state,
+                "VIRTUAL_MACHINE" when state.VirtualMachineGuest is
+                    "YES" or "NO" or "UNKNOWN" &&
+                    state.VirtualMachinePlatform is "VMWARE" or "HYPER_V" or
+                        "VIRTUALBOX" or "KVM_QEMU" or "XEN" or
+                        "PARALLELS" or "AWS_EC2" or "GOOGLE_CLOUD" or
+                        "NUTANIX" or "OTHER_VM" or "NONE" or "UNKNOWN" => state,
                 "DPAPI_ATTESTATION" when state.DpapiProtectionPolicy is
                     "NOT_SET" or "ZERO" or "ONE" or "OTHER" or "UNKNOWN" &&
                     state.WindowsRelease is "WIN11_24H2" or "WIN11_25H2" or
@@ -240,13 +263,29 @@ internal static class IsolatedDeviceProbe
         var probe = Pack("TPM_LOCKOUT",
             unknown with { TpmLockedOut = "YES" });
         var parsed = Parse("TPM_LOCKOUT", JsonSerializer.Serialize(probe));
-        return TpmBitLockerProbe.PartNames.Length == 6 &&
-            TpmBitLockerProbe.PartNames.Distinct().Count() == 6 &&
+        var virtualGuest = Pack("VIRTUAL_MACHINE", unknown with {
+            VirtualMachineGuest = "YES", VirtualMachinePlatform = "KVM_QEMU"
+        });
+        var virtualResult = Parse("VIRTUAL_MACHINE",
+            JsonSerializer.Serialize(virtualGuest));
+        var secureBoot = Pack("SECURE_BOOT", unknown with {
+            SecureBootState = "ON", FirmwareType = "UEFI"
+        });
+        var secureResult = Parse("SECURE_BOOT", JsonSerializer.Serialize(secureBoot));
+        return TpmBitLockerProbe.PartNames.Length == 8 &&
+            TpmBitLockerProbe.PartNames.Distinct().Count() == 8 &&
             PartTimeoutSeconds >= 5 && PartTimeoutSeconds <= 15 &&
             MaxParallel >= 1 && MaxParallel <= 3 &&
             invalid is null && parsed?.TpmLockedOut == "YES" &&
             Parse("TPM_WMI", JsonSerializer.Serialize(probe)) is null &&
             !TpmBitLockerProbe.HasPartEvidence("TPM_WMI", unknown) &&
-            TpmBitLockerProbe.HasPartEvidence("TPM_LOCKOUT", parsed);
+            TpmBitLockerProbe.HasPartEvidence("TPM_LOCKOUT", parsed) &&
+            virtualResult?.VirtualMachinePlatform == "KVM_QEMU" &&
+            virtualResult.VirtualMachineGuest == "YES" &&
+            secureResult?.SecureBootState == "ON" &&
+            TpmBitLockerProbe.HasPartEvidence("SECURE_BOOT", secureResult) &&
+            TpmBitLockerProbe.HasPartEvidence("VIRTUAL_MACHINE", virtualResult) &&
+            !TpmBitLockerProbe.HasPartEvidence("VIRTUAL_MACHINE", unknown) &&
+            !TpmBitLockerProbe.HasPartEvidence("SECURE_BOOT", unknown);
     }
 }
