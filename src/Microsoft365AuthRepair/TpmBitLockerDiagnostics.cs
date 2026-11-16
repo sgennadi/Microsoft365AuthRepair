@@ -169,7 +169,7 @@ internal sealed record TpmBitLockerSnapshot(
             TpmBitLockerProbe.SystemVolumeQuery("c:\\", true) ==
                 "SELECT DriveLetter, ProtectionStatus FROM Win32_EncryptableVolume WHERE DriveLetter = 'C:'" &&
             TpmBitLockerProbe.SystemVolumeQuery("D:", false) ==
-                "SELECT DriveLetter FROM Win32_EncryptableVolume WHERE DriveLetter = 'D:'" &&
+                "SELECT DriveLetter, ConversionStatus FROM Win32_EncryptableVolume WHERE DriveLetter = 'D:'" &&
             TpmBitLockerProbe.SystemVolumeQuery("C:' OR '1'='1", true) is null &&
             TpmBitLockerProbe.SystemVolumeQuery("Ж:", true) is null &&
             PlatformSecurityProbe.SelfTest() &&
@@ -385,7 +385,7 @@ internal static class TpmBitLockerProbe
         var letter = char.ToUpperInvariant(drive[0]);
         return protection
             ? $"SELECT DriveLetter, ProtectionStatus FROM Win32_EncryptableVolume WHERE DriveLetter = '{letter}:'"
-            : $"SELECT DriveLetter FROM Win32_EncryptableVolume WHERE DriveLetter = '{letter}:'";
+            : $"SELECT DriveLetter, ConversionStatus FROM Win32_EncryptableVolume WHERE DriveLetter = '{letter}:'";
     }
 
     private static string? SystemVolumeDrive()
@@ -424,8 +424,9 @@ internal static class TpmBitLockerProbe
         return "UNKNOWN";
     }
 
-    // GetConversionStatus can stall even when ProtectionStatus is available.
-    // Run it independently with the same OS-only filter and 10s child limit.
+    // Prefer the read-only ConversionStatus WMI property, which does not
+    // require the administrator-only method. If property data is unavailable,
+    // try GetConversionStatus within the independent 10s bounded process.
     private static string ReadSystemVolumeConversion()
     {
         var drive = SystemVolumeDrive();
@@ -442,6 +443,17 @@ internal static class TpmBitLockerProbe
                 {
                     if (!string.Equals(item["DriveLetter"] as string, drive,
                         StringComparison.OrdinalIgnoreCase)) continue;
+
+                    // Microsoft exposes ConversionStatus as a read-only WMI
+                    // property. Querying it does not need the administrator-
+                    // only GetConversionStatus method. This is a point-in-time
+                    // snapshot, not proof that encryption cannot change.
+                    var cached = ConversionState(item["ConversionStatus"]);
+                    if (cached != "UNKNOWN") return cached;
+
+                    // On providers without a usable property, try the live
+                    // read-only method. It may require admin rights; if it
+                    // fails or times out, never guess the encryption state.
                     using var input = item.GetMethodParameters("GetConversionStatus");
                     if (input is not null) input["PrecisionFactor"] = 0u;
                     using var output = item.InvokeMethod(
