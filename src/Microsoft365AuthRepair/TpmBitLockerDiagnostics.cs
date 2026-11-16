@@ -92,7 +92,7 @@ internal sealed record TpmBitLockerSnapshot(
             "NOT_FOUND", "TIMEOUT", "INVALID_PUBLIC_KEY", "SERVER_ERROR",
             "OTHER_ERROR", "NONE_RECORDED", "UNKNOWN"]) +
         "; TpmEkCertStore: " + Safe(EkCertStore, [
-            "PRESENT", "EMPTY", "NOT_FOUND", "UNKNOWN"]) +
+            "IMPORT_INCOMPLETE", "UNKNOWN"]) +
         "; TpmManufacturerClass: " + Safe(TpmManufacturer, [
             "STM", "MSFT", "OTHER", "UNKNOWN"]) +
         "; WindowsTpmRelease: " + Safe(WindowsRelease, [
@@ -290,9 +290,9 @@ internal static class TpmBitLockerProbe
                         {
                             uint flags = Convert.ToUInt32(state["Information"]);
                             if ((flags & 0x00040000u) != 0u)
-                                ekStatus = "NOT_FOUND";
+                                ekStatus = "IMPORT_INCOMPLETE";
                             // An unset bit is not proof of EK certificate
-                            // validity or attestation success.
+                            // validity, a manufacturer EK-certificate chain, or attestation success.
                         }
                     }
                     catch (Exception ex) when (WmiAccess(ex) ||
@@ -527,7 +527,8 @@ internal static class TpmBitLockerProbe
             TpmFirmwareVersion = tpm.Firmware,
             WindowsRelease = ReadWindowsRelease(),
             AikEnrollmentError = attestation.Error,
-            EkCertStore = tpm.EkStore == "NOT_FOUND" ? "NOT_FOUND" : attestation.EkStore
+            EkCertStore = tpm.EkStore == "IMPORT_INCOMPLETE"
+                ? "IMPORT_INCOMPLETE" : attestation.EkStore
         };
     }
 }
