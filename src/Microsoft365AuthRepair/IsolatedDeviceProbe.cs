@@ -179,8 +179,11 @@ internal static class IsolatedDeviceProbe
                 }
                 finally { gate.Release(); }
             }
+            // Process.Start can itself stall under enterprise application
+            // control. Never execute child launches on the WinForms thread.
             var all = await Task.WhenAll(TpmBitLockerProbe.PartNames
-                .Select(One)).ConfigureAwait(false);
+                .Select(part => Task.Run(() => One(part), cancellationToken)))
+                .ConfigureAwait(false);
             var result = TpmBitLockerSnapshot.Unknown;
             var unknown = new List<string>();
             foreach (var item in all)
