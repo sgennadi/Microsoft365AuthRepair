@@ -136,6 +136,10 @@ jobs:
             }
           }
           Write-Host 'Invalid worker requests were rejected without running any repair.'
+          # Internal device-probe argument allowlist is read-only and closed
+          # for arbitrary commands. No TPM changes happen during this test.
+          $invalidProbe = Start-Process -FilePath $exe -ArgumentList '--read-only-device-probe INVALID' -PassThru -Wait
+          if ($invalidProbe.ExitCode -ne 2) { throw 'Unrecognized device-probe part accepted.' }
       - name: Upload verified build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -203,7 +207,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj | head -1)"
-          test "$version" = "1.0.2-preview.21"
+          test "$version" = "1.0.2-preview.22"
           tag="v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag already exists; refusing to overwrite a published preview."
@@ -215,5 +219,5 @@ jobs:
             release-assets/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Microsoft 365 Auth Repair $version (Preview)" \
-            --notes-file docs/releases/v1.0.2-preview.21.md \
+            --notes-file docs/releases/v1.0.2-preview.22.md \
             --prerelease
