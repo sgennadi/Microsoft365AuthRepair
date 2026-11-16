@@ -166,9 +166,9 @@ internal sealed class DiagnosticsCenter : Form
         collecting = true;
         generate.Enabled = load.Enabled = open.Enabled = repairLogs.Enabled = false;
         status.Text = UpdateUiText.T(
-            "Collecting Entra/WAM and anonymous Office license signals... Nothing is uploaded.",
-            "Собираю Entra/WAM и обезличенные признаки лицензирования Office. Ничего не отправляется.",
-            "אוסף נתוני WAM ורישוי Office ללא מידע אישי. אין שליחה ברשת.");
+            "Collecting Entra/WAM, Office and TPM/BitLocker signals locally. Nothing is uploaded.",
+            "Собираю Entra/WAM, Office и TPM/BitLocker локально. Ничего не отправляется.",
+            "איסוף מקומי של WAM, Office ו-TPM/BitLocker. אין שליחה ברשת.");
         try
         {
             // AppX and dsregcmd can be slow. Keep the UI responsive.
@@ -190,7 +190,23 @@ internal sealed class DiagnosticsCenter : Form
                     // exception message, stack or paths leave this process.
                     office = OfficeDiagnosticEvidence.Unknown;
                 }
-                return wam + "; " + office.ToSafeSummary();
+                TpmBitLockerSnapshot device;
+                try
+                {
+                    device = TpmBitLockerProbe.Capture();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                    or InvalidOperationException or System.Management.ManagementException
+                    or System.Runtime.InteropServices.COMException
+                    or System.Security.SecurityException or PlatformNotSupportedException
+                    or System.ComponentModel.Win32Exception)
+                {
+                    device = TpmBitLockerSnapshot.Unknown;
+                }
+                // This remains a local review artifact. Only fixed enum tokens
+                // survive M365DiagnosticPayload.Prepare() before transport.
+                return wam + "; " + office.ToSafeSummary() +
+                    "; " + device.ToSafeSummary();
             });
             if (IsDisposed || Disposing) return;
             var capture = JsonSerializer.Serialize(new
