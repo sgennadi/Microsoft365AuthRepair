@@ -1176,6 +1176,11 @@ internal sealed class MainForm : Form
         }
 
         // Capture WinForms checkbox state on UI thread before Task.Run.
+        // Repair invalidates the previous device snapshot. Never show a
+        // stale green TPM or BitLocker status after changing sign-in state.
+        lastDeviceProtection = null;
+        deviceSecurityCard.ClearResult();
+        deviceProtectionLink.Visible = false;
         lastRawDiagnostic = null;
         lastOfficeLicense = null;
         lastOfficeActivation = null;
