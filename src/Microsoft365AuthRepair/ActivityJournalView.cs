@@ -11,7 +11,8 @@ internal enum ActivityStep
 {
     Ready, ReadOnlyCheck, WamEntra, OfficeLicensing, TpmBitLocker,
     NetworkPreflight, TpmWmi, BitLockerWmi, DeviceGuardWmi,
-    DomainDc, TpmLockout, DpapiAttestation, Preflight,
+    DomainDc, TpmLockout, DpapiAttestation, SecureBoot, VirtualMachine,
+    Preflight,
     WamRegistration, OfficeReset, CredentialCleanup, RegistryCleanup,
     CacheCleanup, BrokerVerification, UserTaskScheduling
 }
@@ -122,6 +123,9 @@ internal sealed class ActivityJournalView : TableLayoutPanel
         ActivityStep.TpmLockout => UpdateUiText.T("TPM lockout",
             "Блокировка TPM", "נעילת TPM"),
         ActivityStep.DpapiAttestation => "DPAPI / AIK",
+        ActivityStep.SecureBoot => "Secure Boot / UEFI",
+        ActivityStep.VirtualMachine => UpdateUiText.T("Virtual machine detection",
+            "Определение виртуальной машины", "זיהוי מכונה וירטואלית"),
         ActivityStep.NetworkPreflight => UpdateUiText.T("Network / preflight",
             "Сеть / предварительная проверка", "רשת / בדיקה מקדימה"),
         ActivityStep.Preflight => UpdateUiText.T("Safety preflight",
@@ -212,11 +216,13 @@ internal sealed class ActivityJournalView : TableLayoutPanel
         view.Add(ActivityStep.TpmBitLocker, ActivityOutcome.NotVerified);
         view.Add(ActivityStep.TpmWmi, ActivityOutcome.TimeLimit);
         view.Add(ActivityStep.BitLockerWmi, ActivityOutcome.Finished);
+        view.Add(ActivityStep.SecureBoot, ActivityOutcome.Finished);
+        view.Add(ActivityStep.VirtualMachine, ActivityOutcome.NotVerified);
         return view.HasCopyControl && view.CopyText.Contains("WAM / Entra",
             StringComparison.Ordinal) &&
             view.CopyText.Contains("TPM / BitLocker", StringComparison.Ordinal) &&
             !view.CopyText.Contains("TenantId", StringComparison.OrdinalIgnoreCase) &&
             !view.CopyText.Contains("UserSid", StringComparison.OrdinalIgnoreCase) &&
-            view.entries.Count == 6;
+            view.entries.Count == 8;
     }
 }
