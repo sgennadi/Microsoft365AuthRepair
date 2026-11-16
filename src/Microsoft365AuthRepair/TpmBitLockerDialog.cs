@@ -28,6 +28,12 @@ internal sealed class TpmBitLockerDialog : Form
         UpdateUiText.T("Refresh", "Обновить", "רענן"), primary: true);
     private readonly Button close = UiTheme.CreateActionButton(
         UpdateUiText.T("Close", "Закрыть", "סגור"));
+    private readonly LinkLabel advanced = new()
+    {
+        AutoSize = true, TabStop = true,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(16, 16, 12, 8)
+    };
     private bool running;
 
     internal TpmBitLockerDialog(TpmBitLockerSnapshot? initial = null)
@@ -58,8 +64,8 @@ internal sealed class TpmBitLockerDialog : Form
         heading.Text = UpdateUiText.T("Device protection · read-only",
             "Защита устройства · только чтение", "הגנת מכשיר · קריאה בלבד");
         safety.Text = UpdateUiText.T(
-            "Office WAM, DPAPI and Autopilot TPM attestation are different checks. Never clear TPM, delete BrokerPlugin/NGC or disable BitLocker automatically. Recovery keys and protector IDs are never read. UNKNOWN can mean access is restricted.",
-            "WAM, DPAPI и TPM Attestation — разные проверки. Программа не очищает TPM, не удаляет BrokerPlugin/NGC и не отключает BitLocker. Ключи восстановления не читаются. UNKNOWN может означать недостаточно прав.",
+            "Office WAM, DPAPI and TPM attestation are separate checks. This view is read-only and never reads recovery keys. Optional administrator-only device actions are separately confirmed in Advanced. UNKNOWN may mean restricted access.",
+            "WAM, DPAPI и TPM Attestation — разные проверки. Это окно только для чтения и не получает recovery keys. Отдельные действия администратора в Advanced требуют подтверждения. UNKNOWN может означать ограниченные права.",
             "אין ניקוי TPM, ביטול BitLocker או מחיקת נתוני כניסה. מפתחות שחזור אינם נקראים. UNKNOWN עשוי להעיד על חוסר הרשאות.");
         status.Text = UpdateUiText.T("No device snapshot loaded.",
             "Данные устройства ещё не считаны.", "נתוני המכשיר טרם נטענו.");
@@ -93,6 +99,10 @@ internal sealed class TpmBitLockerDialog : Form
         };
         footer.Controls.Add(close);
         footer.Controls.Add(refresh);
+        advanced.Text = UpdateUiText.T("Advanced device security",
+            "Расширенные операции защиты", "אבטחת מכשיר מתקדמת");
+        advanced.AccessibleName = advanced.Text;
+        footer.Controls.Add(advanced);
         root.Controls.Add(footer, 0, 6);
         Controls.Add(ResponsiveLayout.Center(this, root, 1170));
         root.SizeChanged += (_, _) =>
@@ -112,6 +122,12 @@ internal sealed class TpmBitLockerDialog : Form
         AcceptButton = refresh;
         CancelButton = close;
         close.Click += (_, _) => Close();
+        advanced.LinkClicked += (_, _) =>
+        {
+            if (running) return;
+            using var window = new DeviceSecurityAdvancedForm();
+            window.ShowDialog(this);
+        };
         refresh.Click += async (_, _) => await RefreshAsync();
         errorCode.SelectedIndexChanged += (_, _) => DescribeSelectedCode();
         DescribeSelectedCode();
@@ -251,5 +267,7 @@ internal sealed class TpmBitLockerDialog : Form
     internal bool SelfTest() =>
         errorCode.Items.Count == 9 &&
         details.ReadOnly && !string.IsNullOrWhiteSpace(safety.Text) &&
+        advanced.Parent is FlowLayoutPanel &&
+        advanced.TabStop && advanced.Text.Length > 8 &&
         UiTheme.VerifyButtons(this, 2);
 }
