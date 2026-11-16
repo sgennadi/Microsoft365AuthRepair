@@ -1,3 +1,13 @@
+## 1.0.2-preview.23 — 2026-11-16 — Preview
+
+1. Show TPM and BitLocker as a dedicated, responsive eight-tile Device Security card directly under WAM/Entra results.
+2. Add a visible TPM & BitLocker shortcut to the diagnostic banner, including scroll and expand behavior, and a local View full details link to the existing inspector.
+3. Display TPM ready/lockout, OS BitLocker protection/encryption, Memory Integrity, DPAPI policy and writable DC state without inferring hardware health or Office authentication.
+4. Clear stale device snapshots on new checks and repair actions; keep unknown/neutral/attention semantics and localized EN/RU/HE UI.
+5. Extend Windows GUI self-tests and build verified x64/ARM64 archives. Stable 1.0.1 unchanged.
+
+[Preview.23 notes](docs/releases/v1.0.2-preview.23.md)
+
 ## 1.0.2-preview.22 — 2026-11-16 — Preview
 
 1. Split previously stalled 60-second TPM/BitLocker read-only scan into six independent native checks (TPM WMI, BitLocker WMI, Device Guard/HVCI, writable DC, TPM lockout, DPAPI/AIK).
