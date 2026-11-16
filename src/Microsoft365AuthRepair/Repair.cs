@@ -3,9 +3,18 @@ using Microsoft.Win32;
 
 namespace Microsoft365AuthRepair;
 
+// Observable stages only; the UI never sends these to anonymous reports.
+internal enum RepairStage
+{
+    CheckingPrerequisites, VerifyManifest, RegisterWam,
+    RemoveCredentials, RemoveRegistry, RemoveCaches,
+    VerifyWam, InspectRegistration, QueueUserTasks,
+    CheckWindows, CheckOffice, CheckDevice
+}
+
 internal static class Repair
 {
-    internal const string Version = "1.0.2-preview.20";
+    internal const string Version = "1.0.2-preview.21";
     private static readonly string[] RegistryKeys =
     [
         @"Software\Microsoft\Office\16.0\Common\Identity",
@@ -21,7 +30,7 @@ internal static class Repair
         @"Microsoft\TokenBroker\Accounts"
     ];
 
-    internal static int Run(bool quiet)
+    internal static int Run(bool quiet, IProgress<RepairStage>? stages = null)
     {
         Identity.RequireInteractiveUser();
         var ownSid = Identity.CurrentSid();
@@ -34,6 +43,7 @@ internal static class Repair
         log.Info($"Microsoft 365 Auth Repair {Version}, session={session}, account={Environment.UserDomainName}\\{Environment.UserName}");
         log.Warn("FULL RESET: Microsoft/Office sign-in caches will be deleted from this user only. Applications may require sign-in again.");
 
+        stages?.Report(RepairStage.VerifyManifest);
         var manifest = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SystemApps", "Microsoft.AAD.BrokerPlugin_cw5n1h2txyewy", "AppxManifest.xml");
         if (!File.Exists(manifest))
         {
@@ -41,19 +51,33 @@ internal static class Repair
             return 2;
         }
 
-        // Force the broker to release resources, as successfully tested in an interactive user session.
-        try { RegisterAppx(manifest); log.Info("Pre-reset WAM registration/shutdown complete."); }
-        catch (Exception ex) { log.Warn($"Could not prepare WAM before reset: {ex.Message}"); }
+        // Do not start deleting identity data if the AppX prerequisite could
+        // not complete. No forced application shutdown and no automatic retry.
+        stages?.Report(RepairStage.RegisterWam);
+        try { RegisterAppx(manifest); log.Info("Pre-reset WAM registration completed."); }
+        catch (TimeoutException ex)
+        {
+            log.Error("WAM registration timed out before cache removal: " + ex.Message);
+            return 3;
+        }
+        catch (Exception ex)
+        {
+            log.Error("Cannot prepare WAM; no caches deleted: " + ex.Message);
+            return 2;
+        }
 
+        stages?.Report(RepairStage.RemoveCredentials);
         try { log.Ok($"Office/Microsoft generic credentials removed: {Native.DeleteOfficeGenericCredentials()}"); }
         catch (Exception ex) { log.Error($"Credential Manager: {ex.Message}"); }
 
+        stages?.Report(RepairStage.RemoveRegistry);
         foreach (var key in RegistryKeys)
         {
             try { DeleteRegistryKey(key, log); }
             catch (Exception ex) { log.Error($"Registry {key}: {ex.Message}"); }
         }
 
+        stages?.Report(RepairStage.RemoveCaches);
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         foreach (var relative in CacheRelativePaths)
         {
@@ -61,14 +85,21 @@ internal static class Repair
             catch (Exception ex) { log.Error($"Cache {relative}: {ex.Message}"); }
         }
 
+        stages?.Report(RepairStage.VerifyWam);
         try { RegisterAppx(manifest); log.Ok("AAD BrokerPlugin re-registered and verified for current user."); }
+        catch (TimeoutException ex)
+        {
+            log.Error("Final WAM registration timed out: " + ex.Message);
+            return 3;
+        }
         catch (Exception ex) { log.Error($"Final WAM re-registration: {ex.Message}"); }
+        stages?.Report(RepairStage.InspectRegistration);
         PrintJoinSummary(log);
         log.Info($"Completed. Errors={log.ErrorCount}; warnings={log.WarningCount}. Log={log.PathName}");
         return log.ErrorCount == 0 ? 0 : 2;
     }
 
-    internal static int ReRegister(bool quiet)
+    internal static int ReRegister(bool quiet, IProgress<RepairStage>? stages = null)
     {
         Identity.RequireInteractiveUser();
         var sid = Identity.CurrentSid();
@@ -76,6 +107,7 @@ internal static class Repair
         if (shells.TryGetValue(Identity.SessionId(), out var owners) && owners.Count > 0 && !owners.Contains(sid))
             throw new InvalidOperationException("Process account differs from the desktop owner. Run under the actual signed-in user.");
         using var log = new RepairLog(quiet);
+        stages?.Report(RepairStage.VerifyManifest);
         var manifest = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
             "SystemApps", "Microsoft.AAD.BrokerPlugin_cw5n1h2txyewy", "AppxManifest.xml");
         if (!File.Exists(manifest))
@@ -83,10 +115,16 @@ internal static class Repair
             log.Error("Microsoft.AAD.BrokerPlugin system manifest was not found.");
             return 2;
         }
+        stages?.Report(RepairStage.RegisterWam);
         try
         {
             RegisterAppx(manifest);
             log.Ok("WAM/AAD BrokerPlugin registration VERIFIED for this user. No sign-out required unless problems persist.");
+        }
+        catch (TimeoutException ex)
+        {
+            log.Error("WAM registration exceeded 180 seconds. Close Microsoft 365 apps, review AppX deployment events, then try once more if needed: " + ex.Message);
+            return 3;
         }
         catch (Exception ex) { log.Error("WAM re-registration failed: " + ex.Message); }
         return log.ErrorCount == 0 ? 0 : 2;
@@ -130,8 +168,8 @@ internal static class Repair
         var script = "$ErrorActionPreference='Stop';" +
             "$c=Get-Command Add-AppxPackage -ErrorAction Stop;" +
             "$a=@{ Path='" + escaped + "'; Register=$true; DisableDevelopmentMode=$true; ErrorAction='Stop' };" +
-            "if($c.Parameters.ContainsKey('ForceTargetApplicationShutdown')){$a.ForceTargetApplicationShutdown=$true}" +
-            "elseif($c.Parameters.ContainsKey('ForceApplicationShutdown')){$a.ForceApplicationShutdown=$true};" +
+            // Never force-close Word, Outlook or Teams. If packages are in use,
+            // AppX returns a recoverable error instead of interrupting work.
             "Add-AppxPackage @a | Out-Null;" +
             "$p=Get-AppxPackage -Name Microsoft.AAD.BrokerPlugin -ErrorAction Stop;" +
             "if(-not $p){throw 'WAM registration could not be verified.'}";
