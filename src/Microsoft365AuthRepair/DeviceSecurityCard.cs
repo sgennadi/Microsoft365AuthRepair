@@ -169,10 +169,6 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         UpdateGeometry();
     }
 
-    private static string Bool(bool? value) => value is null
-        ? T("Not verified", "Не проверено", "לא אומת")
-        : value.Value ? T("Yes", "Да", "כן") : T("No", "Нет", "לא");
-
     private static string Unknown => T("Not verified", "Не проверено", "לא אומת");
 
     private void UpdateValues(TpmBitLockerSnapshot x)
@@ -333,8 +329,8 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         card.ShowResult(sample);
         if (!card.HasReadOnlyDetailsLink || card.tiles.Length != 8 ||
             card.signalGrid.Controls.Count != 8 ||
-            !card.tiles[0].Value.Text.Contains("Present", StringComparison.Ordinal) ||
-            !card.tiles[3].Value.Text.Contains("On", StringComparison.Ordinal))
+            !card.tiles[0].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase) ||
+            !card.tiles[3].AccessibleDescription.Contains("positive", StringComparison.OrdinalIgnoreCase))
             return false;
         card.ShowResult(sample with
         {
@@ -345,7 +341,7 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             return false;
         card.ShowResult(TpmBitLockerSnapshot.Unknown);
         return card.tiles.All(t =>
-            t.Value.Text.Contains("Not verified", StringComparison.Ordinal)) &&
+            t.AccessibleDescription.Contains("No verified status", StringComparison.Ordinal)) &&
             card.Controls.Count == 4;
     }
 }
