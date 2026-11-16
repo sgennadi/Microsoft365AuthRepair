@@ -670,7 +670,6 @@ internal sealed class MainForm : Form
             "Крайняя мера: Reset Office sign-in удаляет кеш авторизации и потребует повторного входа.",
             "מוצא אחרון: איפוס Office מוחק מטמוני זהות ומחייב כניסה מחדש.");
         diagnose.Text = UpdateUiText.T("Check & Diagnose", "Проверить и объяснить", "בדוק ואבחן");
-        activityJournal.RefreshLanguage();
         applyRecommendation.Text = UpdateUiText.T(
             "Re-register WAM (confirm first)", "Восстановить WAM (с подтверждением)",
             "תיקון WAM באישור");
