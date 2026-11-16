@@ -1,3 +1,13 @@
+## Preview.27 — safer BitLocker status, gated administrator tools and update backup cleanup
+
+1. Read OS-volume BitLocker **ConversionStatus** directly from its snapshot property before falling back to the administrator-only `GetConversionStatus` method. Protection and conversion stay independent and bounded; unknown stays Not verified.
+2. **Advanced device security** is now available from the TPM/BitLocker read-only inspector. It requires explicit administrator approval, a risk checkbox, typed action, and second confirmation for recovery-password export, one-reboot suspend/resume, and OS-drive decryption. Clear TPM is never automated: only the Windows TPM management console can be opened.
+3. Export numerical BitLocker recovery passwords only to a **new local NTFS .txt** file with a restricted owner/SYSTEM ACL. Secrets never enter diagnostics, clipboard, public reports, command arguments or Activity. No default key read.
+4. Post-update `.bak` cleanup now occurs only after the new GUI starts successfully and the successful install receipt and installed/backup evidence match. Failed/rolled-back installs retain the backup and support logs.
+5. The offline error guide recognizes **AADSTS70008, 700082, 700084** as expired sign-in grants; it recommends interactive login, not TPM Clear or destructive Office reset.
+
+[Preview.27 release notes](docs/releases/v1.0.2-preview.27.md)
+
 ## Preview.26 — independent BitLocker status and more precise diagnostics
 
 **Check & Diagnose** now queries BitLocker protection and volume encryption independently, using two isolated, timeout-limited, read-only workers restricted to the Windows system volume. A stalled encryption-status method no longer discards a successfully read protection status. Activity labels distinguish **BitLocker protection (WMI)** from **BitLocker encryption (WMI)**; a timed-out or inaccessible provider remains **Not verified** rather than being marked off or healthy. No recovery keys, protectors, TPM state or Office credentials are modified. A new **View activity** link beside the result-banner shortcuts jumps to the existing local journal when it falls below the fold on small/high-DPI windows.
