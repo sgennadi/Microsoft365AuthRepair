@@ -64,6 +64,17 @@ internal static class SignInIssueAdvisor
                   "Проверьте UPN и tenant, обновите истёкший пароль или попросите IT проверить статус и синхронизацию учётной записи. WAM сбрасывать сначала не нужно.",
                   "בדוק שם משתמש והדייר, חידוש סיסמה וסטטוס חשבון עם התמיכה."),
                 SignInIssueScope.UserAction),
+            "AADSTS70008" or "AADSTS700082" or "AADSTS700084" => new(code,
+                T("Expired sign-in grant: interactive login needed",
+                  "Срок действия токена истёк: нужен повторный вход",
+                  "פג תוקף ההרשאה: נדרשת התחברות מחדש"),
+                T("The authorization grant or refresh token expired or became unusable. This is a normal token lifecycle condition, not proof of a TPM or BitLocker failure.",
+                  "Токен обновления или код авторизации истёк либо больше не действует. Это не доказательство неисправности TPM или BitLocker.",
+                  "פג תוקף אסימון הרענון או קוד ההרשאה. אין בכך הוכחה לתקלה ב-TPM או ב-BitLocker."),
+                T("Restart interactive sign-in from the affected Microsoft 365 application and complete MFA if prompted. If the error repeats, ask IT to review Entra Sign-in Logs and token/session policies. Do not clear TPM or reset all Office identities for an expired token alone.",
+                  "Запустите новый интерактивный вход в проблемном приложении Microsoft 365 и завершите MFA при запросе. Если ошибка повторится, проверьте Sign-in Logs и политики сессий Entra. Не очищайте TPM и не сбрасывайте все учётные данные Office из-за одного истёкшего токена.",
+                  "התחבר מחדש ביישום Microsoft 365 והשלים MFA לפי הצורך. אם התקלה נמשכת, בדוק יומני Entra ומדיניות הפעלה. אין לנקות TPM או לאפס את כל זהויות Office בשל אסימון שפג תוקפו."),
+                SignInIssueScope.UserAction),
             "AADSTS50058" or "AADSTS70046" => new(code,
                 T("Incomplete or expired sign-in session", "Неполный вход или истекшая сессия", "התחברות לא מלאה או שפג תוקפה"),
                 T("A silent sign-in may lack an authenticated session, or session reauthentication is required. This can occur normally and is not proof that WAM is broken.",
@@ -147,7 +158,8 @@ internal static class SignInIssueAdvisor
         "AADSTS50034", "AADSTS50055", "AADSTS50057", "AADSTS50058",
         "AADSTS50072", "AADSTS50076", "AADSTS50079", "AADSTS500121",
         "AADSTS50126", "AADSTS50127", "AADSTS50131", "AADSTS50155",
-        "AADSTS53000", "AADSTS53001", "AADSTS53003", "AADSTS70046"
+        "AADSTS53000", "AADSTS53001", "AADSTS53003",
+        "AADSTS70008", "AADSTS700082", "AADSTS700084", "AADSTS70046"
     ];
 
     internal static IReadOnlyList<string> MatchingCodes(string? input)
@@ -209,6 +221,12 @@ internal static class SignInIssueAdvisor
             ExtractCode("0x80090011") == "80090011" &&
             Explain("AADSTS50127").Scope == SignInIssueScope.LocalRepair &&
             Explain("AADSTS50058").Scope == SignInIssueScope.UserAction &&
+            Explain("AADSTS70008").Scope == SignInIssueScope.UserAction &&
+            Explain("AADSTS700082").Scope == SignInIssueScope.UserAction &&
+            Explain("AADSTS700084").Scope == SignInIssueScope.UserAction &&
+            MatchingCodes("70008").Contains("AADSTS70008") &&
+            ExtractCode("Message: AADSTS70008: token expired; request-id: abc") == "AADSTS70008" &&
+            !Explain("AADSTS70008").NextStep.Contains("Clear TPM", StringComparison.Ordinal) &&
             Explain("person@example.com").Scope == SignInIssueScope.Investigation &&
             ExtractCode("12345 other details") == "" &&
             ExtractCode("1001") == "1001";
