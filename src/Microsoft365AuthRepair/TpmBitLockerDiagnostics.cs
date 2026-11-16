@@ -416,7 +416,7 @@ internal static class TpmBitLockerProbe
                 writable: false);
             return key?.GetValue("Enabled") switch
             {
-                int 1 => "ON", int 0 => "OFF",
+                1 => "ON", 0 => "OFF",
                 null => "NOT_SET", _ => "UNKNOWN"
             };
         }
