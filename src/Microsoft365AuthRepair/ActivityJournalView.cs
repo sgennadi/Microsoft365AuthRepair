@@ -235,7 +235,7 @@ internal sealed class ActivityJournalView : TableLayoutPanel
 
     internal bool HasCompactCancellation => cancelCheck.Parent is TableLayoutPanel &&
         !string.IsNullOrWhiteSpace(cancelCheck.Text) &&
-        cancelCheck is LinkLabel && cancelCheck is not Button;
+        cancelCheck.TabStop && cancelCheck.LinkBehavior == LinkBehavior.HoverUnderline;
 
     internal bool HasCopyControl => copyLog.Enabled &&
         !string.IsNullOrWhiteSpace(copyLog.Text) && lines.ReadOnly;
