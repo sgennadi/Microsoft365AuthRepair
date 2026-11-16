@@ -141,12 +141,102 @@ internal sealed record TpmBitLockerSnapshot(
                 .ToSafeSummary().Contains("DpapiWritableDc: UNKNOWN", StringComparison.Ordinal) &&
             TpmBitLockerProbe.ValidDomainName("example.test") &&
             !TpmBitLockerProbe.ValidDomainName("invalid;cmd.exe") &&
-            !TpmBitLockerProbe.ValidDomainName("not-a-domain");
+            !TpmBitLockerProbe.ValidDomainName("not-a-domain") &&
+            TpmBitLockerProbe.WindowsReleaseClass("26100") == "WIN11_24H2" &&
+            TpmBitLockerProbe.VendorClass(0x4D534654u) == "MSFT" &&
+            TpmBitLockerProbe.VendorClass(0x53544D20u) == "STM" &&
+            TpmBitLockerProbe.AikErrorClass(0x80070490u) == "NOT_FOUND" &&
+            TpmBitLockerProbe.AikErrorClass(0x800705B4u) == "TIMEOUT" &&
+            TpmBitLockerProbe.FirmwareVersion("9.8.7") == "9.8.7" &&
+            TpmBitLockerProbe.FirmwareVersion("device secret") == "UNKNOWN";
     }
 }
 
 internal static class TpmBitLockerProbe
 {
+    internal static string VendorClass(object? raw)
+    {
+        if (raw is null) return "UNKNOWN";
+        try
+        {
+            var n = Convert.ToUInt32(raw, System.Globalization.CultureInfo.InvariantCulture);
+            return n switch
+            {
+                0x53544D20u => "STM",
+                0x4D534654u => "MSFT",
+                0u => "UNKNOWN",
+                _ => "OTHER"
+            };
+        }
+        catch (Exception ex) when (ex is InvalidCastException or FormatException
+            or OverflowException) { return "UNKNOWN"; }
+    }
+
+    internal static string FirmwareVersion(string? value) =>
+        value is { Length: > 0 and <= 32 } &&
+        Regex.IsMatch(value, @"^[0-9]+(?:\.[0-9]+){0,4}$",
+            RegexOptions.CultureInvariant)
+            ? value : "UNKNOWN";
+
+    internal static string WindowsReleaseClass(string? build)
+    {
+        if (!int.TryParse(build, out var n)) return "UNKNOWN";
+        return n switch
+        {
+            26100 => "WIN11_24H2",
+            26200 => "WIN11_25H2",
+            >= 26201 => "WIN11_NEWER",
+            > 0 => "OTHER",
+            _ => "UNKNOWN"
+        };
+    }
+
+    internal static string AikErrorClass(object? value)
+    {
+        if (value is null) return "UNKNOWN";
+        uint code;
+        try { code = Convert.ToUInt32(value, System.Globalization.CultureInfo.InvariantCulture); }
+        catch (Exception ex) when (ex is InvalidCastException or FormatException
+            or OverflowException) { return "UNKNOWN"; }
+        return code switch
+        {
+            0u => "NONE_RECORDED",
+            0x80070490u => "NOT_FOUND",
+            0x800705B4u => "TIMEOUT",
+            _ => "OTHER_ERROR"
+        };
+    }
+
+    private static (string Error, string EkStore) ReadAttestation()
+    {
+        try
+        {
+            using var tpm = Registry.LocalMachine.OpenSubKey(
+                @"SYSTEM\CurrentControlSet\Services\TPM\WMI", writable: false);
+            string error = AikErrorClass(tpm?.GetValue("AIKEnrollmentErrorCode"));
+            // The EK certificate's absence can be indicated by
+            // Win32_Tpm.IsReadyInformation (0x40000) below. Do not export,
+            // deserialize or inspect the certificate or endorsement key.
+            return (error, "UNKNOWN");
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException
+            or System.Security.SecurityException or ArgumentException)
+        { return ("UNKNOWN", "UNKNOWN"); }
+    }
+
+    private static string ReadWindowsRelease()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(
+                @"SOFTWARE\Microsoft\Windows NT\CurrentVersion", writable: false);
+            return WindowsReleaseClass(key?.GetValue("CurrentBuildNumber")?.ToString());
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException
+            or System.Security.SecurityException or ArgumentException)
+        { return "UNKNOWN"; }
+    }
+
     private static bool WmiAccess(Exception ex) =>
         ex is ManagementException or UnauthorizedAccessException
             or System.Security.SecurityException or COMException
@@ -172,7 +262,7 @@ internal static class TpmBitLockerProbe
     }
 
     private static (string Present, string Version, bool? Ready, bool? Enabled,
-        bool? Activated, bool? Owned, string Manufacturer, string Firmware) ReadTpm()
+        bool? Activated, bool? Owned, string Manufacturer, string Firmware, string EkStore) ReadTpm()
     {
         try
         {
@@ -190,6 +280,23 @@ internal static class TpmBitLockerProbe
                             ? "1.2" : "UNKNOWN";
                     string vendor = VendorClass(item["ManufacturerId"]);
                     string firmware = FirmwareVersion(item["ManufacturerVersion"] as string);
+                    string ekStatus = "UNKNOWN";
+                    try
+                    {
+                        using var state = item.InvokeMethod("IsReadyInformation", null, null);
+                        if (state is not null &&
+                            Convert.ToUInt32(state["ReturnValue"]) == 0u &&
+                            state["Information"] is not null)
+                        {
+                            uint flags = Convert.ToUInt32(state["Information"]);
+                            if ((flags & 0x00040000u) != 0u)
+                                ekStatus = "NOT_FOUND";
+                            // An unset bit is not proof of EK certificate
+                            // validity or attestation success.
+                        }
+                    }
+                    catch (Exception ex) when (WmiAccess(ex) ||
+                        ex is ArgumentException or FormatException or OverflowException) { }
                     return ("YES", version,
                         LiveTpmFlag(item, "IsReady", "IsReady", null),
                         LiveTpmFlag(item, "IsEnabled", "IsEnabled",
@@ -198,14 +305,14 @@ internal static class TpmBitLockerProbe
                             ReadBool(item, "IsActivated_InitialValue")),
                         LiveTpmFlag(item, "IsOwned", "IsOwned",
                             ReadBool(item, "IsOwned_InitialValue")),
-                        vendor, firmware);
+                        vendor, firmware, ekStatus);
                 }
             }
             // A successful query with no instance normally means no TPM.
-            return ("NO", "UNKNOWN", null, null, null, null, "UNKNOWN", "UNKNOWN");
+            return ("NO", "UNKNOWN", null, null, null, null, "UNKNOWN", "UNKNOWN", "UNKNOWN");
         }
         catch (Exception ex) when (WmiAccess(ex))
-        { return ("UNKNOWN", "UNKNOWN", null, null, null, null, "UNKNOWN", "UNKNOWN"); }
+        { return ("UNKNOWN", "UNKNOWN", null, null, null, null, "UNKNOWN", "UNKNOWN", "UNKNOWN"); }
     }
 
     private static string ProtectionState(object? value)
@@ -410,9 +517,17 @@ internal static class TpmBitLockerProbe
         var tpm = ReadTpm();
         var drive = ReadSystemVolume();
         var domain = ReadWritableDc();
+        var attestation = ReadAttestation();
         return new(tpm.Present, tpm.Version, tpm.Ready, tpm.Enabled, tpm.Activated, tpm.Owned,
             drive.Protection, drive.Conversion,
             ReadHVCIRunning(), ReadHVCIConfigured(), ReadDpapiPolicy(),
-            domain.Joined, domain.WritableDc);
+            domain.Joined, domain.WritableDc)
+        {
+            TpmManufacturer = tpm.Manufacturer,
+            TpmFirmwareVersion = tpm.Firmware,
+            WindowsRelease = ReadWindowsRelease(),
+            AikEnrollmentError = attestation.Error,
+            EkCertStore = tpm.EkStore == "NOT_FOUND" ? "NOT_FOUND" : attestation.EkStore
+        };
     }
 }
