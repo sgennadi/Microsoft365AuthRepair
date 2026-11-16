@@ -16,6 +16,8 @@ internal sealed class ReportSendDialog : Form
         ReadOnly = true,
         Multiline = true,
         WordWrap = false,
+        TabStop = false, // Do not take initial focus or highlight the JSON.
+        HideSelection = true,
         ScrollBars = ScrollBars.Both,
         Font = new Font("Consolas", 9f),
         BackColor = SystemColors.Window
@@ -49,6 +51,9 @@ internal sealed class ReportSendDialog : Form
     internal Uri? ConfirmedIssue { get; private set; }
     internal bool ConsentInitiallyChecked => consent.Checked;
     internal bool IsSendExplicit => send.Enabled;
+    internal bool PreviewStartsUnselected => preview.ReadOnly &&
+        !preview.TabStop && preview.SelectionLength == 0 &&
+        preview.Text == prepared.Json && keepLocal.Enabled;
 
     internal ReportSendDialog(PreparedDiagnostic payload, string? queuedFile)
     {
@@ -97,6 +102,11 @@ internal sealed class ReportSendDialog : Form
         };
         preview.MinimumSize = new Size(0, 180);
         preview.Text = payload.Json;
+        preview.SelectionStart = 0;
+        preview.SelectionLength = 0;
+        preview.AccessibleName = UpdateUiText.T("JSON report (read-only, manually selectable)",
+            "JSON-отчёт (только чтение; можно выделять вручную)",
+            "דוח JSON לקריאה בלבד, ניתן לסמן ידנית");
         root.Controls.Add(preview, 0, 2);
         consent.Text = UpdateUiText.T(
             "I approve sending these reviewed fields to a PUBLIC GitHub Issue.",
@@ -124,6 +134,18 @@ internal sealed class ReportSendDialog : Form
         root.Controls.Add(actions, 0, 5);
         Controls.Add(ResponsiveLayout.Center(this, root, 1130));
         CancelButton = keepLocal;
+        // WinForms can select every character of the first focused TextBox
+        // when a modal dialog is shown. Put keyboard focus on the safe
+        // Keep local button and clear selection AFTER the dialog is visible.
+        // Mouse selection, Ctrl+A and Ctrl+C still work in the read-only JSON.
+        Shown += (_, _) => BeginInvoke((MethodInvoker)(() =>
+        {
+            if (IsDisposed || Disposing) return;
+            ActiveControl = keepLocal;
+            preview.SelectionStart = 0;
+            preview.SelectionLength = 0;
+            preview.ScrollToCaret();
+        }));
 
         UiIcons.SetWindowIcon(this);
         UiIcons.Assign(send, UiGlyph.Link, primary: true);
@@ -247,6 +269,10 @@ internal sealed class ReportSendDialog : Form
                 "GitHub did not accept the new Issue. Verify PAT repository access and Issues: Read and write in Apps Script.",
                 "GitHub не принял создание Issue. Проверьте разрешения PAT для репозитория и Issues: Read and write.",
                 "GitHub לא אישר יצירת Issue. בדוק הרשאות אסימון."),
+            "DEPLOY_GATEWAY_V4" => UpdateUiText.T(
+                "The receiver is older than the expanded M365 diagnostic contract. Deploy the latest Code.gs as a new version of the existing Apps Script deployment, then retry.",
+                "Приёмник устарел. Опубликуйте обновлённый Code.gs как новую версию существующего развёртывания Apps Script и повторите.",
+                "יש לפרוס גרסה חדשה של Code.gs באותה פריסת Apps Script לפני שליחה."),
             "invalid_evidence" => UpdateUiText.T(
                 "The deployed gateway rejected the event schema. Check the installed Preview and gateway Code.gs version.",
                 "Приёмник отклонил формат отчёта. Проверьте версии Preview и Code.gs.",

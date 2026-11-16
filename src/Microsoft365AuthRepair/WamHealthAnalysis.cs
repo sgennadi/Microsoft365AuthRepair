@@ -42,6 +42,7 @@ internal static class WamHealthAnalysis
         var auth = ReadValue(raw, "DeviceAuthStatus");
         var prt = ReadValue(raw, "AzureAdPrt");
         var wam = ReadValue(raw, "WamDefaultSet");
+        var deviceKeys = EntraKeySignals.FromReport(raw);
         var hasCloudRejection = raw.Contains("AADSTS50155", StringComparison.OrdinalIgnoreCase);
         var brokerMissing = Begins(broker, "MISSING");
         var brokerPresent = Begins(broker, "PRESENT");
@@ -65,6 +66,21 @@ internal static class WamHealthAnalysis
                 "Run the app as the affected Windows user (without elevation) and check again.",
                 "Запустите программу от имени проблемного пользователя Windows без повышения прав и повторите проверку.",
                 "הפעל את התוכנה בחשבון המשתמש הרלוונטי ללא הרשאות מנהל ובדוק שוב."));
+        }
+
+        // KeySignTest requires elevation. An absent/blocked value remains
+        // UNKNOWN. Explicit FAILED or automatic recovery should take priority
+        // over attempts to remove Office/WAM sign-in data.
+        if (deviceKeys.NeedsReview)
+        {
+            findings.Add(T(
+                "Entra device-key signing failed or Windows has marked the device for key recovery.",
+                "Проверка подписи ключом устройства Entra не прошла либо Windows требуется восстановить регистрацию ключа.",
+                "בדיקת מפתח Entra נכשלה או שנדרש שחזור מפתחות."));
+            advice.Add(T(
+                "Ask IT to review Entra device registration and dsregcmd key diagnostics. KeySignTest requires elevation; no output is not a failure. Do not clear TPM or remove key containers.",
+                "Проверьте с IT регистрацию устройства и KeySignTest через dsregcmd. Для проверки нужны права администратора; отсутствие результата не означает ошибку. Не очищайте TPM и ключи.",
+                "בדוק רישום מכשיר ו-KeySignTest עם התמיכה; אין לנקות TPM או מפתחות."));
         }
 
         if (cloudFailure)
@@ -152,10 +168,11 @@ internal static class WamHealthAnalysis
         }
 
         WamHealthLevel level;
-        if (currentDesktopContext && brokerMissing && !cloudFailure)
+        if (currentDesktopContext && brokerMissing && !cloudFailure && !deviceKeys.NeedsReview)
             level = WamHealthLevel.RepairRecommended;
         else if (currentDesktopContext && brokerPresent && joined == "YES" &&
-            auth == "SUCCESS" && prt == "YES" && wam == "YES" && !hasCloudRejection)
+            auth == "SUCCESS" && prt == "YES" && wam == "YES" && !hasCloudRejection &&
+            !deviceKeys.NeedsReview)
             level = WamHealthLevel.Healthy;
         else
             level = WamHealthLevel.AttentionRequired;
@@ -198,6 +215,10 @@ internal static class WamHealthAnalysis
         sb.AppendLine("  DeviceAuthStatus: " + auth);
         sb.AppendLine("  AzureAdPrt: " + prt);
         sb.AppendLine("  WamDefaultSet: " + wam);
+        sb.AppendLine("  TpmProtected: " + deviceKeys.TpmProtected);
+        sb.AppendLine("  KeySignTest: " + deviceKeys.KeySignTest);
+        sb.AppendLine("  AadRecoveryEnabled: " + deviceKeys.AadRecoveryEnabled);
+        sb.AppendLine("  NgcSet: " + deviceKeys.NgcSet);
         sb.AppendLine();
         foreach (var item in findings) sb.AppendLine("• " + item);
         sb.AppendLine();
@@ -209,10 +230,9 @@ internal static class WamHealthAnalysis
             "Проверка без изменений. Данные авторизации не изменены и никуда не отправлены.",
             "בדיקה לקריאה בלבד. לא בוצעו שינויים ולא נשלח מידע."));
 
-        // Six explicitly categorized, localized values for an immediately
-        // readable dashboard. No tenant, user, device identity or raw dsregcmd
-        // data appears in these signals. Not joined is neutral: it can be
-        // intentional for on-premises or personal computers.
+        // Eight categorized signals. TPM/BitLocker remain in the detailed
+        // inspector. These two additional local device-key fields do not
+        // contain any tenant, user, device or certificate IDs.
         var unknown = T("Unknown", "Неизвестно", "לא ידוע");
         var yes = T("Yes", "Да", "כן");
         var no = T("No", "Нет", "לא");
@@ -238,7 +258,19 @@ internal static class WamHealthAnalysis
             new("WamDefaultSet", T("WAM account", "Учётная запись WAM", "חשבון WAM"),
                 wam == "YES" ? T("Set", "Настроена", "מוגדר") :
                 wam == "NO" ? T("Not set", "Не настроена", "לא מוגדר") : unknown,
-                wam == "YES" ? WamSignalState.Good : wam == "NO" ? WamSignalState.Attention : WamSignalState.Unknown)
+                wam == "YES" ? WamSignalState.Good : wam == "NO" ? WamSignalState.Attention : WamSignalState.Unknown),
+            new("EntraDeviceKey", T("Entra device key", "Ключ устройства Entra", "מפתח מכשיר Entra"),
+                deviceKeys.NeedsReview ? T("Needs review", "Требует проверки", "דורש בדיקה") :
+                deviceKeys.KeySignTest == "PASSED" && deviceKeys.AadRecoveryEnabled == "NO" ?
+                    T("Signing verified", "Подпись проверена", "חתימה אומתה") : unknown,
+                deviceKeys.NeedsReview ? WamSignalState.Attention :
+                deviceKeys.KeySignTest == "PASSED" && deviceKeys.AadRecoveryEnabled == "NO" ?
+                    WamSignalState.Good : WamSignalState.Unknown),
+            new("NgcSet", "Windows Hello",
+                deviceKeys.NgcSet == "YES" ? T("Configured", "Настроен", "מוגדר") :
+                deviceKeys.NgcSet == "NO" ? T("Not configured", "Не настроен", "לא מוגדר") : unknown,
+                deviceKeys.NgcSet == "YES" ? WamSignalState.Good :
+                deviceKeys.NgcSet == "NO" ? WamSignalState.Neutral : WamSignalState.Unknown)
         };
         return new WamHealthResult(level, summary, sb.ToString())
         {
@@ -259,11 +291,19 @@ internal static class WamHealthAnalysis
         var known = Evaluate(healthy, true);
         var noJoin = Evaluate(healthy.Replace("AzureAdJoined : YES", "AzureAdJoined : NO"), true);
         var unknown = Evaluate("", true);
-        return known.Signals.Count == 6 &&
+        var keyFailure = Evaluate(healthy + "\nKeySignTest: FAILED", true);
+        var recovery = Evaluate(healthy + "\nAadRecoveryEnabled: YES", true);
+        var noHello = Evaluate(healthy + "\nNgcSet: NO\nTpmProtected: NO", true);
+        return known.Signals.Count == 8 &&
             known.Signals[0].State == WamSignalState.Good &&
             known.Signals[3].State == WamSignalState.Good &&
             noJoin.Signals[1].State == WamSignalState.Neutral &&
             unknown.Signals.All(x => x.State == WamSignalState.Unknown) &&
+            keyFailure.Level == WamHealthLevel.AttentionRequired &&
+            keyFailure.Signals[6].State == WamSignalState.Attention &&
+            recovery.Signals[6].State == WamSignalState.Attention &&
+            noHello.Signals[7].State == WamSignalState.Neutral &&
+            noHello.Level == WamHealthLevel.Healthy &&
             known.Level == WamHealthLevel.Healthy &&
             Evaluate(healthy, true).NextSteps.Count > 0 &&
             Evaluate(healthy, true).Findings.Count > 0 &&

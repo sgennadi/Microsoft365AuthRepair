@@ -1,6 +1,6 @@
 # Microsoft 365 Auth Repair
 
-A portable, self-contained **Windows .NET 10 WinForms** utility for diagnosing and safely recovering Microsoft Entra/WAM, `Microsoft.AAD.BrokerPlugin`, Office application sign-in and supported Office LTSC licensing. Current **Stable: 1.0.1** (x64 / ARM64).
+A portable, self-contained **Windows .NET 10 WinForms** utility for diagnosing and safely recovering Microsoft Entra/WAM, `Microsoft.AAD.BrokerPlugin`, Office application sign-in and supported Office LTSC licensing. Current **Stable: 1.0.2** (x64 / ARM64).
 
 ## Download
 
@@ -16,7 +16,9 @@ The latest signed-off release and SHA-256 manifest are at [GitHub Releases](http
 - **Office WMI clarity:** multiple `SoftwareLicensingProduct` entries are *licensing records*, not multiple Office installations. The normal list shows one preferred installed edition; optional technical records (including unlicensed templates and Preview markers) are clearly labeled.
 - **Optional Microsoft Graph:** one in-process Device Code or certificate authorization, adapted from BitKeyBridge's session handling for **AuditLog.Read.All only**. Correlation ID lookup is read-only and needs an approved audit-only Entra application and appropriate reader rights. No ROPC, Graph write access, BitLocker/LAPS role borrowing or disk-stored OAuth tokens.
 - **Verify Repair:** automatically rechecks local prerequisites after successful direct user repair; actual Word, Outlook or Teams sign-in is considered confirmed only when the user says it worked.
-- **Diagnostics and reports:** generates a local report, then opens a separate review dialog with an explicit **Send anonymously** action. Uploads create public GitHub Issues **only on approval**. Outgoing data uses fixed Entra/WAM and Office evidence categories and coarse counts. No account names, SIDs, license or MAK keys, KMS hosts, tenant identifiers, product GUIDs, paths, or raw WMI and Graph responses are sent.
+- **Device security (read-only):** independently time-limited TPM 2.0, BitLocker OS-drive protection/encryption, Secure Boot, Memory Integrity, Windows VM status and DPAPI/domain evidence. Unknown, unverified or partial results are not presented as hardware failure. The main window shows WAM/Office results **before** the separate TPM/BitLocker card; both the activity log and WAM/Office sections can be expanded or collapsed without clipping the bottom of the window.
+- **Optional advanced device actions:** a separately confirmed administrator-only window supports carefully restricted OS BitLocker operations and recovery-password export to a new protected local NTFS file. TPM Clear is **never automated**. Device security changes are not needed for ordinary WAM repair.
+- **Diagnostics and reports:** generates a local report, then opens a separate review dialog with an explicit **Send anonymously** action. The JSON initially appears **unselected** for readability; users may select and copy it manually. The report stays local until Send is clicked. Approved uploads create **public GitHub Issues** containing only 29 fixed, categorical Entra/WAM, Office licensing and device-security indicators; no account names, SIDs, license or MAK keys, recovery passwords, hostnames, tenant identifiers, paths or raw WMI/Graph responses are sent. The shared Apps Script gateway must expose schema version 4 with `microsoft365-auth-repair/v2`; older gateways are rejected before any POST.
 - **Interface and updates:** English, Russian and Hebrew, RTL support, PerMonitorV2 scaling, Windows High Contrast, compact native controls, numbered What's New, Stable/Preview SemVer precedence, validated architecture/SHA-256 and rollback-aware update helper.
 
 ## First test on a Windows pilot device
@@ -24,10 +26,14 @@ The latest signed-off release and SHA-256 manifest are at [GitHub Releases](http
 1. Extract the x64/ARM64 ZIP and run `Microsoft365AuthRepair.exe` as the affected **ordinary user**.
 2. Click **Check & Diagnose**. Read the Smart recommendation and Office licensing summary. The check should not trigger UAC, logout, token deletion or account changes.
 3. Open **Office / Visio / Project licensing**. If activated, no key replacement is needed. **Show technical license records** is diagnostic-only and can include duplicate activation entries, unlicensed templates or Preview records.
-4. Open **Diagnostics & reports**. Review the *entire* anonymized payload, including the Office signals, before choosing Send or Keep local. You never need to share keys.
+4. Open **Diagnostics & reports**. Review the *entire* anonymous JSON (including WAM, Office and device indicators) before choosing **Send anonymously** or **Keep local**. The JSON is not highlighted by default. You never need to share recovery or license keys.
 5. Test targeted WAM repair on a disposable profile first, followed by an actual Office sign-in. Test All users tasks, task cleanup, activation changes and full identity reset **only** in an isolated controlled environment.
 
-For a no-op GUI regression check, run `Microsoft365AuthRepair.exe --ui-self-test` on a Windows test machine. This checks layout creation and local policies; it does not prove Entra sign-in or KMS success.
+For a no-op GUI regression check, run `Microsoft365AuthRepair.exe --ui-self-test` on a Windows test machine. This checks layout creation, report-selection defaults, collapse rows and local policies; it does not prove Entra sign-in or KMS success.
+
+## Anonymous diagnostic receiver
+
+The Windows EXE checks the already-established shared Google Apps Script gateway before submitting. Its M365 route requires **gateway schema 4** and **`microsoft365-auth-repair/v2`** capability, corresponding to the reviewed [Code.gs](https://github.com/sgennadi/TermsrvPatcherUnified/blob/main/integrations/google-apps-script/Code.gs). Only the Google Apps Script owner can deploy it: **Deploy → Manage deployments → Edit → New version → Deploy** on the existing Web App. No URL or PAT needs changing. A GitHub merge does not deploy Apps Script. Until the deployed endpoint advertises v4, sending is disabled with a deployment explanation; generating and keeping reports locally remains available. No automatic upload or silent retry.
 
 ## Security and support boundaries
 
@@ -54,6 +60,7 @@ Windows GitHub Actions builds both architectures, runs x64 GUI/self-tests, parse
 ## Releases and history
 
 - [Latest Stable](https://github.com/sgennadi/Microsoft365AuthRepair/releases/latest)
-- [v1.0.1 release notes](docs/releases/v1.0.1.md)
+- [v1.0.2 release notes](docs/releases/v1.0.2.md)
+- [Previous v1.0.1 release notes](docs/releases/v1.0.1.md)
 - [Full changelog](CHANGELOG.md)
 

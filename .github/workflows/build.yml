@@ -139,14 +139,14 @@ jobs:
       - name: Upload verified build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Microsoft365AuthRepair-stable-v1.0.1-x64-arm64
+          name: Microsoft365AuthRepair-stable-v1.0.2-x64-arm64
           path: artifacts/*
           if-no-files-found: error
           retention-days: 14
 
 
   publish-stable:
-    name: Publish immutable Stable v1.0.1 release
+    name: Publish immutable Stable v1.0.2 release
     needs: windows-publish
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
@@ -160,7 +160,7 @@ jobs:
       - name: Fetch verified x64 and ARM64 packages
         uses: actions/download-artifact@v4
         with:
-          name: Microsoft365AuthRepair-stable-v1.0.1-x64-arm64
+          name: Microsoft365AuthRepair-stable-v1.0.2-x64-arm64
           path: release-assets
       - name: Validate stable version, archive contents and both SHA-256 packages
         shell: pwsh
@@ -168,8 +168,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           [xml]$project = Get-Content src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj
           $version = [string]$project.Project.PropertyGroup.Version
-          if ($version -cne '1.0.1') {
-            throw "Stable v1.0.1 required, got: $version"
+          if ($version -cne '1.0.2') {
+            throw "Stable v1.0.2 required, got: $version"
           }
           $repairVersion = Get-Content src/Microsoft365AuthRepair/Repair.cs -Raw
           if (-not $repairVersion.Contains('internal const string Version = "' + $version + '";')) {
@@ -195,7 +195,7 @@ jobs:
             finally { $archive.Dispose() }
           }
           Write-Host "Stable package verification passed: $version"
-      - name: Publish immutable Stable v1.0.1 GitHub release
+      - name: Publish immutable Stable v1.0.2 GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -203,7 +203,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj | head -1)"
-          test "$version" = "1.0.1"
+          test "$version" = "1.0.2"
           tag="v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag already exists; refusing to overwrite an immutable stable release."
@@ -215,5 +215,5 @@ jobs:
             release-assets/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Microsoft 365 Auth Repair $version (Stable)" \
-            --notes-file docs/releases/v1.0.1.md \
+            --notes-file docs/releases/v1.0.2.md \
             --latest

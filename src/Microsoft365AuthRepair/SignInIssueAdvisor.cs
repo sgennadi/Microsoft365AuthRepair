@@ -64,6 +64,17 @@ internal static class SignInIssueAdvisor
                   "Проверьте UPN и tenant, обновите истёкший пароль или попросите IT проверить статус и синхронизацию учётной записи. WAM сбрасывать сначала не нужно.",
                   "בדוק שם משתמש והדייר, חידוש סיסמה וסטטוס חשבון עם התמיכה."),
                 SignInIssueScope.UserAction),
+            "AADSTS70008" or "AADSTS700082" or "AADSTS700084" => new(code,
+                T("Expired sign-in grant: interactive login needed",
+                  "Срок действия токена истёк: нужен повторный вход",
+                  "פג תוקף ההרשאה: נדרשת התחברות מחדש"),
+                T("The authorization grant or refresh token expired or became unusable. This is a normal token lifecycle condition, not proof of a TPM or BitLocker failure.",
+                  "Токен обновления или код авторизации истёк либо больше не действует. Это не доказательство неисправности TPM или BitLocker.",
+                  "פג תוקף אסימון הרענון או קוד ההרשאה. אין בכך הוכחה לתקלה ב-TPM או ב-BitLocker."),
+                T("Restart interactive sign-in from the affected Microsoft 365 application and complete MFA if prompted. If the error repeats, ask IT to review Entra Sign-in Logs and token/session policies. Do not clear TPM or reset all Office identities for an expired token alone.",
+                  "Запустите новый интерактивный вход в проблемном приложении Microsoft 365 и завершите MFA при запросе. Если ошибка повторится, проверьте Sign-in Logs и политики сессий Entra. Не очищайте TPM и не сбрасывайте все учётные данные Office из-за одного истёкшего токена.",
+                  "התחבר מחדש ביישום Microsoft 365 והשלים MFA לפי הצורך. אם התקלה נמשכת, בדוק יומני Entra ומדיניות הפעלה. אין לנקות TPM או לאפס את כל זהויות Office בשל אסימון שפג תוקפו."),
+                SignInIssueScope.UserAction),
             "AADSTS50058" or "AADSTS70046" => new(code,
                 T("Incomplete or expired sign-in session", "Неполный вход или истекшая сессия", "התחברות לא מלאה או שפג תוקפה"),
                 T("A silent sign-in may lack an authenticated session, or session reauthentication is required. This can occur normally and is not proof that WAM is broken.",
@@ -82,6 +93,42 @@ internal static class SignInIssueAdvisor
                   "Проверьте Windows Hello, регистрацию устройства и профиль вместе с IT. Сохраните ключи восстановления BitLocker. Не очищайте TPM и не удаляйте криптографические контейнеры автоматически.",
                   "בדוק Windows Hello ורישום המכשיר עם התמיכה. שמור מפתחות BitLocker. אין לנקות TPM אוטומטית."),
                 SignInIssueScope.Administrator),
+            "80090011" => new(code,
+                T("Cryptographic object not found", "Криптографический объект не найден", "אובייקט קריפטוגרפי חסר"),
+                T("Windows reports NTE_NOT_FOUND. This alone does not identify the missing object or prove a physical TPM failure.",
+                  "Windows сообщает NTE_NOT_FOUND. По коду нельзя определить объект или доказать поломку TPM.",
+                  "הקוד מציין אובייקט חסר, לא בהכרח תקלה פיזית ב-TPM."),
+                T("Review Windows Hello registration, user context and Entra device key diagnostics before modifying any key containers.",
+                  "Проверьте Windows Hello, контекст пользователя и ключ устройства Entra. Не удаляйте контейнеры ключей.",
+                  "בדוק Windows Hello ומפתח Entra ללא מחיקת מפתחות."),
+                SignInIssueScope.Administrator),
+            "80090030" => new(code,
+                T("Cryptographic device not ready", "Криптографическое устройство не готово", "התקן קריפטוגרפי אינו מוכן"),
+                T("NTE_DEVICE_NOT_READY means the required cryptographic device is not ready; it is not proof of permanent TPM hardware failure.",
+                  "NTE_DEVICE_NOT_READY — необходимое криптографическое устройство не готово. Это не доказывает поломку TPM.",
+                  "התקן ההצפנה אינו מוכן; אין הוכחה לכשל חומרה קבוע."),
+                T("Check TPM readiness and firmware state with IT, plus KeySignTest when available. Do not clear TPM as an automatic fix.",
+                  "Проверьте готовность TPM и прошивку, а также KeySignTest при наличии прав. Не очищайте TPM автоматически.",
+                  "בדוק מוכנות TPM וקושחה; אין לנקות TPM אוטומטית."),
+                SignInIssueScope.Administrator),
+            "80090031" => new(code,
+                T("TPM lockout / dictionary attack protection", "Блокировка TPM из-за защиты от подбора", "חסימת TPM בהגנה מפני ניחוש"),
+                T("NTE_AUTHENTICATION_IGNORED indicates that the provider is enforcing dictionary-attack protection. This can be transient.",
+                  "NTE_AUTHENTICATION_IGNORED означает срабатывание защиты от подбора. Блокировка бывает временной.",
+                  "הופעלה הגנה מניסיונות התחברות חוזרים."),
+                T("Stop repeated attempts and allow the documented cooldown; ask IT to check Get-Tpm LockedOut and tpm.msc. Never reset TPM, BitLocker protectors or Windows Hello keys automatically.",
+                  "Прекратите повторные попытки, дождитесь снятия блокировки, проверьте Get-Tpm LockedOut и tpm.msc. Не сбрасывайте TPM и ключи автоматически.",
+                  "המתן לסיום הנעילה ובדוק מצב TPM; אין למחוק מפתחות."),
+                SignInIssueScope.Administrator),
+            "80090034" => new(code,
+                T("Cryptographic encryption failed", "Сбой криптографического шифрования", "כשל בהצפנה"),
+                T("NTE_ENCRYPTION_FAILURE describes a failed encryption operation; it does not prove that TPM hardware, Windows Hello or WAM is the root cause.",
+                  "NTE_ENCRYPTION_FAILURE — ошибка операции шифрования, которая сама по себе не указывает на TPM, Windows Hello или WAM.",
+                  "ההצפנה נכשלה; הקוד לבדו אינו מזהה את המקור."),
+                T("Review TPM readiness, device-key diagnostics and the affected Windows user's sign-in context. Preserve BitLocker recovery information. Do not disable WAM/ADAL or clear TPM.",
+                  "Проверьте TPM, ключи устройства и сеанс пользователя. Сохраните BitLocker recovery. Не отключайте WAM/ADAL и не очищайте TPM.",
+                  "בדוק TPM ומפתחות מכשיר; אל תכבה WAM/ADAL ואל תנקה TPM."),
+                SignInIssueScope.Administrator),
             "AADSTS50127" => new(code,
                 T("Broker application required", "Требуется компонент брокера авторизации", "נדרש רכיב Broker"),
                 T("The requested sign-in requires a broker application that isn't available to the client.",
@@ -93,9 +140,9 @@ internal static class SignInIssueAdvisor
                 SignInIssueScope.LocalRepair),
             _ => new(code.Length == 0 ? "UNKNOWN" : code,
                 T("No verified match", "Код не определён достоверно", "לא נמצא קוד מזוהה"),
-                T("Enter a displayed AADSTS code, 1001, or 80090016. A generic error message cannot uniquely identify the cause.",
-                  "Введите код вида AADSTSxxxxx, 1001 или 80090016. Общая надпись об ошибке не позволяет установить причину.",
-                  "הזן קוד AADSTS, 1001 או 80090016. הודעת שגיאה כללית אינה מספיקה."),
+                T("Enter a displayed AADSTS code, 1001, or 0x800900xx code. A generic error message does not identify the cause.",
+                  "Введите AADSTS-код, 1001 или 0x800900xx. Общая надпись не позволяет установить причину.",
+                  "הזן קוד AADSTS, 1001 או 0x800900xx. הודעה כללית אינה מספיקה."),
                 T("Use Check & Diagnose for local WAM/PRT signals. For a tenant-side failure ask IT for the matching Entra Sign-in Log entry.",
                   "Используйте Check & Diagnose для WAM/PRT. Для серверной ошибки запросите соответствующую запись Entra Sign-in Logs у IT.",
                   "בדוק WAM/PRT והיעזר ביומני כניסה של Entra."),
@@ -107,11 +154,12 @@ internal static class SignInIssueAdvisor
     // verified fixes, and never query a remote service as the user types.
     private static readonly string[] KnownCodes =
     [
-        "1001", "80090016",
+        "1001", "80090011", "80090016", "80090030", "80090031", "80090034",
         "AADSTS50034", "AADSTS50055", "AADSTS50057", "AADSTS50058",
         "AADSTS50072", "AADSTS50076", "AADSTS50079", "AADSTS500121",
         "AADSTS50126", "AADSTS50127", "AADSTS50131", "AADSTS50155",
-        "AADSTS53000", "AADSTS53001", "AADSTS53003", "AADSTS70046"
+        "AADSTS53000", "AADSTS53001", "AADSTS53003",
+        "AADSTS70008", "AADSTS700082", "AADSTS700084", "AADSTS70046"
     ];
 
     internal static IReadOnlyList<string> MatchingCodes(string? input)
@@ -143,9 +191,9 @@ internal static class SignInIssueAdvisor
         // Only a *whole* 5- or 6-digit number is accepted without AADSTS prefix.
         if (Regex.IsMatch(normalized, @"^\d{5,6}$", RegexOptions.CultureInvariant))
             return "AADSTS" + normalized;
-        if (Regex.IsMatch(normalized, @"(?i)(?:^|\b)(?:0x)?80090016\b",
-                RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)))
-            return "80090016";
+        var crypto = Regex.Match(normalized, @"(?i)(?:^|\b)(?:0x)?(?<code>800900(?:11|16|30|31|34))\b",
+            RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        if (crypto.Success) return crypto.Groups["code"].Value;
         if (Regex.IsMatch(normalized, @"(?i)(?:^1001$|(?:error|ошибка|שגיאה)\W*1001\b|\[\s*1001\s*\])",
                 RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)))
             return "1001";
@@ -158,6 +206,7 @@ internal static class SignInIssueAdvisor
             MatchingCodes("530").Count == 3 &&
             MatchingCodes("AADSTS5007").Contains("AADSTS50076") &&
             MatchingCodes("0x8009").Contains("80090016") &&
+            MatchingCodes("8009003").Contains("80090030") &&
             MatchingCodes("email@example.com").Count == 0 &&
             MatchingCodes("").Count == 0 &&
             ExtractCode("AADSTS53003: blocked") == "AADSTS53003" &&
@@ -166,8 +215,18 @@ internal static class SignInIssueAdvisor
             Explain("AADSTS50155").Scope == SignInIssueScope.Administrator &&
             Explain("Something went wrong [1001]").Scope == SignInIssueScope.LocalRepair &&
             Explain("0x80090016").Scope == SignInIssueScope.Administrator &&
+            Explain("0x80090034").Scope == SignInIssueScope.Administrator &&
+            Explain("0x80090031").NextStep.Length > 30 &&
+            ExtractCode("Error code: 80090030") == "80090030" &&
+            ExtractCode("0x80090011") == "80090011" &&
             Explain("AADSTS50127").Scope == SignInIssueScope.LocalRepair &&
             Explain("AADSTS50058").Scope == SignInIssueScope.UserAction &&
+            Explain("AADSTS70008").Scope == SignInIssueScope.UserAction &&
+            Explain("AADSTS700082").Scope == SignInIssueScope.UserAction &&
+            Explain("AADSTS700084").Scope == SignInIssueScope.UserAction &&
+            MatchingCodes("70008").Contains("AADSTS70008") &&
+            ExtractCode("Message: AADSTS70008: token expired; request-id: abc") == "AADSTS70008" &&
+            !Explain("AADSTS70008").NextStep.Contains("Clear TPM", StringComparison.Ordinal) &&
             Explain("person@example.com").Scope == SignInIssueScope.Investigation &&
             ExtractCode("12345 other details") == "" &&
             ExtractCode("1001") == "1001";

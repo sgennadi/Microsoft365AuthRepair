@@ -60,7 +60,8 @@ internal static class UpdaterIntegration
             stableOnly.SequenceEqual([UpdateChannel.Stable]) &&
             SemanticVersion.Parse("1.0.1") > SemanticVersion.Parse("1.0.1-preview.10") &&
             SemanticVersion.Parse("1.0.0") < SemanticVersion.Parse("1.0.1-preview.10") &&
-            SemanticVersion.Parse("1.0.2-preview.1") > SemanticVersion.Parse("1.0.1");
+            SemanticVersion.Parse("1.0.2-preview.1") > SemanticVersion.Parse("1.0.1") &&
+            SemanticVersion.Parse("1.0.2-preview.20") > SemanticVersion.Parse("1.0.2-preview.19");
     }
 }
 
@@ -102,9 +103,9 @@ internal static class UpdateUiText
     }
 
     internal static string CurrentChangelog() => T(
-        "1. Smart Repair recommends the safest action from WAM, Entra and Office evidence.\n2. Preflight checks Office apps, login HTTPS, time and AppX policy hints.\n3. Separate Office Volume 2024 and Microsoft 365 subscription activation evidence.\n4. Retry only a confirmed failed WAM task for one selected user at next sign-in.\n5. Optional Graph sign-in audit: Device Code/certificate, audit-only session.\n6. Automatic local recheck and explicit user-reported Office app sign-in result.\n7. Compact localized EN/RU/HE DPI-aware Smart Repair view.",
-        "1. Smart Repair предлагает действие по признакам WAM, Entra и Office.\n2. Предпроверка Office, HTTPS, времени и AppX-политик.\n3. Раздельная диагностика Office Volume 2024 и подписки Microsoft 365.\n4. Повтор только ошибочного WAM у выбранного пользователя при следующем входе.\n5. Журналы входа Graph: Device Code/сертификат, только AuditLog.Read.All.\n6. Автопроверка после ремонта и отдельное подтверждение входа пользователем.\n7. Компактный интерфейс EN/RU/HE с адаптацией к DPI.",
-        "1. Smart Repair ממליץ על פעולה לפי מצב WAM, Entra ו-Office.\n2. בדיקה מוקדמת של Office, HTTPS, שעון ומדיניות AppX.\n3. בדיקת רישוי נפרדת ל-Office Volume ולמנוי Microsoft 365.\n4. ניסיון חוזר ל-WAM שנכשל רק למשתמש נבחר ובכניסה הבאה.\n5. בדיקת Graph עם Device Code או אישור והרשאת AuditLog בלבד.\n6. בדיקה מקומית חוזרת ואישור מפורש של כניסה ל-Office.\n7. ממשק EN/RU/HE קומפקטי ומותאם DPI.");
+        "1. Read-only TPM readiness, BitLocker OS-volume and DPAPI policy inspection.\n2. Separate 0x80090016/80090034 keyset errors from TPM attestation 0x80070490/0x800705B4.\n3. Show domain RWDC reachability warnings for possible DPAPI key-backup issues.\n4. Existing AIK enrollment and EK certificate readiness indicators are checked safely.\n5. Localized, responsive TPM & BitLocker details without reset or recovery-key access.\n6. Anonymous reports contain coarse allowlisted TPM/BitLocker statuses only.\n7. Preview.19 follows Stable 1.0.1 with correct 1.0.2-preview.19 version order.",
+        "1. Проверка TPM, BitLocker и DPAPI без изменений системы.\n2. Разделены ошибки ключей Office и ошибки AIK/TPM Attestation.\n3. Проверяется доступность RWDC для возможных проблем DPAPI.\n4. Читаются имеющиеся ошибки AIK и признаки сертификата EK.\n5. Компактное окно TPM и BitLocker на RU/EN/HE, без сброса ключей.\n6. Анонимный отчёт содержит только безопасные категории состояния.\n7. Preview.19 новее Stable 1.0.1 по правилам SemVer.",
+        "1. בדיקה לקריאה בלבד של TPM, BitLocker ו-DPAPI.\n2. הפרדה בין שגיאות מפתח Office לשגיאות אימות AIK.\n3. בדיקת גישה לבקר תחום RWDC עבור DPAPI.\n4. קריאת שגיאות AIK וסימני אישור EK קיימים.\n5. חלון TPM/BitLocker מותאם ללא מחיקת מפתחות.\n6. דוח אנונימי כולל מצבים מוגבלים בלבד.\n7. Preview.19 חדש מ-Stable 1.0.1 לפי SemVer.");
 
     internal static string ForMultilineBox(string text) => text.ReplaceLineEndings(Environment.NewLine);
 
