@@ -10,7 +10,7 @@ namespace Microsoft365AuthRepair;
 internal enum ActivityStep
 {
     Ready, ReadOnlyCheck, WamEntra, OfficeLicensing, TpmBitLocker,
-    NetworkPreflight, TpmWmi, BitLockerWmi, DeviceGuardWmi,
+    NetworkPreflight, TpmWmi, BitLockerWmi, BitLockerConversion, DeviceGuardWmi,
     DomainDc, TpmLockout, DpapiAttestation, SecureBoot, VirtualMachine,
     Preflight,
     WamRegistration, OfficeReset, CredentialCleanup, RegistryCleanup,
@@ -135,7 +135,10 @@ internal sealed class ActivityJournalView : TableLayoutPanel
             "Лицензирование Office", "רישוי Office"),
         ActivityStep.TpmBitLocker => "TPM / BitLocker",
         ActivityStep.TpmWmi => "TPM (WMI)",
-        ActivityStep.BitLockerWmi => "BitLocker (WMI)",
+        ActivityStep.BitLockerWmi => UpdateUiText.T("BitLocker protection (WMI)",
+            "Защита BitLocker (WMI)", "הגנת BitLocker (WMI)"),
+        ActivityStep.BitLockerConversion => UpdateUiText.T("BitLocker encryption (WMI)",
+            "Шифрование BitLocker (WMI)", "הצפנת BitLocker (WMI)"),
         ActivityStep.DeviceGuardWmi => "Device Guard / HVCI (WMI)",
         ActivityStep.DomainDc => UpdateUiText.T("Domain controller",
             "Контроллер домена", "בקר תחום"),
@@ -248,6 +251,7 @@ internal sealed class ActivityJournalView : TableLayoutPanel
         view.Add(ActivityStep.TpmBitLocker, ActivityOutcome.NotVerified);
         view.Add(ActivityStep.TpmWmi, ActivityOutcome.TimeLimit);
         view.Add(ActivityStep.BitLockerWmi, ActivityOutcome.Finished);
+        view.Add(ActivityStep.BitLockerConversion, ActivityOutcome.TimeLimit);
         view.Add(ActivityStep.SecureBoot, ActivityOutcome.Finished);
         view.Add(ActivityStep.VirtualMachine, ActivityOutcome.NotVerified);
         view.SetCancellationAvailable(true);
@@ -261,6 +265,6 @@ internal sealed class ActivityJournalView : TableLayoutPanel
             view.CopyText.Contains("TPM / BitLocker", StringComparison.Ordinal) &&
             !view.CopyText.Contains("TenantId", StringComparison.OrdinalIgnoreCase) &&
             !view.CopyText.Contains("UserSid", StringComparison.OrdinalIgnoreCase) &&
-            view.entries.Count == 8;
+            view.entries.Count == 9;
     }
 }
