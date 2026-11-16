@@ -90,10 +90,16 @@ internal static class ReadOnlyDiagnosticScan
         if (wait <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maxWait));
 
         var completed = 0;
+        // A native WMI provider can remain blocked indefinitely. Holding a
+        // strong reference to Progress<T> would also pin the closed WinForms
+        // window for the lifetime of that provider query.
+        var progressWeak = progress is null ? null :
+            new WeakReference<IProgress<DiagnosticSectionProgress>>(progress);
         void Finished(string section)
         {
             int n = Interlocked.Increment(ref completed);
-            progress?.Report(new(n, TotalSections, section));
+            if (progressWeak?.TryGetTarget(out var sink) == true)
+                sink.Report(new(n, TotalSections, section));
         }
 
         // Start independent components concurrently. A slow Office licensing
