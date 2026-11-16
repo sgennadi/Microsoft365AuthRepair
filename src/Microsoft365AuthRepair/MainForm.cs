@@ -1440,6 +1440,33 @@ internal sealed class MainForm : Form
             acceptingProgress = false;
             if (IsDisposed || Disposing || request.IsCancellationRequested) return;
 
+            // A Progress<T> callback may still be queued when the awaited scan
+            // completes. Reconcile all stages from the final typed result,
+            // rather than leaving any Activity entry stuck on "Started".
+            var unverified = new HashSet<string>(data.UnverifiedSections,
+                StringComparer.Ordinal);
+            foreach (var part in TpmBitLockerProbe.PartNames)
+            {
+                var step = ActivityFromDiagnosticSection(part);
+                if (recordedSections.Add(step))
+                    activityJournal.Add(step, unverified.Contains(part) ||
+                        unverified.Contains("TPM_BITLOCKER")
+                            ? ActivityOutcome.NotVerified : ActivityOutcome.Finished);
+            }
+            foreach (var part in new[] {
+                "WAM_ENTRA", "OFFICE_LICENSE", "TPM_BITLOCKER",
+                "NETWORK_PREFLIGHT"
+            })
+            {
+                var step = ActivityFromDiagnosticSection(part);
+                if (!recordedSections.Add(step)) continue;
+                bool incomplete = unverified.Contains(part) ||
+                    (part == "TPM_BITLOCKER" &&
+                     TpmBitLockerProbe.PartNames.Any(unverified.Contains));
+                activityJournal.Add(step, incomplete ?
+                    ActivityOutcome.NotVerified : ActivityOutcome.Finished);
+            }
+
             lastRawDiagnostic = data.WamReport;
             lastOfficeLicense = data.OfficeLicense;
             lastOfficeActivation = data.OfficeActivation;
