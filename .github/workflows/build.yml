@@ -153,7 +153,41 @@ jobs:
             throw 'Read-only device probe did not produce a valid typed status.'
           }
           Remove-Item -LiteralPath $probeOutput -Force
-          Write-Host 'Read-only child process returned a validated local-only category.'
+          # Verify the newly added isolated hardware-inventory workers on
+          # the actual Windows CI runner, not only in pure parser self-tests.
+          foreach ($part in @('SECURE_BOOT', 'VIRTUAL_MACHINE')) {
+            $child = Start-Process -FilePath $exe -ArgumentList "--read-only-device-probe $part" -RedirectStandardOutput $probeOutput -PassThru
+            try {
+              if (-not $child.WaitForExit(15000)) {
+                $child.Kill()
+                throw "Read-only $part worker exceeded CI timeout."
+              }
+              if ($child.ExitCode -ne 0) {
+                throw "Read-only $part worker failed ($($child.ExitCode))."
+              }
+              $result = Get-Content -LiteralPath $probeOutput -Raw | ConvertFrom-Json
+              if ($result.Part -cne $part -or -not $result.Snapshot) {
+                throw "Worker $part did not return the expected typed response."
+              }
+              if ($part -eq 'SECURE_BOOT') {
+                if ($result.SecureBootState -notin @('ON','OFF','UNSUPPORTED','UNKNOWN') -or
+                    $result.FirmwareType -notin @('UEFI','BIOS','UNKNOWN')) {
+                  throw 'Secure Boot result is not an allowed category.'
+                }
+              }
+              if ($part -eq 'VIRTUAL_MACHINE') {
+                if ($result.VirtualMachineGuest -notin @('YES','NO','UNKNOWN') -or
+                    $result.VirtualMachinePlatform -notin @('VMWARE','HYPER_V','VIRTUALBOX','KVM_QEMU','XEN','PARALLELS','AWS_EC2','GOOGLE_CLOUD','NUTANIX','OTHER_VM','NONE','UNKNOWN')) {
+                  throw 'VM result is not an allowed category.'
+                }
+              }
+              Write-Host "Validated isolated $part worker using category-only IPC."
+            } finally {
+              $child.Dispose()
+              Remove-Item -LiteralPath $probeOutput -Force -ErrorAction SilentlyContinue
+            }
+          }
+          Write-Host 'Read-only child processes returned validated local-only categories.'
       - name: Upload verified build artifacts
         uses: actions/upload-artifact@v4
         with:
