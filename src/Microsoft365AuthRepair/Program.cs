@@ -78,6 +78,7 @@ internal static class Program
                     ("Microsoft Learn knowledge base", SignInKnowledgeBase.SelfTest),
                     ("Native vNext license checks", OfficeLicenseDiagnostics.SelfTest),
                     ("Office 2024 Volume product identity", OfficeVolumeLicensing.SelfTest),
+                    ("Privacy-safe Office report evidence", OfficeDiagnosticEvidence.SelfTest),
                     ("Volume licensing UI", OfficeVolumeLicenseForm.SelfTest),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
                     ("WAM result card", DiagnosticResultCard.SelfTest),
