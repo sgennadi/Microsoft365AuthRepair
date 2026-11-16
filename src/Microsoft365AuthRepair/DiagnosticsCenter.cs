@@ -166,15 +166,32 @@ internal sealed class DiagnosticsCenter : Form
         collecting = true;
         generate.Enabled = load.Enabled = open.Enabled = repairLogs.Enabled = false;
         status.Text = UpdateUiText.T(
-            "Collecting local Entra/WAM diagnostics... No data is being uploaded.",
-            "Собираю локальную диагностику Entra/WAM... Данные не отправляются.",
-            "אוסף נתוני אבחון מקומיים. אין שליחה ברשת.");
+            "Collecting Entra/WAM and anonymous Office license signals... Nothing is uploaded.",
+            "Собираю Entra/WAM и обезличенные признаки лицензирования Office. Ничего не отправляется.",
+            "אוסף נתוני WAM ורישוי Office ללא מידע אישי. אין שליחה ברשת.");
         try
         {
             // AppX and dsregcmd can be slow. Keep the UI responsive.
             // Only the sanitized allowlist can be offered for publication.
-            var summary = await Task.Run(
-                () => M365DiagnosticPayload.SafeSummary(Repair.DiagnoseReport()));
+            var summary = await Task.Run(() =>
+            {
+                var wam = M365DiagnosticPayload.SafeSummary(Repair.DiagnoseReport());
+                OfficeDiagnosticEvidence office;
+                try
+                {
+                    office = OfficeDiagnosticEvidence.Capture();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                    or InvalidOperationException or System.Management.ManagementException
+                    or System.Runtime.InteropServices.COMException
+                    or System.Security.SecurityException or PlatformNotSupportedException)
+                {
+                    // WMI/Office failures cannot prevent WAM reports; no raw
+                    // exception message, stack or paths leave this process.
+                    office = OfficeDiagnosticEvidence.Unknown;
+                }
+                return wam + "; " + office.ToSafeSummary();
+            });
             if (IsDisposed || Disposing) return;
             var capture = JsonSerializer.Serialize(new
             {
