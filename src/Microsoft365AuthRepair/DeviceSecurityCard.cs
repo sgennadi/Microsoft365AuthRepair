@@ -98,6 +98,7 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
     private bool reshaping;
     private int displayedColumns;
     private TpmBitLockerSnapshot? current;
+    private bool collecting;
 
     internal event EventHandler? DetailsRequested;
 
@@ -157,11 +158,17 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         detailsLink.AccessibleName = T("Open TPM and BitLocker read-only details",
             "Открыть подробности TPM и BitLocker (только чтение)",
             "פתח פרטי TPM ו-BitLocker לקריאה בלבד");
-        explanation.Text = T(
+        explanation.Text = collecting ? T(
+            "Checking device security… results appear as providers finish.",
+            "Проверяем защиту устройства… результаты появляются по мере завершения этапов.",
+            "בדיקת אבטחת המכשיר… התוצאות מופיעות עם השלמת השלבים.") : T(
             "Separate read-only Windows security results; these are not Office sign-in tests.",
             "Отдельные результаты проверки защиты Windows — это не проверка входа в Office.",
             "תוצאות אבטחת Windows לקריאה בלבד; אינן בודקות כניסה ל-Office.");
-        caution.Text = T(
+        caution.Text = collecting ? T(
+            "Pending values are not yet verified. This check does not change TPM, BitLocker or Office.",
+            "Ожидающие данные ещё не проверены. Проверка не изменяет TPM, BitLocker или Office.",
+            "ערכים ממתינים טרם אומתו. הבדיקה אינה משנה TPM, BitLocker או Office.") : T(
             "Unknown means not verified. BitLocker off or Windows Hello absent can be expected by policy. No recovery keys are read.",
             "Неизвестно означает «не проверено». BitLocker OFF может соответствовать политике. Ключи восстановления не считываются.",
             "לא ידוע פירושו לא אומת. BitLocker כבוי עשוי להיות תקין לפי מדיניות. מפתחות שחזור אינם נקראים.");
@@ -169,7 +176,9 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
         UpdateGeometry();
     }
 
-    private static string Unknown => T("Not verified", "Не проверено", "לא אומת");
+    private string Unknown => collecting ?
+        T("Checking…", "Проверяется…", "בבדיקה…") :
+        T("Not verified", "Не проверено", "לא אומת");
 
     private void UpdateValues(TpmBitLockerSnapshot x)
     {
@@ -338,9 +347,10 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             x.VirtualMachineGuest == "NO" ? Status.Neutral : Status.Unknown);
     }
 
-    internal void ShowResult(TpmBitLockerSnapshot? snapshot)
+    internal void ShowResult(TpmBitLockerSnapshot? snapshot, bool inProgress = false)
     {
         current = snapshot ?? TpmBitLockerSnapshot.Unknown;
+        collecting = inProgress;
         UpdateLanguage();
         Visible = true;
         UpdateValues(current);
@@ -350,6 +360,7 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
     internal void ClearResult()
     {
         current = null;
+        collecting = false;
         Visible = false;
     }
 
@@ -410,6 +421,10 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             DpapiProtectionPolicy = "NOT_SET", DomainJoinStatus = "YES",
             WritableDcStatus = "AVAILABLE"
         };
+        card.ShowResult(TpmBitLockerSnapshot.Unknown, inProgress: true);
+        if (!card.collecting || card.Unknown !=
+            T("Checking…", "Проверяется…", "בבדיקה…"))
+            return false;
         card.ShowResult(sample);
         if (!card.HasReadOnlyDetailsLink || card.tiles.Length != 12 ||
             card.signalGrid.Controls.Count != 12 ||
