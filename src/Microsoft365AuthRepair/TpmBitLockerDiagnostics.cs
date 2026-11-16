@@ -448,7 +448,11 @@ internal static class TpmBitLockerProbe
                     // property. Querying it does not need the administrator-
                     // only GetConversionStatus method. This is a point-in-time
                     // snapshot, not proof that encryption cannot change.
-                    var cached = ConversionState(item["ConversionStatus"]);
+                    string cached = "UNKNOWN";
+                    try { cached = ConversionState(item["ConversionStatus"]); }
+                    catch (Exception ex) when (ex is ManagementException or
+                        ArgumentException or FormatException or OverflowException)
+                    { /* Fall back to the live read-only method below. */ }
                     if (cached != "UNKNOWN") return cached;
 
                     // On providers without a usable property, try the live
