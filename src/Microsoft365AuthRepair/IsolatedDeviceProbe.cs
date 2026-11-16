@@ -14,7 +14,23 @@ internal sealed record DeviceProbeRun(TpmBitLockerSnapshot Snapshot,
 
 internal static class IsolatedDeviceProbe
 {
-    private sealed record Wire(string Part, TpmBitLockerSnapshot Snapshot);
+    // System.Text.Json intentionally omits non-public snapshot properties.
+    // Explicit local IPC envelope prevents TPM lockout/AIK flags from being
+    // silently dropped and ensures no raw TPM or identity objects are sent.
+    private sealed record Wire(string Part, TpmBitLockerSnapshot Snapshot,
+        string TpmManufacturer, string TpmFirmwareVersion,
+        string WindowsRelease, string AikEnrollmentError, string EkCertStore,
+        string TpmLockedOut);
+
+    private static Wire Pack(string part, TpmBitLockerSnapshot snapshot) =>
+        new(part, snapshot, snapshot.TpmManufacturer,
+            snapshot.TpmFirmwareVersion, snapshot.WindowsRelease,
+            snapshot.AikEnrollmentError, snapshot.EkCertStore,
+            snapshot.TpmLockedOut);
+
+    private static string Allowed(string? value, params string[] allowed) =>
+        value is not null && allowed.Contains(value, StringComparer.Ordinal)
+            ? value : "UNKNOWN";
     private sealed record Result(string Part, string State, TpmBitLockerSnapshot? Snapshot);
 
     internal const int PartTimeoutSeconds = 10;
@@ -27,7 +43,7 @@ internal static class IsolatedDeviceProbe
         try
         {
             var snapshot = TpmBitLockerProbe.CapturePart(part);
-            var output = JsonSerializer.Serialize(new Wire(part, snapshot));
+            var output = JsonSerializer.Serialize(Pack(part, snapshot));
             // The WinExe subsystem may have no console attached. Its standard
             // output is explicitly redirected by the requesting process.
             using var writer = new StreamWriter(Console.OpenStandardOutput(),
@@ -50,7 +66,24 @@ internal static class IsolatedDeviceProbe
         {
             var wire = JsonSerializer.Deserialize<Wire>(output);
             if (wire?.Part != part || wire.Snapshot is null) return null;
-            var state = wire.Snapshot;
+            var state = wire.Snapshot with
+            {
+                TpmManufacturer = Allowed(wire.TpmManufacturer,
+                    "STM", "MSFT", "OTHER", "UNKNOWN"),
+                TpmFirmwareVersion = TpmBitLockerProbe.FirmwareVersion(
+                    wire.TpmFirmwareVersion),
+                WindowsRelease = Allowed(wire.WindowsRelease,
+                    "WIN11_24H2", "WIN11_25H2", "WIN11_NEWER",
+                    "OTHER", "UNKNOWN"),
+                AikEnrollmentError = Allowed(wire.AikEnrollmentError,
+                    "NOT_FOUND", "TIMEOUT", "INVALID_PUBLIC_KEY",
+                    "SERVER_ERROR", "OTHER_ERROR", "NONE_RECORDED",
+                    "UNKNOWN"),
+                EkCertStore = Allowed(wire.EkCertStore,
+                    "IMPORT_INCOMPLETE", "UNKNOWN"),
+                TpmLockedOut = Allowed(wire.TpmLockedOut,
+                    "YES", "NO", "UNKNOWN")
+            };
             // A child is our own signed-by-release app. Nonetheless, validate
             // the narrow set of fields that can enter the parent process.
             return part switch
@@ -204,7 +237,7 @@ internal static class IsolatedDeviceProbe
     {
         var invalid = Parse("TPM_WMI", "NOT_A_JSON");
         var unknown = TpmBitLockerSnapshot.Unknown;
-        var probe = new Wire("TPM_LOCKOUT",
+        var probe = Pack("TPM_LOCKOUT",
             unknown with { TpmLockedOut = "YES" });
         var parsed = Parse("TPM_LOCKOUT", JsonSerializer.Serialize(probe));
         return TpmBitLockerProbe.PartNames.Length == 6 &&
