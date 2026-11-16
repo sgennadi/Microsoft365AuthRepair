@@ -205,6 +205,8 @@ internal static class M365DiagnosticPayload
                 " DpapiDomainJoined: YES; DpapiWritableDc: AVAILABLE;" +
                 " TpmAikEnrollment: NOT_FOUND; TpmEkCertStore: IMPORT_INCOMPLETE;" +
                 " TpmManufacturerClass: STM; WindowsTpmRelease: WIN11_24H2;" +
+                " TpmLockedOut: YES; KeySignTest: FAILED; AadRecoveryEnabled: YES;" +
+                " NgcKeyId: PRIVATE_NGC_KEY_ID; KeyContainerId: PRIVATE_CONTAINER_ID;" +
                 " TPMFirmwareVersion: secret.device.build;" +
                 " BitLockerRecoveryKey: 111111-222222-333333-444444-555555-666666;" +
                 " TpmOwnerAuth: secret-password; OfficeKmsHost: internal.example;" +
@@ -236,6 +238,11 @@ internal static class M365DiagnosticPayload
             signals.GetProperty("windows_tpm_release").GetString() == "WIN11_24H2" &&
             !outgoing.Contains("secret.device.build", StringComparison.Ordinal) &&
             !outgoing.Contains("TPMFirmwareVersion", StringComparison.Ordinal) &&
+            !outgoing.Contains("TpmLockedOut", StringComparison.Ordinal) &&
+            !outgoing.Contains("KeySignTest", StringComparison.Ordinal) &&
+            !outgoing.Contains("AadRecoveryEnabled", StringComparison.Ordinal) &&
+            !outgoing.Contains("PRIVATE_NGC_KEY_ID", StringComparison.Ordinal) &&
+            !outgoing.Contains("PRIVATE_CONTAINER_ID", StringComparison.Ordinal) &&
             !outgoing.Contains("111111-222222-", StringComparison.Ordinal) &&
             !outgoing.Contains("secret-password", StringComparison.Ordinal) &&
             !outgoing.Contains("BitLockerRecoveryKey", StringComparison.Ordinal) &&

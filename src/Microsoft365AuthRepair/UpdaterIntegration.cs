@@ -60,7 +60,8 @@ internal static class UpdaterIntegration
             stableOnly.SequenceEqual([UpdateChannel.Stable]) &&
             SemanticVersion.Parse("1.0.1") > SemanticVersion.Parse("1.0.1-preview.10") &&
             SemanticVersion.Parse("1.0.0") < SemanticVersion.Parse("1.0.1-preview.10") &&
-            SemanticVersion.Parse("1.0.2-preview.1") > SemanticVersion.Parse("1.0.1");
+            SemanticVersion.Parse("1.0.2-preview.1") > SemanticVersion.Parse("1.0.1") &&
+            SemanticVersion.Parse("1.0.2-preview.20") > SemanticVersion.Parse("1.0.2-preview.19");
     }
 }
 

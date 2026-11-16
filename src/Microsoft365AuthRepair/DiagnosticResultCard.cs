@@ -3,7 +3,7 @@ using System.Windows.Forms;
 
 namespace Microsoft365AuthRepair;
 
-// One compact result surface: status, six interpreted signals and next steps.
+// Responsive sign-in surface: six WAM signals plus device key and Windows Hello.
 // Never use raw dsregcmd text in a tile; the technical report is separate.
 internal sealed class DiagnosticResultCard : TableLayoutPanel
 {
@@ -113,7 +113,7 @@ internal sealed class DiagnosticResultCard : TableLayoutPanel
         Controls.Add(signalGrid, 1, 1);
         Controls.Add(findings, 1, 2);
         Controls.Add(nextSteps, 1, 3);
-        for (var i = 0; i < 6; i++) tiles.Add(new SignalTile());
+        for (var i = 0; i < 8; i++) tiles.Add(new SignalTile());
         SizeChanged += (_, _) => UpdateGeometry();
         signalGrid.SizeChanged += (_, _) => UpdateGeometry();
     }
@@ -193,7 +193,7 @@ internal sealed class DiagnosticResultCard : TableLayoutPanel
     internal void ClearResult() => Visible = false;
 
     internal bool HasSummary => Visible && !string.IsNullOrWhiteSpace(headline.Text)
-        && !string.IsNullOrWhiteSpace(nextSteps.Text) && tiles.Count == 6;
+        && !string.IsNullOrWhiteSpace(nextSteps.Text) && tiles.Count == 8;
 
     internal static bool SelfTest()
     {
@@ -202,8 +202,10 @@ internal sealed class DiagnosticResultCard : TableLayoutPanel
             "DomainJoined: YES\nDeviceAuthStatus: SUCCESS\nAzureAdPrt: YES\nWamDefaultSet: YES";
         card.ShowResult(WamHealthAnalysis.Evaluate(healthy, true));
         return card.HasSummary && card.Controls.Count == 5 &&
-            card.RowCount == 4 && card.signalGrid.Controls.Count == 6 &&
+            card.RowCount == 4 && card.signalGrid.Controls.Count == 8 &&
             card.tiles.All(t => !string.IsNullOrWhiteSpace(t.Value.Text)) &&
-            card.tiles[1].Title.Text.Length > 0;
+            card.tiles[1].Title.Text.Length > 0 &&
+            card.tiles[6].Title.Text.Length > 0 &&
+            card.tiles[7].Title.Text == "Windows Hello";
     }
 }

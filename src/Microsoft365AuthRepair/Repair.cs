@@ -5,7 +5,7 @@ namespace Microsoft365AuthRepair;
 
 internal static class Repair
 {
-    internal const string Version = "1.0.2-preview.19";
+    internal const string Version = "1.0.2-preview.20";
     private static readonly string[] RegistryKeys =
     [
         @"Software\Microsoft\Office\16.0\Common\Identity",
@@ -111,7 +111,8 @@ internal static class Repair
             var dsreg = ExternalCommand.Run(dsregPath, ["/status"], 30);
             foreach (var line in dsreg.StdOut.Split('\n'))
             {
-                if (new[] { "DomainJoined", "AzureAdJoined", "DeviceAuthStatus", "AzureAdPrt", "WamDefaultSet" }
+                if (new[] { "DomainJoined", "AzureAdJoined", "DeviceAuthStatus", "AzureAdPrt", "WamDefaultSet",
+                    "TpmProtected", "KeySignTest", "AadRecoveryEnabled", "NgcSet" }
                     .Any(x => line.TrimStart().StartsWith(x + " ", StringComparison.Ordinal)))
                     output.AppendLine(line.Trim());
             }
