@@ -1299,6 +1299,12 @@ internal sealed class MainForm : Form
         "OFFICE_LICENSE" => UpdateUiText.T("Office licensing", "Лицензия Office", "רישוי Office"),
         "TPM_BITLOCKER" => UpdateUiText.T("TPM / BitLocker", "TPM / BitLocker", "TPM / BitLocker"),
         "NETWORK_PREFLIGHT" => UpdateUiText.T("Network / preflight", "Сеть / предпроверка", "רשת / בדיקה מקדימה"),
+        "TPM_WMI" => "TPM (WMI)",
+        "BITLOCKER_WMI" => "BitLocker (WMI)",
+        "DEVICE_GUARD_WMI" => "Device Guard / HVCI (WMI)",
+        "DOMAIN_RWDC" => UpdateUiText.T("Domain controller", "Контроллер домена", "בקר תחום"),
+        "TPM_LOCKOUT" => UpdateUiText.T("TPM lockout", "Блокировка TPM", "נעילת TPM"),
+        "DPAPI_ATTESTATION" => "DPAPI / AIK",
         _ => UpdateUiText.T("Not verified", "Не проверено", "לא נבדק")
     };
 
@@ -1308,6 +1314,12 @@ internal sealed class MainForm : Form
         "OFFICE_LICENSE" => ActivityStep.OfficeLicensing,
         "TPM_BITLOCKER" => ActivityStep.TpmBitLocker,
         "NETWORK_PREFLIGHT" => ActivityStep.NetworkPreflight,
+        "TPM_WMI" => ActivityStep.TpmWmi,
+        "BITLOCKER_WMI" => ActivityStep.BitLockerWmi,
+        "DEVICE_GUARD_WMI" => ActivityStep.DeviceGuardWmi,
+        "DOMAIN_RWDC" => ActivityStep.DomainDc,
+        "TPM_LOCKOUT" => ActivityStep.TpmLockout,
+        "DPAPI_ATTESTATION" => ActivityStep.DpapiAttestation,
         _ => ActivityStep.ReadOnlyCheck
     };
 
@@ -1364,6 +1376,27 @@ internal sealed class MainForm : Form
         {
             var ownAccount = !elevated || desktopUser.SameAsProcess;
             var recordedSections = new HashSet<ActivityStep>();
+            var deviceProgress = new Progress<DeviceProbeProgress>(update =>
+            {
+                if (!ReferenceEquals(diagnosticCancellation, request) ||
+                    request.IsCancellationRequested || IsDisposed || Disposing)
+                    return;
+                var section = ActivityFromDiagnosticSection(update.Part);
+                if (section == ActivityStep.ReadOnlyCheck) return;
+                if (update.State == "STARTED")
+                {
+                    activityJournal.Add(section, ActivityOutcome.Started);
+                    return;
+                }
+                if (!recordedSections.Add(section)) return;
+                var result = update.State switch
+                {
+                    "FINISHED" => ActivityOutcome.Finished,
+                    "TIME_LIMIT" => ActivityOutcome.TimeLimit,
+                    _ => ActivityOutcome.NotVerified
+                };
+                activityJournal.Add(section, result);
+            });
             var sectionProgress = new Progress<DiagnosticSectionProgress>(update =>
             {
                 if (!ReferenceEquals(diagnosticCancellation, request) ||
@@ -1379,7 +1412,7 @@ internal sealed class MainForm : Form
                 ShowDiagnosticProgress();
             });
             var data = await ReadOnlyDiagnosticScan.RunAsync(
-                ownAccount, sectionProgress, request.Token);
+                ownAccount, sectionProgress, request.Token, deviceProgress);
             if (IsDisposed || Disposing || request.IsCancellationRequested) return;
 
             lastRawDiagnostic = data.WamReport;
