@@ -1,3 +1,9 @@
+## Preview.26 — independent BitLocker status and more precise diagnostics
+
+**Check & Diagnose** now queries BitLocker protection and volume encryption independently, using two isolated, timeout-limited, read-only workers restricted to the Windows system volume. A stalled encryption-status method no longer discards a successfully read protection status. Activity labels distinguish **BitLocker protection (WMI)** from **BitLocker encryption (WMI)**; a timed-out or inaccessible provider remains **Not verified** rather than being marked off or healthy. No recovery keys, protectors, TPM state or Office credentials are modified.
+
+[Preview.26 release notes](docs/releases/v1.0.2-preview.26.md)
+
 ## Preview.25 — live device-security results and compact cancellation
 
 **Check & Diagnose** now shows the TPM & BitLocker Device Security card immediately and updates each Windows security value as its isolated read-only probe finishes. If BitLocker WMI times out after 10 seconds, TPM/Secure Boot/VM/HVCI results remain available and BitLocker stays **Not verified**. The oversized cancel button is replaced with a small **Cancel** link in the Activity header beside **Copy log**. There is no automatic TPM or BitLocker repair, WAM reset or credential deletion.
