@@ -752,6 +752,14 @@ internal sealed class MainForm : Form
             : lastDeviceProtection.NeedsTpmReview
                 ? UpdateUiText.T("TPM state needs review; do not clear TPM.",
                     "TPM требует проверки; не очищайте TPM.", "יש לבדוק TPM; אין לנקות.")
+                : lastDeviceProtection.NeedsAttestationReview
+                    ? UpdateUiText.T("TPM AIK attestation needs review; do not clear TPM.",
+                        "Ошибка аттестации TPM AIK. Не очищайте TPM.",
+                        "נדרשת בדיקת AIK. אין לנקות TPM.")
+                : lastDeviceProtection is { DomainJoinStatus: "YES", WritableDcStatus: "NOT_FOUND" }
+                    ? UpdateUiText.T("Domain RWDC was not found; check DNS/VPN/DPAPI.",
+                        "RWDC не найден; проверьте DNS, VPN и DPAPI.",
+                        "בקר תחום לכתיבה לא נמצא.")
                 : lastDeviceProtection.NeedsBitLockerReview
                     ? UpdateUiText.T("Encrypted OS volume protection appears OFF; ask IT.",
                         "Защита зашифрованного системного раздела OFF — проверьте с IT.",
