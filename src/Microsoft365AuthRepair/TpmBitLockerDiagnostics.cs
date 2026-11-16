@@ -166,6 +166,12 @@ internal sealed record TpmBitLockerSnapshot(
             TpmBitLockerProbe.AikErrorClass(0x800705B4u) == "TIMEOUT" &&
             TpmBitLockerProbe.FirmwareVersion("9.8.7") == "9.8.7" &&
             TpmBitLockerProbe.FirmwareVersion("device secret") == "UNKNOWN" &&
+            TpmBitLockerProbe.SystemVolumeQuery("c:\\", true) ==
+                "SELECT DriveLetter, ProtectionStatus FROM Win32_EncryptableVolume WHERE DriveLetter = 'C:'" &&
+            TpmBitLockerProbe.SystemVolumeQuery("D:", false) ==
+                "SELECT DriveLetter FROM Win32_EncryptableVolume WHERE DriveLetter = 'D:'" &&
+            TpmBitLockerProbe.SystemVolumeQuery("C:' OR '1'='1", true) is null &&
+            TpmBitLockerProbe.SystemVolumeQuery("Ж:", true) is null &&
             PlatformSecurityProbe.SelfTest() &&
             !healthy.ToSafeSummary().Contains("SecureBoot", StringComparison.Ordinal) &&
             !healthy.ToSafeSummary().Contains("VirtualMachine", StringComparison.Ordinal);
@@ -366,19 +372,42 @@ internal static class TpmBitLockerProbe
         };
     }
 
-    private static (string Protection, string Conversion) ReadSystemVolume()
+    // Restrict both WMI queries to the OS volume rather than enumerating
+    // unrelated, removable or recovery volumes. Only an ASCII drive letter
+    // can enter the WQL literal; arbitrary user/provider text is rejected.
+    internal static string? SystemVolumeQuery(string? rawDrive, bool protection)
     {
-        string drive = (Environment.GetEnvironmentVariable("SystemDrive") ??
-            Path.GetPathRoot(Environment.SystemDirectory) ?? "").TrimEnd('\\', '/');
-        if (drive.Length != 2 || !char.IsLetter(drive[0]) || drive[1] != ':')
-            return ("UNKNOWN", "UNKNOWN");
+        var drive = rawDrive?.TrimEnd('\\', '/');
+        if (drive is null || drive.Length != 2 || drive[1] != ':' ||
+            !((drive[0] >= 'A' && drive[0] <= 'Z') ||
+              (drive[0] >= 'a' && drive[0] <= 'z')))
+            return null;
+        var letter = char.ToUpperInvariant(drive[0]);
+        return protection
+            ? $"SELECT DriveLetter, ProtectionStatus FROM Win32_EncryptableVolume WHERE DriveLetter = '{letter}:'"
+            : $"SELECT DriveLetter FROM Win32_EncryptableVolume WHERE DriveLetter = '{letter}:'";
+    }
+
+    private static string? SystemVolumeDrive()
+    {
+        var raw = Environment.GetEnvironmentVariable("SystemDrive") ??
+            Path.GetPathRoot(Environment.SystemDirectory);
+        var drive = raw?.TrimEnd('\\', '/');
+        return SystemVolumeQuery(drive, protection: true) is null
+            ? null : char.ToUpperInvariant(drive![0]) + ":";
+    }
+
+    // ProtectionStatus is a read-only WMI property. Collect it in its own
+    // bounded worker: a slow GetConversionStatus must not discard this value.
+    private static string ReadSystemVolumeProtection()
+    {
+        var drive = SystemVolumeDrive();
+        var query = SystemVolumeQuery(drive, protection: true);
+        if (query is null) return "UNKNOWN";
         try
         {
-            // Local, fixed WMI namespace. Only the OS drive; never enumerate
-            // key protectors or call recovery password/escrow APIs.
             using var searcher = new ManagementObjectSearcher(
-                @"root\CIMV2\Security\MicrosoftVolumeEncryption",
-                "SELECT DriveLetter, ProtectionStatus FROM Win32_EncryptableVolume");
+                @"root\CIMV2\Security\MicrosoftVolumeEncryption", query);
             using var entries = searcher.Get();
             foreach (ManagementObject item in entries)
             {
@@ -386,29 +415,52 @@ internal static class TpmBitLockerProbe
                 {
                     if (!string.Equals(item["DriveLetter"] as string, drive,
                         StringComparison.OrdinalIgnoreCase)) continue;
-                    var protection = ProtectionState(item["ProtectionStatus"]);
-                    string conversion = "UNKNOWN";
-                    try
-                    {
-                        using var input = item.GetMethodParameters("GetConversionStatus");
-                        if (input is not null)
-                            input["PrecisionFactor"] = 0u;
-                        using var output = item.InvokeMethod(
-                            "GetConversionStatus", input, null);
-                        if (output is not null &&
-                            Convert.ToUInt32(output["ReturnValue"]) == 0u)
-                            conversion = ConversionState(output["ConversionStatus"]);
-                    }
-                    catch (Exception ex) when (WmiAccess(ex) ||
-                        ex is ArgumentException or FormatException) { }
-                    return (protection, conversion);
+                    return ProtectionState(item["ProtectionStatus"]);
                 }
             }
-            return ("UNKNOWN", "UNKNOWN");
         }
-        catch (Exception ex) when (WmiAccess(ex))
-        { return ("UNKNOWN", "UNKNOWN"); }
+        catch (Exception ex) when (WmiAccess(ex) || ex is ArgumentException or
+            FormatException or OverflowException or InvalidCastException) { }
+        return "UNKNOWN";
     }
+
+    // GetConversionStatus can stall even when ProtectionStatus is available.
+    // Run it independently with the same OS-only filter and 10s child limit.
+    private static string ReadSystemVolumeConversion()
+    {
+        var drive = SystemVolumeDrive();
+        var query = SystemVolumeQuery(drive, protection: false);
+        if (query is null) return "UNKNOWN";
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                @"root\CIMV2\Security\MicrosoftVolumeEncryption", query);
+            using var entries = searcher.Get();
+            foreach (ManagementObject item in entries)
+            {
+                using (item)
+                {
+                    if (!string.Equals(item["DriveLetter"] as string, drive,
+                        StringComparison.OrdinalIgnoreCase)) continue;
+                    using var input = item.GetMethodParameters("GetConversionStatus");
+                    if (input is not null) input["PrecisionFactor"] = 0u;
+                    using var output = item.InvokeMethod(
+                        "GetConversionStatus", input, null);
+                    return output is not null &&
+                        Convert.ToUInt32(output["ReturnValue"]) == 0u
+                        ? ConversionState(output["ConversionStatus"]) : "UNKNOWN";
+                }
+            }
+        }
+        catch (Exception ex) when (WmiAccess(ex) || ex is ArgumentException or
+            FormatException or OverflowException or InvalidCastException) { }
+        return "UNKNOWN";
+    }
+
+    // Non-interactive legacy capture only; bounded GUI scan uses independent
+    // BITLOCKER_WMI and BITLOCKER_CONVERSION subprocess stages below.
+    private static (string Protection, string Conversion) ReadSystemVolume() =>
+        (ReadSystemVolumeProtection(), ReadSystemVolumeConversion());
 
     private static string ReadDpapiPolicy()
     {
@@ -566,7 +618,7 @@ internal static class TpmBitLockerProbe
     // without waiting 60 seconds or blocking unrelated checks.
     internal static readonly string[] PartNames =
     [
-        "TPM_WMI", "BITLOCKER_WMI", "DEVICE_GUARD_WMI",
+        "TPM_WMI", "BITLOCKER_WMI", "BITLOCKER_CONVERSION", "DEVICE_GUARD_WMI",
         "DOMAIN_RWDC", "TPM_LOCKOUT", "DPAPI_ATTESTATION",
         "SECURE_BOOT", "VIRTUAL_MACHINE"
     ];
@@ -589,11 +641,9 @@ internal static class TpmBitLockerProbe
                     EkCertStore = t.EkStore
                 };
             case "BITLOCKER_WMI":
-                var v = ReadSystemVolume();
-                return empty with {
-                    OsVolumeProtection = v.Protection,
-                    OsVolumeConversion = v.Conversion
-                };
+                return empty with { OsVolumeProtection = ReadSystemVolumeProtection() };
+            case "BITLOCKER_CONVERSION":
+                return empty with { OsVolumeConversion = ReadSystemVolumeConversion() };
             case "DEVICE_GUARD_WMI":
                 return empty with {
                     MemoryIntegrityRuntime = ReadHVCIRunning(),
@@ -643,7 +693,9 @@ internal static class TpmBitLockerProbe
                 EkCertStore = found.EkCertStore
             },
             "BITLOCKER_WMI" => snapshot with {
-                OsVolumeProtection = found.OsVolumeProtection,
+                OsVolumeProtection = found.OsVolumeProtection
+            },
+            "BITLOCKER_CONVERSION" => snapshot with {
                 OsVolumeConversion = found.OsVolumeConversion
             },
             "DEVICE_GUARD_WMI" => snapshot with {
@@ -683,6 +735,9 @@ internal static class TpmBitLockerProbe
         {
             "TPM_WMI" => state.TpmPresent is "YES" or "NO",
             "BITLOCKER_WMI" => state.OsVolumeProtection is "ON" or "OFF",
+            "BITLOCKER_CONVERSION" => state.OsVolumeConversion is
+                "FULLY_DECRYPTED" or "FULLY_ENCRYPTED" or "ENCRYPTING" or
+                "DECRYPTING" or "ENCRYPTION_PAUSED" or "DECRYPTION_PAUSED",
             "DEVICE_GUARD_WMI" => state.MemoryIntegrityRuntime is
                 "RUNNING" or "NOT_RUNNING" ||
                 state.MemoryIntegrityConfigured is "ON" or "OFF" or "NOT_SET",
