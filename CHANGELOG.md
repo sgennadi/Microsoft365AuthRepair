@@ -1,3 +1,12 @@
+## 1.0.3 — 2026-11-16 — Stable
+
+1. Automatically fit the main window height to live diagnostics and expanded/collapsed results, within the active monitor's taskbar-aware working area.
+2. Preserve maximized or manually resized windows; coalesce layout events and leave width unchanged.
+3. Keep scrolling available when Office/WAM and TPM/BitLocker results are taller than the monitor.
+4. Add deterministic 100%/200%-DPI window-height tests and a WinForms layout wiring smoke-test. No change to TPM/BitLocker actions or anonymous-report consent.
+
+[Stable v1.0.3 notes](docs/releases/v1.0.3.md)
+
 ## 1.0.2 — 2026-11-16 — Stable
 
 1. **Fix GUI clipping:** independent scrollable viewport with content-sized WinForms rows; readable WAM/Office results above TPM/BitLocker; no cut-off lower diagnostic sections on smaller monitors.

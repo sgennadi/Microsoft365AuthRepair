@@ -94,8 +94,32 @@ internal static class ResponsiveLayout
         };
     }
 
+    // Automatic vertical sizing never exceeds the monitor's working area.
+    // When content is taller, the existing viewport continues to scroll.
+    internal static int WindowHeightForContent(int currentWindowHeight,
+        int viewportHeight, int contentHeight, int workAreaHeight,
+        int minimumWindowHeight, int dpi)
+    {
+        if (currentWindowHeight <= 0 || viewportHeight <= 0 ||
+            contentHeight <= 0 || workAreaHeight <= 0)
+            return currentWindowHeight;
+        int scaledDpi = Math.Max(96, dpi);
+        int edge = (int)Math.Ceiling(12d * scaledDpi / 96d);
+        int spare = (int)Math.Ceiling(16d * scaledDpi / 96d);
+        int maximum = Math.Max(1, workAreaHeight - edge * 2);
+        int minimum = Math.Min(maximum, Math.Max(1, minimumWindowHeight));
+        long desired = (long)currentWindowHeight - viewportHeight +
+            contentHeight + spare;
+        return (int)Math.Clamp(desired, minimum, maximum);
+    }
+
     // Pure calculations verified by CI independently of physical display size.
     internal static bool SelfTest() =>
+        WindowHeightForContent(760, 690, 850, 1000, 560, 96) == 936 &&
+        WindowHeightForContent(760, 690, 2200, 1000, 560, 96) == 976 &&
+        WindowHeightForContent(760, 690, 320, 1000, 560, 96) == 560 &&
+        WindowHeightForContent(760, 690, 900, 720, 560, 192) == 672 &&
+        WindowHeightForContent(760, 0, 900, 1000, 560, 96) == 760 &&
         TargetWidth(1920, 1000, 96) == 1000 &&
         TargetWidth(3800, 1000, 192) == 2000 &&
         TargetWidth(700, 1000, 96) == 672 &&

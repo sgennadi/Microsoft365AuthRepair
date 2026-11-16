@@ -146,6 +146,12 @@ internal sealed class MainForm : Form
     private TableLayoutPanel? mainLayout;
     private Panel? scrollViewport;
     private bool activityExpanded;
+    private bool autoHeightReady;
+    private bool autoHeightQueued;
+    private bool autoHeightApplying;
+    private bool userChangedWindowSize;
+    private bool userResizingWindow;
+    private Size resizeStartSize;
     private readonly System.Windows.Forms.Timer updateTimer = new() { Interval = 6 * 60 * 60 * 1000 };
     private bool busy;
     private UniversalUpdater.UpdateRelease? availableUpdate;
@@ -372,6 +378,31 @@ internal sealed class MainForm : Form
         };
         viewport.Controls.Add(root);
         Controls.Add(ResponsiveLayout.Center(this, viewport, 1340));
+
+        // Fit vertically when actual results change. Preserve user-selected
+        // sizes and maximized windows; never alter window width.
+        root.SizeChanged += (_, _) => QueueAutoHeight();
+        ResizeBegin += (_, _) =>
+        {
+            userResizingWindow = true;
+            resizeStartSize = Size;
+        };
+        ResizeEnd += (_, _) =>
+        {
+            userResizingWindow = false;
+            if (Size != resizeStartSize) userChangedWindowSize = true;
+        };
+        SizeChanged += (_, _) =>
+        {
+            // Windows snap can change size without ResizeBegin.
+            if (autoHeightReady && !autoHeightApplying && !userResizingWindow)
+                userChangedWindowSize = true;
+        };
+        Shown += (_, _) =>
+        {
+            autoHeightReady = true;
+            QueueAutoHeight();
+        };
         Controls.Add(progress);
         progress.BringToFront();
 
@@ -957,6 +988,7 @@ internal sealed class MainForm : Form
         }
         finally { mainLayout.ResumeLayout(true); }
         scrollViewport?.PerformLayout();
+        QueueAutoHeight();
     }
 
     private void UpdateActivityLink()
@@ -979,6 +1011,7 @@ internal sealed class MainForm : Form
         else activityJournal.Visible = visible;
         UpdateActivityLink();
         scrollViewport?.PerformLayout();
+        QueueAutoHeight();
         if (visible && scrollWhenExpanded)
             scrollViewport?.ScrollControlIntoView(activityJournal);
     }
@@ -1005,6 +1038,59 @@ internal sealed class MainForm : Form
             mainLayout.RowStyles[15].SizeType == SizeType.AutoSize;
         return expanded && collapsed && officeCollapsed;
     }
+
+    // Coalesce many nested TableLayoutPanel events into a single UI-thread
+    // resize; no timers, background tasks, or hardware checks involved.
+    private void QueueAutoHeight()
+    {
+        if (!autoHeightReady || autoHeightQueued || autoHeightApplying ||
+            userChangedWindowSize || userResizingWindow ||
+            WindowState != FormWindowState.Normal || !IsHandleCreated ||
+            !Visible || IsDisposed || Disposing) return;
+        autoHeightQueued = true;
+        BeginInvoke((MethodInvoker)(() =>
+        {
+            autoHeightQueued = false;
+            ApplyAutoHeight();
+        }));
+    }
+
+    private void ApplyAutoHeight()
+    {
+        if (!autoHeightReady || autoHeightApplying ||
+            userChangedWindowSize || userResizingWindow ||
+            WindowState != FormWindowState.Normal || !Visible ||
+            IsDisposed || Disposing ||
+            mainLayout is null || scrollViewport is null) return;
+        autoHeightApplying = true;
+        try
+        {
+            mainLayout.PerformLayout();
+            scrollViewport.PerformLayout();
+            int contentHeight = mainLayout.Height;
+            int viewHeight = scrollViewport.ClientSize.Height;
+            if (contentHeight < 50 || viewHeight <= 0) return;
+
+            var work = Screen.FromControl(this).WorkingArea;
+            int proposed = ResponsiveLayout.WindowHeightForContent(
+                Height, viewHeight, contentHeight, work.Height,
+                MinimumSize.Height, DeviceDpi);
+            int tolerance = (int)Math.Ceiling(12d * Math.Max(96, DeviceDpi) / 96d);
+            if (Math.Abs(proposed - Height) < tolerance) return;
+
+            int inset = (int)Math.Ceiling(8d * Math.Max(96, DeviceDpi) / 96d);
+            int adjustedTop = Math.Clamp(Top, work.Top + inset,
+                Math.Max(work.Top + inset, work.Bottom - proposed - inset));
+            SetBounds(Left, adjustedTop, Width, proposed,
+                BoundsSpecified.Y | BoundsSpecified.Height);
+        }
+        finally { autoHeightApplying = false; }
+    }
+
+    internal bool AutoHeightLayoutSelfTest =>
+        mainLayout is { AutoSize: true, Dock: DockStyle.Top } &&
+        scrollViewport is { AutoScroll: true, Dock: DockStyle.Fill } &&
+        !userChangedWindowSize && !autoHeightApplying;
 
     private void UpdateDiagnosticsToggle()
     {
