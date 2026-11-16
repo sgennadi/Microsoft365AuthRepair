@@ -228,8 +228,8 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
             "DECRYPTION_PAUSED" => T("Decryption paused", "Расшифровка приостановлена", "הפענוח מושהה"),
             _ => Unknown
         };
-        tiles[4].Set(T("OS volume encryption", "Шифрование системного диска",
-                "הצפנת כונן מערכת"),
+        tiles[4].Set(T("OS BitLocker encryption", "Шифрование BitLocker системного диска",
+                "הצפנת BitLocker בכונן המערכת"),
             conversion,
             x.OsVolumeConversion == "FULLY_ENCRYPTED" ? Status.Good :
             x.OsVolumeConversion == "UNKNOWN" ? Status.Unknown : Status.Neutral);
