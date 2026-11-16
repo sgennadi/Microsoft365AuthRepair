@@ -96,7 +96,20 @@ internal static class M365DiagnosticPayload
             ["office_preview_records"] = Allowed("OfficePreviewRecords",
                 ["NONE", "ONE", "TWO", "THREE_PLUS", "NOT_APPLICABLE", "UNKNOWN"]),
             ["office_preview_key_records"] = Allowed("OfficePreviewKeyRecords",
-                ["NONE", "ONE", "TWO", "THREE_PLUS", "NOT_APPLICABLE", "UNKNOWN"])
+                ["NONE", "ONE", "TWO", "THREE_PLUS", "NOT_APPLICABLE", "UNKNOWN"]),
+            // TPM/BitLocker never send recovery keys, protector GUIDs, TPM
+            // serials, raw WMI objects, OS drive labels or personal identities.
+            ["tpm_present"] = Allowed("TpmPresent", ["YES", "NO", "UNKNOWN"]),
+            ["tpm_version"] = Allowed("TpmVersion", ["1.2", "2.0", "UNKNOWN"]),
+            ["tpm_ready"] = Allowed("TpmReady", ["YES", "NO", "UNKNOWN"]),
+            ["bitlocker_os_protection"] = Allowed("BitLockerProtection", ["ON", "OFF", "UNKNOWN"]),
+            ["bitlocker_os_conversion"] = Allowed("BitLockerConversion",
+                ["FULLY_DECRYPTED", "FULLY_ENCRYPTED", "ENCRYPTING", "DECRYPTING",
+                 "ENCRYPTION_PAUSED", "DECRYPTION_PAUSED", "UNKNOWN"]),
+            ["memory_integrity_runtime"] = Allowed("MemoryIntegrityRuntime",
+                ["RUNNING", "NOT_RUNNING", "UNKNOWN"]),
+            ["dpapi_protection_policy"] = Allowed("DpapiProtectionPolicy",
+                ["NOT_SET", "ZERO", "ONE", "OTHER", "UNKNOWN"])
         };
     }
 
@@ -174,7 +187,12 @@ internal static class M365DiagnosticPayload
                 " OfficeInstalled: YES; OfficeEdition: PROPLUS_2024; OfficeActivation: LICENSED;" +
                 " OfficeWmiRecords: THREE_PLUS; OfficeLicensedRecords: ONE;" +
                 " OfficePreviewRecords: TWO; OfficePreviewKeyRecords: NONE;" +
-                " OfficeKmsHost: internal.example; OfficeKey: XJ2XN-FW8RK-P4HMP-DKDBV-GCVGB"
+                " TpmPresent: YES; TpmVersion: 2.0; TpmReady: YES;" +
+                " BitLockerProtection: ON; BitLockerConversion: FULLY_ENCRYPTED;" +
+                " MemoryIntegrityRuntime: RUNNING; DpapiProtectionPolicy: NOT_SET;" +
+                " BitLockerRecoveryKey: 111111-222222-333333-444444-555555-666666;" +
+                " TpmOwnerAuth: secret-password; OfficeKmsHost: internal.example;" +
+                " OfficeKey: XJ2XN-FW8RK-P4HMP-DKDBV-GCVGB"
         } });
         var outgoing = Prepare(source).Json;
         using var parsed = JsonDocument.Parse(outgoing);
@@ -187,6 +205,17 @@ internal static class M365DiagnosticPayload
             signals.GetProperty("office_wmi_records").GetString() == "THREE_PLUS" &&
             signals.GetProperty("office_preview_records").GetString() == "TWO" &&
             signals.GetProperty("office_preview_key_records").GetString() == "NONE" &&
+            signals.GetProperty("tpm_present").GetString() == "YES" &&
+            signals.GetProperty("tpm_version").GetString() == "2.0" &&
+            signals.GetProperty("tpm_ready").GetString() == "YES" &&
+            signals.GetProperty("bitlocker_os_protection").GetString() == "ON" &&
+            signals.GetProperty("bitlocker_os_conversion").GetString() == "FULLY_ENCRYPTED" &&
+            signals.GetProperty("memory_integrity_runtime").GetString() == "RUNNING" &&
+            signals.GetProperty("dpapi_protection_policy").GetString() == "NOT_SET" &&
+            !outgoing.Contains("111111-222222-", StringComparison.Ordinal) &&
+            !outgoing.Contains("secret-password", StringComparison.Ordinal) &&
+            !outgoing.Contains("BitLockerRecoveryKey", StringComparison.Ordinal) &&
+            !outgoing.Contains("TpmOwnerAuth", StringComparison.Ordinal) &&
             !outgoing.Contains("internal.example", StringComparison.Ordinal) &&
             !outgoing.Contains("XJ2XN-", StringComparison.Ordinal) &&
             !outgoing.Contains("OfficeKmsHost", StringComparison.Ordinal) &&
