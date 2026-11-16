@@ -69,6 +69,8 @@ internal static class Program
                     ("TPM inspector icon", () => UiIcons.Verify(tpmInspector)),
                     ("Device Advanced icon", () => UiIcons.Verify(advancedSecurity)),
                     ("Responsive geometry", ResponsiveLayout.SelfTest),
+                    ("Main-window automatic height and scroll geometry",
+                        () => form.AutoHeightLayoutSelfTest),
                     ("Updater channel precedence", UpdaterIntegration.SelfTest),
                     ("Updater default channel", () => updater.IncludesPreviews == UpdaterIntegration.InstalledIsPreview),
                     ("Update notes layout", () => updater.ChangeListHasSeparateLines),

@@ -1,6 +1,6 @@
 # Microsoft 365 Auth Repair
 
-A portable, self-contained **Windows .NET 10 WinForms** utility for diagnosing and safely recovering Microsoft Entra/WAM, `Microsoft.AAD.BrokerPlugin`, Office application sign-in and supported Office LTSC licensing. Current **Stable: 1.0.2** (x64 / ARM64).
+A portable, self-contained **Windows .NET 10 WinForms** utility for diagnosing and safely recovering Microsoft Entra/WAM, `Microsoft.AAD.BrokerPlugin`, Office application sign-in and supported Office LTSC licensing. Current **Stable: 1.0.3** (x64 / ARM64).
 
 ## Download
 
@@ -16,7 +16,7 @@ The latest signed-off release and SHA-256 manifest are at [GitHub Releases](http
 - **Office WMI clarity:** multiple `SoftwareLicensingProduct` entries are *licensing records*, not multiple Office installations. The normal list shows one preferred installed edition; optional technical records (including unlicensed templates and Preview markers) are clearly labeled.
 - **Optional Microsoft Graph:** one in-process Device Code or certificate authorization, adapted from BitKeyBridge's session handling for **AuditLog.Read.All only**. Correlation ID lookup is read-only and needs an approved audit-only Entra application and appropriate reader rights. No ROPC, Graph write access, BitLocker/LAPS role borrowing or disk-stored OAuth tokens.
 - **Verify Repair:** automatically rechecks local prerequisites after successful direct user repair; actual Word, Outlook or Teams sign-in is considered confirmed only when the user says it worked.
-- **Device security (read-only):** independently time-limited TPM 2.0, BitLocker OS-drive protection/encryption, Secure Boot, Memory Integrity, Windows VM status and DPAPI/domain evidence. Unknown, unverified or partial results are not presented as hardware failure. The main window shows WAM/Office results **before** the separate TPM/BitLocker card; both the activity log and WAM/Office sections can be expanded or collapsed without clipping the bottom of the window.
+- **Device security (read-only):** independently time-limited TPM 2.0, BitLocker OS-drive protection/encryption, Secure Boot, Memory Integrity, Windows VM status and DPAPI/domain evidence. Unknown, unverified or partial results are not presented as hardware failure. The main window shows WAM/Office results **before** the separate TPM/BitLocker card; both the activity log and WAM/Office sections can be expanded or collapsed. The window automatically fits its **height** to the visible content, up to the active monitor's work area, and preserves manually resized/maximized windows.
 - **Optional advanced device actions:** a separately confirmed administrator-only window supports carefully restricted OS BitLocker operations and recovery-password export to a new protected local NTFS file. TPM Clear is **never automated**. Device security changes are not needed for ordinary WAM repair.
 - **Diagnostics and reports:** generates a local report, then opens a separate review dialog with an explicit **Send anonymously** action. The JSON initially appears **unselected** for readability; users may select and copy it manually. The report stays local until Send is clicked. Approved uploads create **public GitHub Issues** containing only 29 fixed, categorical Entra/WAM, Office licensing and device-security indicators; no account names, SIDs, license or MAK keys, recovery passwords, hostnames, tenant identifiers, paths or raw WMI/Graph responses are sent. The shared Apps Script gateway must expose schema version 4 with `microsoft365-auth-repair/v2`; older gateways are rejected before any POST.
 - **Interface and updates:** English, Russian and Hebrew, RTL support, PerMonitorV2 scaling, Windows High Contrast, compact native controls, numbered What's New, Stable/Preview SemVer precedence, validated architecture/SHA-256 and rollback-aware update helper.
@@ -60,7 +60,8 @@ Windows GitHub Actions builds both architectures, runs x64 GUI/self-tests, parse
 ## Releases and history
 
 - [Latest Stable](https://github.com/sgennadi/Microsoft365AuthRepair/releases/latest)
-- [v1.0.2 release notes](docs/releases/v1.0.2.md)
+- [v1.0.3 release notes](docs/releases/v1.0.3.md)
+- [Previous v1.0.2 release notes](docs/releases/v1.0.2.md)
 - [Previous v1.0.1 release notes](docs/releases/v1.0.1.md)
 - [Full changelog](CHANGELOG.md)
 
