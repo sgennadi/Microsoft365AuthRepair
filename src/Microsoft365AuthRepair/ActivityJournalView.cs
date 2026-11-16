@@ -37,6 +37,15 @@ internal sealed class ActivityJournalView : TableLayoutPanel
         Anchor = AnchorStyles.Right,
         Margin = new Padding(6, 9, 9, 5)
     };
+    // Compact navigation-style cancellation, not a full-height action
+    // button in the status banner. Visible only during a read-only check.
+    private readonly LinkLabel cancelCheck = new()
+    {
+        AutoSize = true, TabStop = true, Visible = false,
+        LinkBehavior = LinkBehavior.HoverUnderline,
+        Margin = new Padding(6, 9, 12, 5)
+    };
+    internal event EventHandler? CancelRequested;
     private readonly TextBox lines = new()
     {
         Dock = DockStyle.Fill,
@@ -71,11 +80,12 @@ internal sealed class ActivityJournalView : TableLayoutPanel
 
         var header = new TableLayoutPanel
         {
-            Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2,
+            Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3,
             RowCount = 1, Margin = new Padding(5, 2, 3, 3),
             BackColor = BackColor
         };
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         heading.Font = new Font("Segoe UI Semibold", 10.5f, FontStyle.Bold);
@@ -83,7 +93,16 @@ internal sealed class ActivityJournalView : TableLayoutPanel
             ? SystemColors.WindowText : UiTheme.Navy;
         heading.Margin = new Padding(4, 5, 8, 5);
         header.Controls.Add(heading, 0, 0);
-        header.Controls.Add(copyLog, 1, 0);
+        header.Controls.Add(cancelCheck, 1, 0);
+        header.Controls.Add(copyLog, 2, 0);
+        cancelCheck.LinkClicked += (_, _) =>
+        {
+            if (cancelCheck.Enabled)
+                CancelRequested?.Invoke(this, EventArgs.Empty);
+        };
+        var cancelHint = new ToolTip { AutoPopDelay = 10000 };
+        cancelHint.SetToolTip(cancelCheck,
+            "Stop waiting for this read-only diagnostic; no Office, TPM or BitLocker data will be modified.");
         Controls.Add(header, 0, 0);
         Controls.Add(lines, 0, 1);
 
@@ -196,6 +215,9 @@ internal sealed class ActivityJournalView : TableLayoutPanel
         heading.Text = UpdateUiText.T("ACTIVITY", "ХОД ВЫПОЛНЕНИЯ", "מהלך הביצוע");
         copyLog.Text = UpdateUiText.T("Copy log", "Копировать журнал", "העתק יומן");
         copyLog.AccessibleName = copyLog.Text;
+        cancelCheck.Text = UpdateUiText.T("Cancel", "Отмена", "ביטול");
+        cancelCheck.AccessibleName = UpdateUiText.T("Cancel the read-only check",
+            "Отменить диагностику (без изменений)", "ביטול בדיקה לקריאה בלבד");
         lines.Text = entries.Count == 0 ?
             UpdateUiText.T("No activity yet.", "Нет событий.", "אין אירועים.") :
             string.Join(Environment.NewLine, entries.Select(Format));
@@ -205,6 +227,16 @@ internal sealed class ActivityJournalView : TableLayoutPanel
 
     // A WinForms control can report Visible=false while its owner Form is
     // unshown during CI. Validate the real copy control's wiring/properties.
+    internal void SetCancellationAvailable(bool available)
+    {
+        cancelCheck.Visible = available;
+        cancelCheck.Enabled = available;
+    }
+
+    internal bool HasCompactCancellation => cancelCheck.Parent is TableLayoutPanel &&
+        !string.IsNullOrWhiteSpace(cancelCheck.Text) &&
+        cancelCheck is LinkLabel && cancelCheck is not Button;
+
     internal bool HasCopyControl => copyLog.Enabled &&
         !string.IsNullOrWhiteSpace(copyLog.Text) && lines.ReadOnly;
 
@@ -218,6 +250,12 @@ internal sealed class ActivityJournalView : TableLayoutPanel
         view.Add(ActivityStep.BitLockerWmi, ActivityOutcome.Finished);
         view.Add(ActivityStep.SecureBoot, ActivityOutcome.Finished);
         view.Add(ActivityStep.VirtualMachine, ActivityOutcome.NotVerified);
+        view.SetCancellationAvailable(true);
+        if (!view.HasCompactCancellation || !view.cancelCheck.Enabled)
+            return false;
+        view.SetCancellationAvailable(false);
+        if (view.cancelCheck.Enabled)
+            return false;
         return view.HasCopyControl && view.CopyText.Contains("WAM / Entra",
             StringComparison.Ordinal) &&
             view.CopyText.Contains("TPM / BitLocker", StringComparison.Ordinal) &&
