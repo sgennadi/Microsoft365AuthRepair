@@ -1,3 +1,13 @@
+## Preview.30 — clearer WAM, device details and anonymous diagnostics
+
+The **TPM & BitLocker** status card remains visible when WAM/Office details are collapsed. The redundant TPM banner shortcut has been removed; **Show/Hide WAM / Office results** now affects only the sign-in results. **Show/Hide activity log** is a real journal toggle (the journal expands during checking and collapses afterward). **View full details** now opens four readable read-only status sections rather than one large raw textbox.
+
+**Diagnostics & reports** uses independently timed, read-only TPM/BitLocker subprocesses instead of a direct potentially hanging WMI call. Its user-approved public payload contains **29 strictly allowlisted categorical signals**: existing identity/Office/TPM/BitLocker categories plus Secure Boot state, Memory Integrity configuration and provider coverage. No user IDs, credentials, recovery keys, TPM firmware version, third-party encryption software names, or raw WMI evidence is sent.
+
+**Receiver requirement:** the shared Google Apps Script Code.gs needs the version-4 contract in [TermsrvPatcherUnified PR #55](https://github.com/sgennadi/TermsrvPatcherUnified/pull/55). The app checks receiver compatibility and does not submit expanded evidence to old v3 deployments. The Apps Script owner must redeploy Code.gs on the *existing deployment*, not create a new endpoint.
+
+[Preview.30 release notes](docs/releases/v1.0.2-preview.30.md)
+
 ## Preview.29 — compact Advanced device-security window
 
 **Advanced device security** has a restrained, responsive WinForms layout: authorization is in one clearly labeled section; local recovery-key export and native Windows consoles are grouped as Tools & Windows settings, separately from protection controls; **Decrypt / Turn off** is isolated in a subtle Danger zone. Action buttons align with their descriptions on roomy screens and stack above them when the window is narrow or shown at 200% DPI. The footer keeps status on the left and **Close** on the right without scrolling. Exact typed phrases, administrator checks, final warnings, secret-file protections and read-only diagnostics are unchanged.

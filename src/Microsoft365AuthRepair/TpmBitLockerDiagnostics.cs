@@ -27,8 +27,8 @@ internal sealed record TpmBitLockerSnapshot(
     // Get-Tpm LockedOut is read locally only. It is deliberately absent from
     // ToSafeSummary() and never sent to the public diagnostics gateway.
     internal string TpmLockedOut { get; init; } = "UNKNOWN";
-    // Local-only firmware and guest inventory. Never transmitted in the
-    // anonymous report (ToSafeSummary stays unchanged).
+    // Firmware mode, VM platform and firmware version remain local-only.
+    // Secure Boot state alone is a coarse allowlisted reporting category.
     internal string SecureBootState { get; init; } = "UNKNOWN";
     internal string FirmwareType { get; init; } = "UNKNOWN";
     internal string VirtualMachineGuest { get; init; } = "UNKNOWN";
@@ -98,6 +98,10 @@ internal sealed record TpmBitLockerSnapshot(
             "ENCRYPTION_PAUSED", "DECRYPTION_PAUSED", "UNKNOWN"]) +
         "; MemoryIntegrityRuntime: " + Safe(MemoryIntegrityRuntime, [
             "RUNNING", "NOT_RUNNING", "UNKNOWN"]) +
+        "; MemoryIntegrityConfigured: " + Safe(MemoryIntegrityConfigured, [
+            "ON", "OFF", "NOT_SET", "UNKNOWN"]) +
+        "; SecureBootState: " + Safe(SecureBootState, [
+            "ON", "OFF", "UNSUPPORTED", "UNKNOWN"]) +
         "; DpapiProtectionPolicy: " + Safe(DpapiProtectionPolicy, [
             "NOT_SET", "ZERO", "ONE", "OTHER", "UNKNOWN"]) +
         "; DpapiDomainJoined: " + Safe(DomainJoinStatus, ["YES", "NO", "UNKNOWN"]) +
@@ -180,7 +184,7 @@ internal sealed record TpmBitLockerSnapshot(
             TpmBitLockerProbe.SystemVolumeQuery("C:' OR '1'='1", true) is null &&
             TpmBitLockerProbe.SystemVolumeQuery("Ж:", true) is null &&
             PlatformSecurityProbe.SelfTest() &&
-            !healthy.ToSafeSummary().Contains("SecureBoot", StringComparison.Ordinal) &&
+            healthy.ToSafeSummary().Contains("SecureBootState: UNKNOWN", StringComparison.Ordinal) &&
             !healthy.ToSafeSummary().Contains("VirtualMachine", StringComparison.Ordinal);
     }
 }

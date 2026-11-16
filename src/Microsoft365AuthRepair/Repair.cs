@@ -5,7 +5,7 @@ namespace Microsoft365AuthRepair;
 
 internal static class Repair
 {
-    internal const string Version = "1.0.2-preview.29";
+    internal const string Version = "1.0.2-preview.30";
     private static readonly string[] RegistryKeys =
     [
         @"Software\Microsoft\Office\16.0\Common\Identity",

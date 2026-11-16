@@ -247,6 +247,10 @@ internal sealed class ReportSendDialog : Form
                 "GitHub did not accept the new Issue. Verify PAT repository access and Issues: Read and write in Apps Script.",
                 "GitHub не принял создание Issue. Проверьте разрешения PAT для репозитория и Issues: Read and write.",
                 "GitHub לא אישר יצירת Issue. בדוק הרשאות אסימון."),
+            "DEPLOY_GATEWAY_V4" => UpdateUiText.T(
+                "The receiver is older than the expanded M365 diagnostic contract. Deploy the latest Code.gs as a new version of the existing Apps Script deployment, then retry.",
+                "Приёмник устарел. Опубликуйте обновлённый Code.gs как новую версию существующего развёртывания Apps Script и повторите.",
+                "יש לפרוס גרסה חדשה של Code.gs באותה פריסת Apps Script לפני שליחה."),
             "invalid_evidence" => UpdateUiText.T(
                 "The deployed gateway rejected the event schema. Check the installed Preview and gateway Code.gs version.",
                 "Приёмник отклонил формат отчёта. Проверьте версии Preview и Code.gs.",
