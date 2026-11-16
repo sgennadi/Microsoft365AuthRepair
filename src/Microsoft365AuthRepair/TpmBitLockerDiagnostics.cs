@@ -125,7 +125,7 @@ internal sealed record TpmBitLockerSnapshot(
             DescribeError("0x80070490").Contains("NOT the timeout", StringComparison.Ordinal) &&
             DescribeError("0x800705b4").Contains("ERROR_TIMEOUT", StringComparison.Ordinal) &&
             DescribeError("80090034").Contains("NTE_ENCRYPTION_FAILURE", StringComparison.Ordinal) &&
-            !DescribeError("0xC0090016").Contains("0x80090016", StringComparison.Ordinal) &&
+            DescribeError("0xC0090016").Contains("not assumed", StringComparison.Ordinal) &&
             !DescribeError("random text").Contains("failed", StringComparison.OrdinalIgnoreCase) &&
             !healthy.CompactSummary().Contains("Recovery", StringComparison.OrdinalIgnoreCase) &&
             !healthy.ToSafeSummary().Contains("Recovery", StringComparison.OrdinalIgnoreCase) &&
