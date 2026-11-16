@@ -97,6 +97,7 @@ internal static class Program
                     ("Isolated provider security and timeout rules", IsolatedDeviceProbe.SelfTest),
                     ("Secure Boot and virtual-guest classification", PlatformSecurityProbe.SelfTest),
                     ("Live stage-only activity and copy log", ActivityJournalView.SelfTest),
+                    ("Activity shortcut opens a readable read-only window", ActivityJournalDialog.SelfTest),
                     ("Main activity panel", () => form.HasActivityJournal),
                     ("Local-only Entra key evidence", EntraKeySignals.SelfTest),
                     ("WAM result card", DiagnosticResultCard.SelfTest),
