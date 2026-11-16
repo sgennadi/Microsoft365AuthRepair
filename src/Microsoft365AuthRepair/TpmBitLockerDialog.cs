@@ -46,21 +46,21 @@ internal sealed class TpmBitLockerDialog : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(18),
-            RowCount = 6, ColumnCount = 1
+            RowCount = 7, ColumnCount = 1
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int i = 0; i < 3; i++)
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        for (int i = 0; i < 3; i++)
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         heading.Text = UpdateUiText.T("Device protection · read-only",
             "Защита устройства · только чтение", "הגנת מכשיר · קריאה בלבד");
         safety.Text = UpdateUiText.T(
-            "Never clear TPM or disable BitLocker to fix Office sign-in automatically. No recovery keys, protector IDs or TPM owner secrets are queried. An unknown value often means access is restricted, not that protection is off.",
-            "Программа НЕ очищает TPM и НЕ отключает BitLocker. Ключи восстановления и идентификаторы защиты не запрашиваются. UNKNOWN может означать отсутствие доступа, а не отключение защиты.",
-            "אין ניקוי TPM או כיבוי BitLocker. מפתחות שחזור אינם נקראים. UNKNOWN עשוי להעיד על חוסר הרשאות.");
+            "Office WAM, DPAPI and Autopilot TPM attestation are different checks. Never clear TPM, delete BrokerPlugin/NGC or disable BitLocker automatically. Recovery keys and protector IDs are never read. UNKNOWN can mean access is restricted.",
+            "WAM, DPAPI и TPM Attestation — разные проверки. Программа не очищает TPM, не удаляет BrokerPlugin/NGC и не отключает BitLocker. Ключи восстановления не читаются. UNKNOWN может означать недостаточно прав.",
+            "אין ניקוי TPM, ביטול BitLocker או מחיקת נתוני כניסה. מפתחות שחזור אינם נקראים. UNKNOWN עשוי להעיד על חוסר הרשאות.");
         status.Text = UpdateUiText.T("No device snapshot loaded.",
             "Данные устройства ещё не считаны.", "נתוני המכשיר טרם נטענו.");
         root.Controls.Add(heading, 0, 0);
@@ -75,20 +75,17 @@ internal sealed class TpmBitLockerDialog : Form
         errorCode.Items.AddRange([
             "No error selected", "0x80090016 / -2146893802",
             "0x80090030", "0x80090031", "0x80090034",
-            "0x80090035", "0xC0090016"
+            "0x80090035", "0xC0090016",
+            "0x80070490 (AIK)", "0x800705B4 (timeout)"
         ]);
         errorCode.SelectedIndex = 0;
         errorRow.Controls.Add(UiTheme.Caption(UpdateUiText.T(
             "Office error:", "Ошибка Office:", "שגיאת Office:")));
         errorRow.Controls.Add(errorCode);
         root.Controls.Add(errorRow, 0, 4);
-        var bottom = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
-            AutoSize = true
-        };
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        errorDetails.MaximumSize = new Size(1030, 0);
+        errorDetails.Margin = new Padding(0, 5, 0, 9);
+        root.Controls.Add(errorDetails, 0, 5);
         var footer = new FlowLayoutPanel
         {
             AutoSize = true, FlowDirection = FlowDirection.RightToLeft,
@@ -96,9 +93,7 @@ internal sealed class TpmBitLockerDialog : Form
         };
         footer.Controls.Add(close);
         footer.Controls.Add(refresh);
-        bottom.Controls.Add(errorDetails, 0, 0);
-        bottom.Controls.Add(footer, 1, 0);
-        root.Controls.Add(bottom, 0, 5);
+        root.Controls.Add(footer, 0, 6);
         Controls.Add(ResponsiveLayout.Center(this, root, 1170));
         root.SizeChanged += (_, _) =>
         {
@@ -106,7 +101,7 @@ internal sealed class TpmBitLockerDialog : Form
             heading.MaximumSize = new Size(w, 0);
             safety.MaximumSize = new Size(w, 0);
             status.MaximumSize = new Size(w, 0);
-            errorDetails.MaximumSize = new Size(Math.Max(160, w - 240), 0);
+            errorDetails.MaximumSize = new Size(w, 0);
         };
         RightToLeft = UiStrings.Language == "he" ? RightToLeft.Yes : RightToLeft.No;
         RightToLeftLayout = UiStrings.Language == "he";
@@ -130,7 +125,8 @@ internal sealed class TpmBitLockerDialog : Form
         {
             1 => "0x80090016", 2 => "0x80090030",
             3 => "0x80090031", 4 => "0x80090034",
-            5 => "0x80090035", 6 => "0xC0090016", _ => ""
+            5 => "0x80090035", 6 => "0xC0090016",
+            7 => "0x80070490", 8 => "0x800705B4", _ => ""
         };
         var suffix = TpmBitLockerSnapshot.DescribeError(code);
         errorDetails.Text = UpdateUiText.T("Interpretation (not a device diagnosis): ",
@@ -147,7 +143,11 @@ internal sealed class TpmBitLockerDialog : Form
             ? UpdateUiText.T("TPM state needs IT review. Do not clear TPM.",
                 "Состояние TPM требует проверки IT. Не очищайте TPM.",
                 "יש לבדוק את ה-TPM. אין לנקות אותו.")
-            : x.NeedsBitLockerReview
+            : x.NeedsAttestationReview
+                ? UpdateUiText.T("TPM attestation needs review (not evidence of broken TPM).",
+                    "Требуется проверка аттестации TPM; неисправность оборудования не доказана.",
+                    "נדרשת בדיקת אימות TPM.")
+                : x.NeedsBitLockerReview
                 ? UpdateUiText.T("Encrypted OS volume reports protection OFF. Review with IT.",
                     "Системный раздел зашифрован, но защита OFF — проверьте с IT.",
                     "מחיצת מערכת מוצפנת אך ההגנה כבויה.")
@@ -162,11 +162,18 @@ internal sealed class TpmBitLockerDialog : Form
             $"TPM enabled: {YesNoUnknown(x.TpmEnabled)}{newline}" +
             $"TPM activated: {YesNoUnknown(x.TpmActivated)}{newline}" +
             $"TPM owned: {YesNoUnknown(x.TpmOwned)}{newline}" +
+            $"TPM manufacturer class: {x.TpmManufacturer}{newline}" +
+            $"TPM firmware version (local only): {x.TpmFirmwareVersion}{newline}" +
+            $"Windows release: {x.WindowsRelease}{newline}" +
+            $"AIK enrollment last error: {x.AikEnrollmentError}{newline}" +
+            $"EK certificate readiness indicator: {x.EkCertStore}{newline}" +
             $"{newline}OS volume BitLocker protection: {x.OsVolumeProtection}{newline}" +
             $"OS volume conversion: {x.OsVolumeConversion}{newline}" +
             $"{newline}Memory Integrity configured: {x.MemoryIntegrityConfigured}{newline}" +
             $"Memory Integrity running: {x.MemoryIntegrityRuntime}{newline}" +
-            $"DPAPI ProtectionPolicy: {x.DpapiProtectionPolicy}{newline}{newline}" +
+            $"DPAPI ProtectionPolicy: {x.DpapiProtectionPolicy}{newline}" +
+            $"Domain joined: {x.DomainJoinStatus}{newline}" +
+            $"Writable DC discovery: {x.WritableDcStatus}{newline}{newline}" +
             "These values do not reveal stored BitLocker recovery keys, " +
             "do not identify TPM hardware failure, and do not prove Office authentication.";
     }
@@ -197,7 +204,7 @@ internal sealed class TpmBitLockerDialog : Form
     }
 
     internal bool SelfTest() =>
-        errorCode.Items.Count == 7 &&
+        errorCode.Items.Count == 9 &&
         details.ReadOnly && !string.IsNullOrWhiteSpace(safety.Text) &&
         UiTheme.VerifyButtons(this, 2);
 }
