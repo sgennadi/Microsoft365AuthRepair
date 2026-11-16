@@ -69,8 +69,7 @@ internal static class ReadOnlyDiagnosticScan
     private static T? Successful<T>(Task<T?> task) where T : class =>
         task.IsCompletedSuccessfully ? task.Result : null;
 
-    private static Task Track<T>(Task<T?> task, Action<bool> completed)
-        where T : class
+    private static Task Track<T>(Task<T> task, Action<bool> completed)
     {
         // Never confuse a completed but failed provider with verified data.
         // Result is only inspected on a successfully completed Task.
