@@ -1,11 +1,12 @@
 ## 1.0.2-preview.27 — 2026-11-16 — Preview
 
 1. Prefer the non-admin OS-volume BitLocker ConversionStatus property; retain bounded method fallback and truthful partial statuses.
-2. Add a separate, guarded Advanced device-security console for local admin-only recovery-password export, suspend/resume, decryption and manual Windows TPM management.
-3. Restrict recovery export to new local NTFS files with owner/SYSTEM ACL; no key material in application reports or clipboard.
-4. Delete successful-update .bak only after the updated main GUI starts and receipt integrity checks pass; retain backups after failures.
-5. Recognize AADSTS70008/700082/700084 token expiry and recommend a fresh interactive sign-in rather than invasive hardware operations.
-6. Extend Windows CI self-tests; stable 1.0.1 unchanged.
+2. Read-only local detection of known third-party FDE software and drivers, clearly separated from verified system-volume encryption. No third-party product names in anonymous reports.
+3. Add a separate, guarded Advanced device-security console for local admin-only recovery-password export, suspend/resume, decryption and manual Windows TPM management.
+4. Restrict recovery export to new local NTFS files with owner/SYSTEM ACL; no key material in application reports or clipboard.
+5. Delete successful-update .bak only after the updated main GUI starts and receipt integrity checks pass; retain backups after failures.
+6. Recognize AADSTS70008/700082/700084 token expiry and recommend a fresh interactive sign-in rather than invasive hardware operations.
+7. Extend Windows CI self-tests; stable 1.0.1 unchanged.
 
 [Preview.27 notes](docs/releases/v1.0.2-preview.27.md)
 
