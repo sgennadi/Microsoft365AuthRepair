@@ -99,6 +99,8 @@ internal static class Program
                     ("WAM result card", DiagnosticResultCard.SelfTest),
                     ("TPM and BitLocker main card", DeviceSecurityCard.SelfTest),
                     ("Main screen TPM link", () => form.HasDeviceSecuritySection),
+                    ("Live device evidence and compact Cancel link", () =>
+                        form.HasLiveDeviceSecurityAndCompactCancel),
                     ("What's New format", UpdateUiText.SelfTest),
                     ("Diagnostic payload", M365DiagnosticPayload.SelfTest),
                     ("Updater helper", UpdateHandoff.SelfTest),

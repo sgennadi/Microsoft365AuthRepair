@@ -8,7 +8,10 @@ namespace Microsoft365AuthRepair;
 // A stalled WMI/TPM provider is not permitted to block or pile up managed UI
 // threads. All output contains only whitelisted classifications. No recovery
 // keys, device identifiers, user identities, registry values or raw WMI data.
-internal sealed record DeviceProbeProgress(string Part, string State);
+// Snapshot is memory-only, strictly validated by the child-process parser.
+// Activity and its Copy log must use only Part and State, never Snapshot.
+internal sealed record DeviceProbeProgress(string Part, string State,
+    TpmBitLockerSnapshot? Snapshot = null);
 internal sealed record DeviceProbeRun(TpmBitLockerSnapshot Snapshot,
     string[] UnverifiedParts);
 
@@ -230,7 +233,7 @@ internal static class IsolatedDeviceProbe
                     progress?.Report(new(part, "STARTED"));
                     var result = await ReadPartAsync(part, cancellationToken)
                         .ConfigureAwait(false);
-                    progress?.Report(new(part, result.State));
+                    progress?.Report(new(part, result.State, result.Snapshot));
                     return result;
                 }
                 finally { gate.Release(); }

@@ -1,3 +1,9 @@
+## Preview.25 — live device-security results and compact cancellation
+
+**Check & Diagnose** now shows the TPM & BitLocker Device Security card immediately and updates each Windows security value as its isolated read-only probe finishes. If BitLocker WMI times out after 10 seconds, TPM/Secure Boot/VM/HVCI results remain available and BitLocker stays **Not verified**. The oversized cancel button is replaced with a small **Cancel** link in the Activity header beside **Copy log**. There is no automatic TPM or BitLocker repair, WAM reset or credential deletion.
+
+[Preview.25 notes](docs/releases/v1.0.2-preview.25.md)
+
 ## Preview.24 — Secure Boot, Security Processor and VM detection
 
 The read-only **Device Security** card now displays Secure Boot, TPM version, security processor readiness, detailed Memory Integrity/HVCI status and whether Windows is recognized as a VM guest (VMware, Hyper-V, KVM/Proxmox and other supported environments). Two new isolated stages appear in **Activity** with 10-second per-stage timeouts. No raw machine model, BIOS ID or TPM/BitLocker secrets are included in logs or anonymous reporting.

@@ -1,3 +1,13 @@
+## 1.0.2-preview.25 — 2026-11-16 — Preview
+
+1. Make TPM and BitLocker results visible during, not only after, Check & Diagnose; stream completed, categorized read-only provider evidence into the security card.
+2. Distinguish pending Checking from final Not verified; preserve successful TPM, Secure Boot, HVCI and VM results if BitLocker WMI times out.
+3. Replace tall Cancel check button with a compact Activity-header link next to Copy log, localized EN/RU/HE and keyboard accessible.
+4. Allow navigation to TPM details while scanning using cached values; on cancellation keep available partial evidence and never report unknown as healthy.
+5. Extend Windows GUI and partial-snapshot regression tests. Stable 1.0.1 unchanged.
+
+[Preview.25 notes](docs/releases/v1.0.2-preview.25.md)
+
 ## 1.0.2-preview.24 — 2026-11-16 — Preview
 
 1. Add read-only Secure Boot / UEFI status to the Device Security card and detailed inspector.
