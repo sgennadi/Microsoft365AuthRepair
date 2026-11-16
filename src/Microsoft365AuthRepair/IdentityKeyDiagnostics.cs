@@ -21,9 +21,9 @@ internal sealed record IdentityKeySignals(
 
     internal bool RequiresReview => TpmNeedsReview || DeviceKeyNeedsReview;
 
-    // Used for public opt-in diagnostics. No encryption configuration or
-    // detailed TPM/Windows Hello state leaves the user's computer.
-    internal string PublicSummary => RequiresReview ? "NEEDS_REVIEW" :
+    // Coarse local-only status for testing/recommendations. It is intentionally
+    // NOT added to the anonymous UniversalDiagnostics gateway payload.
+    internal string LocalSummary => RequiresReview ? "NEEDS_REVIEW" :
         TpmReady == "YES" && TpmLockedOut == "NO" &&
         KeySignTest == "PASSED" && AadRecoveryEnabled == "NO"
             ? "CHECKS_PASSED" : "NOT_VERIFIED";
@@ -114,12 +114,12 @@ try {
         var unknown = IdentityKeySignals.FromReport(
             "TpmPresent: OWNER_AUTH_PRIVATE\nKeySignTest: MUST_RUN_ELEVATED\n" +
             "BitLockerProtection: 1234-REDACT-ME\n");
-        return pass.PublicSummary == "CHECKS_PASSED" && !pass.RequiresReview &&
+        return pass.LocalSummary == "CHECKS_PASSED" && !pass.RequiresReview &&
             locked.TpmNeedsReview && keyFailure.DeviceKeyNeedsReview &&
-            recovery.RequiresReview && locked.PublicSummary == "NEEDS_REVIEW" &&
+            recovery.RequiresReview && locked.LocalSummary == "NEEDS_REVIEW" &&
             unknown.TpmPresent == "UNKNOWN" && unknown.KeySignTest == "UNKNOWN" &&
             unknown.BitLockerProtection == "UNKNOWN" &&
-            unknown.PublicSummary == "NOT_VERIFIED" &&
+            unknown.LocalSummary == "NOT_VERIFIED" &&
             !pass.MachineReport().Contains("OwnerAuth", StringComparison.Ordinal) &&
             !pass.MachineReport().Contains("RecoveryPassword", StringComparison.Ordinal);
     }
