@@ -27,6 +27,12 @@ internal sealed record TpmBitLockerSnapshot(
     // Get-Tpm LockedOut is read locally only. It is deliberately absent from
     // ToSafeSummary() and never sent to the public diagnostics gateway.
     internal string TpmLockedOut { get; init; } = "UNKNOWN";
+    // Local-only firmware and guest inventory. Never transmitted in the
+    // anonymous report (ToSafeSummary stays unchanged).
+    internal string SecureBootState { get; init; } = "UNKNOWN";
+    internal string FirmwareType { get; init; } = "UNKNOWN";
+    internal string VirtualMachineGuest { get; init; } = "UNKNOWN";
+    internal string VirtualMachinePlatform { get; init; } = "UNKNOWN";
 
     internal bool NeedsAttestationReview =>
         AikEnrollmentError is "NOT_FOUND" or "TIMEOUT" or
@@ -159,7 +165,10 @@ internal sealed record TpmBitLockerSnapshot(
             TpmBitLockerProbe.AikErrorClass(unchecked((int)0x80070490u)) == "NOT_FOUND" &&
             TpmBitLockerProbe.AikErrorClass(0x800705B4u) == "TIMEOUT" &&
             TpmBitLockerProbe.FirmwareVersion("9.8.7") == "9.8.7" &&
-            TpmBitLockerProbe.FirmwareVersion("device secret") == "UNKNOWN";
+            TpmBitLockerProbe.FirmwareVersion("device secret") == "UNKNOWN" &&
+            PlatformSecurityProbe.SelfTest() &&
+            !healthy.ToSafeSummary().Contains("SecureBoot", StringComparison.Ordinal) &&
+            !healthy.ToSafeSummary().Contains("VirtualMachine", StringComparison.Ordinal);
     }
 }
 
@@ -558,7 +567,8 @@ internal static class TpmBitLockerProbe
     internal static readonly string[] PartNames =
     [
         "TPM_WMI", "BITLOCKER_WMI", "DEVICE_GUARD_WMI",
-        "DOMAIN_RWDC", "TPM_LOCKOUT", "DPAPI_ATTESTATION"
+        "DOMAIN_RWDC", "TPM_LOCKOUT", "DPAPI_ATTESTATION",
+        "SECURE_BOOT", "VIRTUAL_MACHINE"
     ];
 
     internal static TpmBitLockerSnapshot CapturePart(string name)
@@ -596,6 +606,18 @@ internal static class TpmBitLockerProbe
                 };
             case "TPM_LOCKOUT":
                 return empty with { TpmLockedOut = ReadTpmLockout() };
+            case "SECURE_BOOT":
+                var boot = PlatformSecurityProbe.ReadSecureBoot();
+                return empty with {
+                    SecureBootState = boot.Boot,
+                    FirmwareType = boot.Firmware
+                };
+            case "VIRTUAL_MACHINE":
+                var guest = PlatformSecurityProbe.ReadGuest();
+                return empty with {
+                    VirtualMachineGuest = guest.Guest,
+                    VirtualMachinePlatform = guest.Platform
+                };
             case "DPAPI_ATTESTATION":
                 var a = ReadAttestation();
                 return empty with {
@@ -636,6 +658,14 @@ internal static class TpmBitLockerProbe
                 TpmLockedOut = found.TpmPresent == "NO"
                     ? "NOT_APPLICABLE" : found.TpmLockedOut
             },
+            "SECURE_BOOT" => snapshot with {
+                SecureBootState = found.SecureBootState,
+                FirmwareType = found.FirmwareType
+            },
+            "VIRTUAL_MACHINE" => snapshot with {
+                VirtualMachineGuest = found.VirtualMachineGuest,
+                VirtualMachinePlatform = found.VirtualMachinePlatform
+            },
             "DPAPI_ATTESTATION" => snapshot with {
                 DpapiProtectionPolicy = found.DpapiProtectionPolicy,
                 AikEnrollmentError = found.AikEnrollmentError,
@@ -661,6 +691,10 @@ internal static class TpmBitLockerProbe
                 (state.DomainJoinStatus == "YES" &&
                  state.WritableDcStatus is "AVAILABLE" or "NOT_FOUND"),
             "TPM_LOCKOUT" => state.TpmLockedOut is "YES" or "NO",
+            "SECURE_BOOT" => state.SecureBootState is "ON" or "OFF" or "UNSUPPORTED" &&
+                state.FirmwareType is "UEFI" or "BIOS",
+            "VIRTUAL_MACHINE" => state.VirtualMachineGuest is "YES" or "NO" &&
+                state.VirtualMachinePlatform != "UNKNOWN",
             // Windows build number is not evidence that DPAPI/AIK checks ran.
             "DPAPI_ATTESTATION" => state.DpapiProtectionPolicy is
                 "NOT_SET" or "ZERO" or "ONE" or "OTHER" ||
