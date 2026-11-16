@@ -8,6 +8,8 @@ namespace Microsoft365AuthRepair;
 // bottom of its scroll range; opening it never re-runs a diagnostic.
 internal sealed class ActivityJournalDialog : Form
 {
+    private readonly Func<string> readSnapshot;
+    private readonly System.Windows.Forms.Timer refreshTimer = new() { Interval = 750 };
     private readonly TextBox journal = new()
     {
         Multiline = true, ReadOnly = true, WordWrap = false,
@@ -23,8 +25,9 @@ internal sealed class ActivityJournalDialog : Form
     private readonly Button copy = UiTheme.CreateActionButton(string.Empty);
     private readonly Button close = UiTheme.CreateActionButton(string.Empty);
 
-    internal ActivityJournalDialog(string stageOnlyText)
+    internal ActivityJournalDialog(Func<string> stageOnlyText)
     {
+        readSnapshot = stageOnlyText ?? throw new ArgumentNullException(nameof(stageOnlyText));
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = UiTheme.BodyFont();
         BackColor = SystemInformation.HighContrast ? SystemColors.Window : UiTheme.Canvas;
@@ -54,7 +57,7 @@ internal sealed class ActivityJournalDialog : Form
         hint.Dock = DockStyle.Top;
         hint.MaximumSize = new Size(1050, 0);
         root.Controls.Add(hint, 0, 0);
-        journal.Text = stageOnlyText ?? string.Empty;
+        journal.Text = readSnapshot();
         journal.SelectionStart = 0;
         journal.SelectionLength = 0;
         root.Controls.Add(journal, 0, 1);
@@ -79,6 +82,9 @@ internal sealed class ActivityJournalDialog : Form
         UiIcons.TrackDpi(this);
         CancelButton = close;
         close.Click += (_, _) => Close();
+        Shown += (_, _) => refreshTimer.Start();
+        FormClosed += (_, _) => { refreshTimer.Stop(); refreshTimer.Dispose(); };
+        refreshTimer.Tick += (_, _) => RefreshSnapshot();
         copy.Click += (_, _) =>
         {
             try { Clipboard.SetText(journal.Text); }
@@ -94,9 +100,24 @@ internal sealed class ActivityJournalDialog : Form
         };
     }
 
+    private void RefreshSnapshot()
+    {
+        if (IsDisposed || Disposing) return;
+        var next = readSnapshot();
+        if (string.Equals(journal.Text, next, StringComparison.Ordinal)) return;
+        // Avoid jumping to the bottom when an operator reads earlier lines.
+        bool atEnd = journal.SelectionStart >= journal.TextLength - 1;
+        var oldStart = journal.SelectionStart;
+        journal.Text = next;
+        journal.SelectionStart = atEnd ? journal.TextLength :
+            Math.Min(oldStart, journal.TextLength);
+        journal.SelectionLength = 0;
+        if (atEnd) journal.ScrollToCaret();
+    }
+
     internal static bool SelfTest()
     {
-        using var dlg = new ActivityJournalDialog(
+        using var dlg = new ActivityJournalDialog(() =>
             "Microsoft 365 Auth Repair\r\n10:00:00 TPM / BitLocker · Finished");
         return dlg.journal.ReadOnly &&
             dlg.journal.Text.Contains("TPM / BitLocker", StringComparison.Ordinal) &&
