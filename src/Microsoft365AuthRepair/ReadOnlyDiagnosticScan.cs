@@ -15,7 +15,7 @@ internal sealed record ReadOnlyDiagnosticResult(
     string[] UnverifiedSections,
     bool ReachedDeadline);
 
-internal sealed record DiagnosticSectionProgress(int Completed, int Total);
+internal sealed record DiagnosticSectionProgress(int Completed, int Total, string LastCompleted);
 
 internal static class ReadOnlyDiagnosticScan
 {
@@ -90,10 +90,10 @@ internal static class ReadOnlyDiagnosticScan
         if (wait <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maxWait));
 
         var completed = 0;
-        void Finished()
+        void Finished(string section)
         {
             int n = Interlocked.Increment(ref completed);
-            progress?.Report(new(n, TotalSections));
+            progress?.Report(new(n, TotalSections, section));
         }
 
         // Start independent components concurrently. A slow Office licensing
@@ -111,8 +111,10 @@ internal static class ReadOnlyDiagnosticScan
             catch (Exception ex) when (ex is not OutOfMemoryException) { return null; }
         });
         var completion = Task.WhenAll(
-            Track(wam, Finished), Track(office, Finished),
-            Track(tpm, Finished), Track(network, Finished));
+            Track(wam, () => Finished("WAM_ENTRA")),
+            Track(office, () => Finished("OFFICE_LICENSE")),
+            Track(tpm, () => Finished("TPM_BITLOCKER")),
+            Track(network, () => Finished("NETWORK_PREFLIGHT")));
 
         bool deadlineReached = false;
         try
@@ -131,7 +133,7 @@ internal static class ReadOnlyDiagnosticScan
         var deviceInfo = Successful(tpm);
         var networkInfo = Successful(network);
         var missing = new List<string>();
-        if (wamReport is null) missing.Add("WAM_ENRA");
+        if (wamReport is null) missing.Add("WAM_ENTRA");
         if (officeInfo is null) missing.Add("OFFICE_LICENSE");
         if (deviceInfo is null) missing.Add("TPM_BITLOCKER");
         if (networkInfo is null) missing.Add("NETWORK_PREFLIGHT");
