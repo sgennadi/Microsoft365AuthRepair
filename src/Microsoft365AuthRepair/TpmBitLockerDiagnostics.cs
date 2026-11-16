@@ -8,19 +8,20 @@ namespace Microsoft365AuthRepair;
 // identifiers, owner authorization, DeviceID, hostname, logs, serial numbers,
 // or raw WMI output are gathered, stored or transmitted.
 internal sealed record TpmBitLockerSnapshot(
-    string TpmPresent, string TpmVersion,
+    string TpmPresent, string TpmVersion, bool? TpmReady,
     bool? TpmEnabled, bool? TpmActivated, bool? TpmOwned,
     string OsVolumeProtection, string OsVolumeConversion,
     string MemoryIntegrityRuntime, string MemoryIntegrityConfigured,
     string DpapiProtectionPolicy)
 {
     internal static TpmBitLockerSnapshot Unknown => new(
-        "UNKNOWN", "UNKNOWN", null, null, null,
+        "UNKNOWN", "UNKNOWN", null, null, null, null,
         "UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN");
 
     internal bool NeedsTpmReview =>
         TpmPresent == "YES" &&
-        (TpmEnabled == false || TpmActivated == false || TpmOwned == false);
+        (TpmReady == false || TpmEnabled == false ||
+         TpmActivated == false || TpmOwned == false);
 
     internal bool NeedsBitLockerReview =>
         OsVolumeConversion == "FULLY_ENCRYPTED" && OsVolumeProtection == "OFF";
@@ -49,7 +50,7 @@ internal sealed record TpmBitLockerSnapshot(
         var unknown = Unknown;
         var healthy = unknown with
         {
-            TpmPresent = "YES", TpmVersion = "2.0", TpmEnabled = true,
+            TpmPresent = "YES", TpmVersion = "2.0", TpmReady = true, TpmEnabled = true,
             TpmActivated = true, TpmOwned = true,
             OsVolumeProtection = "ON", OsVolumeConversion = "FULLY_ENCRYPTED"
         };
@@ -57,6 +58,7 @@ internal sealed record TpmBitLockerSnapshot(
             !healthy.NeedsTpmReview && !healthy.NeedsBitLockerReview &&
             (healthy with { OsVolumeProtection = "OFF" }).NeedsBitLockerReview &&
             (healthy with { TpmEnabled = false }).NeedsTpmReview &&
+            (healthy with { TpmReady = false }).NeedsTpmReview &&
             DescribeError("0x80090016").Contains("NOT proof", StringComparison.Ordinal) &&
             !DescribeError("random text").Contains("failed", StringComparison.OrdinalIgnoreCase) &&
             !healthy.CompactSummary().Contains("Recovery", StringComparison.OrdinalIgnoreCase);
@@ -89,7 +91,7 @@ internal static class TpmBitLockerProbe
         return initial;
     }
 
-    private static (string Present, string Version, bool? Enabled,
+    private static (string Present, string Version, bool? Ready, bool? Enabled,
         bool? Activated, bool? Owned) ReadTpm()
     {
         try
@@ -107,6 +109,7 @@ internal static class TpmBitLockerProbe
                         ? "2.0" : value.StartsWith("1.2", StringComparison.Ordinal)
                             ? "1.2" : "UNKNOWN";
                     return ("YES", version,
+                        LiveTpmFlag(item, "IsReady", "IsReady", null),
                         LiveTpmFlag(item, "IsEnabled", "IsEnabled",
                             ReadBool(item, "IsEnabled_InitialValue")),
                         LiveTpmFlag(item, "IsActivated", "IsActivated",
@@ -116,10 +119,10 @@ internal static class TpmBitLockerProbe
                 }
             }
             // A successful query with no instance normally means no TPM.
-            return ("NO", "UNKNOWN", null, null, null);
+            return ("NO", "UNKNOWN", null, null, null, null);
         }
         catch (Exception ex) when (WmiAccess(ex))
-        { return ("UNKNOWN", "UNKNOWN", null, null, null); }
+        { return ("UNKNOWN", "UNKNOWN", null, null, null, null); }
     }
 
     private static string ProtectionState(object? value)
@@ -260,7 +263,7 @@ internal static class TpmBitLockerProbe
         // not interpreted as TPM absent or BitLocker off.
         var tpm = ReadTpm();
         var drive = ReadSystemVolume();
-        return new(tpm.Present, tpm.Version, tpm.Enabled, tpm.Activated, tpm.Owned,
+        return new(tpm.Present, tpm.Version, tpm.Ready, tpm.Enabled, tpm.Activated, tpm.Owned,
             drive.Protection, drive.Conversion,
             ReadHVCIRunning(), ReadHVCIConfigured(), ReadDpapiPolicy());
     }
