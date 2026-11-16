@@ -1,5 +1,7 @@
 ## Preview.21 — v1.0.2-preview.21 (test only)
 
+The **Activity** panel appears below **Ready**, uses the empty space for a scrolling event log, and retains results on completion. The **Copy log** link copies sanitized step names, outcomes, timestamps and elapsed seconds. No UPN, device ID, BitLocker key, password, token, path or raw PowerShell/WMI output is copied.
+
 **Check & Diagnose** now shows explicitly read-only progress (0/4 to 4/4 and elapsed seconds), a temporary **Cancel check** control, and a **60-second total UI deadline**. WAM/Entra, Office activation, TPM/BitLocker and network preflight are checked concurrently. A blocked WMI provider no longer hides completed results: unfinished sections display **Not verified**, never "healthy". A diagnostic check **does not close Microsoft apps or change WAM, Office sign-in, TPM or BitLocker state**. If a native read-only WMI query hangs, the UI returns while that provider may finish later; repeated scans in the same process reuse its existing pending query.
 
 [Preview.21 release notes](docs/releases/v1.0.2-preview.21.md)
