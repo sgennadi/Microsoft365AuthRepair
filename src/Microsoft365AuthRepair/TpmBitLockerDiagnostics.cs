@@ -33,6 +33,10 @@ internal sealed record TpmBitLockerSnapshot(
     internal string FirmwareType { get; init; } = "UNKNOWN";
     internal string VirtualMachineGuest { get; init; } = "UNKNOWN";
     internal string VirtualMachinePlatform { get; init; } = "UNKNOWN";
+    // Local-only recognized installed encryption products, NOT proof that
+    // a system drive or any particular volume is actually encrypted.
+    // Excluded from ToSafeSummary() and all anonymous diagnostics.
+    internal string ThirdPartyEncryptionProducts { get; init; } = "UNKNOWN";
 
     internal bool NeedsAttestationReview =>
         AikEnrollmentError is "NOT_FOUND" or "TIMEOUT" or
@@ -155,6 +159,9 @@ internal sealed record TpmBitLockerSnapshot(
                 .ToSafeSummary().Contains("TpmAikEnrollment: UNKNOWN", StringComparison.Ordinal) &&
             (healthy with { WritableDcStatus = "dc01.internal.example" })
                 .ToSafeSummary().Contains("DpapiWritableDc: UNKNOWN", StringComparison.Ordinal) &&
+            !(healthy with { ThirdPartyEncryptionProducts = "VERACRYPT" })
+                .ToSafeSummary().Contains("VERACRYPT", StringComparison.Ordinal) &&
+            ThirdPartyDiskEncryptionProbe.SelfTest() &&
             TpmBitLockerProbe.ValidDomainName("example.test") &&
             !TpmBitLockerProbe.ValidDomainName("invalid;cmd.exe") &&
             !TpmBitLockerProbe.ValidDomainName("not-a-domain") &&
@@ -636,7 +643,7 @@ internal static class TpmBitLockerProbe
     [
         "TPM_WMI", "BITLOCKER_WMI", "BITLOCKER_CONVERSION", "DEVICE_GUARD_WMI",
         "DOMAIN_RWDC", "TPM_LOCKOUT", "DPAPI_ATTESTATION",
-        "SECURE_BOOT", "VIRTUAL_MACHINE"
+        "SECURE_BOOT", "VIRTUAL_MACHINE", "THIRD_PARTY_FDE"
     ];
 
     internal static TpmBitLockerSnapshot CapturePart(string name)
@@ -660,6 +667,10 @@ internal static class TpmBitLockerProbe
                 return empty with { OsVolumeProtection = ReadSystemVolumeProtection() };
             case "BITLOCKER_CONVERSION":
                 return empty with { OsVolumeConversion = ReadSystemVolumeConversion() };
+            case "THIRD_PARTY_FDE":
+                return empty with {
+                    ThirdPartyEncryptionProducts = ThirdPartyDiskEncryptionProbe.Read()
+                };
             case "DEVICE_GUARD_WMI":
                 return empty with {
                     MemoryIntegrityRuntime = ReadHVCIRunning(),
@@ -714,6 +725,10 @@ internal static class TpmBitLockerProbe
             "BITLOCKER_CONVERSION" => snapshot with {
                 OsVolumeConversion = found.OsVolumeConversion
             },
+            "THIRD_PARTY_FDE" => snapshot with {
+                ThirdPartyEncryptionProducts =
+                    ThirdPartyDiskEncryptionProbe.Validate(found.ThirdPartyEncryptionProducts)
+            },
             "DEVICE_GUARD_WMI" => snapshot with {
                 MemoryIntegrityRuntime = found.MemoryIntegrityRuntime,
                 MemoryIntegrityConfigured = found.MemoryIntegrityConfigured
@@ -754,6 +769,9 @@ internal static class TpmBitLockerProbe
             "BITLOCKER_CONVERSION" => state.OsVolumeConversion is
                 "FULLY_DECRYPTED" or "FULLY_ENCRYPTED" or "ENCRYPTING" or
                 "DECRYPTING" or "ENCRYPTION_PAUSED" or "DECRYPTION_PAUSED",
+            "THIRD_PARTY_FDE" =>
+                ThirdPartyDiskEncryptionProbe.Validate(
+                    state.ThirdPartyEncryptionProducts) != "UNKNOWN",
             "DEVICE_GUARD_WMI" => state.MemoryIntegrityRuntime is
                 "RUNNING" or "NOT_RUNNING" ||
                 state.MemoryIntegrityConfigured is "ON" or "OFF" or "NOT_SET",
