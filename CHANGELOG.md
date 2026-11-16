@@ -1,3 +1,13 @@
+## 1.0.2-preview.1 — 2026-11-16 — Preview (development)
+
+1. Added non-destructive TPM readiness/lockout and OS-volume BitLocker protection checks; unavailable values are unknown.
+2. Added allowlisted Entra device-key signature, automatic recovery and user-context Windows Hello indicators.
+3. Prioritized verified TPM or device-key problems in Smart Repair; no automatic key deletion, TPM clear, PIN reset or Entra leave.
+4. Added offline 0x80090011/30/31/34 code help, EN/RU/HE result tiles, and regression checks for privacy-safe anonymous reports.
+5. Stable 1.0.1 is unchanged. Hardware, Entra, BitLocker and 200% DPI pilot verification remains necessary.
+
+[Preview notes](docs/releases/v1.0.2-preview.1.md)
+
 ## 1.0.1 — 2026-11-16 — Stable
 
 1. Smart Repair Center: evidence-based WAM/Entra/Office recommendations and non-destructive preflight.
