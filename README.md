@@ -1,3 +1,9 @@
+## Preview.23 — TPM & BitLocker on the main screen
+
+After **Check & Diagnose**, the main result screen includes a separate **TPM & BitLocker · Device Security** card immediately under WAM/Entra. It shows categorized TPM presence/readiness/lockout, BitLocker protection/encryption, HVCI, DPAPI and writable DC state, with a **View full details** link. A shortcut in the results banner scrolls to the card. Missing evidence remains **Not verified**; the check is read-only and does not access recovery secrets.
+
+[Preview.23 release notes](docs/releases/v1.0.2-preview.23.md)
+
 ## Preview.22 — isolated TPM/BitLocker checks (test only)
 
 If Check & Diagnose previously stopped at "TPM / BitLocker · Not verified" after 60 seconds, Preview.22 isolates six read-only Windows providers with separate 10-second limits. The Activity journal now identifies the actual blocked provider (TPM, BitLocker, Device Guard, domain DC, TPM lockout or DPAPI/AIK) while preserving completed evidence. No TPM clearing, Office sign-in reset, credential deletion or BitLocker recovery key access occurs. The detailed TPM inspector uses the same bounded checker.
