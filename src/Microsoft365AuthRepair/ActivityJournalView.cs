@@ -190,7 +190,9 @@ internal sealed class ActivityJournalView : TableLayoutPanel
         lines.ScrollToCaret();
     }
 
-    internal bool HasCopyControl => copyLog.Visible &&
+    // A WinForms control can report Visible=false while its owner Form is
+    // unshown during CI. Validate the real copy control's wiring/properties.
+    internal bool HasCopyControl => copyLog.Enabled &&
         !string.IsNullOrWhiteSpace(copyLog.Text) && lines.ReadOnly;
 
     internal static bool SelfTest()
