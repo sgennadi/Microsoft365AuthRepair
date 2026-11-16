@@ -64,7 +64,7 @@ internal static class PlatformSecurityProbe
             return ("YES", "VIRTUALBOX");
 
         if (maker.Contains("AMAZON EC2", StringComparison.Ordinal) ||
-            machine.Contains("HVM DOMU", StringComparison.Ordinal))
+            maker.Contains("AMAZON.COM", StringComparison.Ordinal))
             return ("YES", "AWS_EC2");
 
         if (machine.Contains("GOOGLE COMPUTE ENGINE", StringComparison.Ordinal) ||
@@ -147,6 +147,8 @@ internal static class PlatformSecurityProbe
                     ("YES", "KVM_QEMU") &&
                ClassifyGuest("Amazon EC2", "HVM domU") ==
                     ("YES", "AWS_EC2") &&
+               ClassifyGuest("Xen", "HVM domU") ==
+                    ("YES", "XEN") &&
                ClassifyGuest("Dell Inc.", "Latitude 7450") ==
                     ("NO", "NONE") &&
                ClassifyGuest("", "") == ("UNKNOWN", "UNKNOWN") &&
