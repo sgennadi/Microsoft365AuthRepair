@@ -90,9 +90,20 @@ internal static class ExternalCommand
         var stderr = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(timeoutSeconds * 1000))
         {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException($"{System.IO.Path.GetFileName(exe)} exceeded the operation timeout.");
+            // A package registration can wait on application locks. Never let
+            // a hung child keep the UI in Working indefinitely.
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { /* Exited after timeout check. */ }
+            try { process.WaitForExit(3000); }
+            catch (InvalidOperationException) { }
+            throw new TimeoutException($"{System.IO.Path.GetFileName(exe)} did not finish within {timeoutSeconds} seconds.");
         }
+        // A child process may inherit redirected output handles even after
+        // powershell.exe exits. ReadToEndAsync would otherwise wait forever.
+        // The 5-second output-drain limit is separate from the process timeout.
+        var drain = Task.WhenAll(stdout, stderr);
+        if (!drain.Wait(TimeSpan.FromSeconds(5)))
+            throw new TimeoutException($"{System.IO.Path.GetFileName(exe)} exited but its output streams did not close.");
         return new Result(process.ExitCode, stdout.GetAwaiter().GetResult(), stderr.GetAwaiter().GetResult());
     }
 
