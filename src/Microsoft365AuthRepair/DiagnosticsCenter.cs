@@ -173,7 +173,9 @@ internal sealed class DiagnosticsCenter : Form
         {
             // AppX and dsregcmd can be slow. Keep the UI responsive.
             // Only the sanitized allowlist can be offered for publication.
-            var summary = await Task.Run(() =>
+            // Keep slow native providers out of process. A BitLocker WMI
+            // timeout must not block the report window forever.
+            var wamAndOffice = Task.Run(() =>
             {
                 var wam = M365DiagnosticPayload.SafeSummary(Repair.DiagnoseReport());
                 OfficeDiagnosticEvidence office;
@@ -186,28 +188,24 @@ internal sealed class DiagnosticsCenter : Form
                     or System.Runtime.InteropServices.COMException
                     or System.Security.SecurityException or PlatformNotSupportedException)
                 {
-                    // WMI/Office failures cannot prevent WAM reports; no raw
-                    // exception message, stack or paths leave this process.
                     office = OfficeDiagnosticEvidence.Unknown;
                 }
-                TpmBitLockerSnapshot device;
-                try
-                {
-                    device = TpmBitLockerProbe.Capture();
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                    or InvalidOperationException or System.Management.ManagementException
-                    or System.Runtime.InteropServices.COMException
-                    or System.Security.SecurityException or PlatformNotSupportedException
-                    or System.ComponentModel.Win32Exception)
-                {
-                    device = TpmBitLockerSnapshot.Unknown;
-                }
-                // This remains a local review artifact. Only fixed enum tokens
-                // survive M365DiagnosticPayload.Prepare() before transport.
-                return wam + "; " + office.ToSafeSummary() +
-                    "; " + device.ToSafeSummary();
+                return wam + "; " + office.ToSafeSummary();
             });
+            DeviceProbeRun? device = null;
+            try { device = await IsolatedDeviceProbe.CaptureAsync(); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Fail closed to unknown; no exception text or provider data
+                // is added to the local or anonymous diagnostic event.
+            }
+            var coverage = device is null ||
+                device.UnverifiedParts.Length == TpmBitLockerProbe.PartNames.Length
+                ? "NOT_VERIFIED" : device.UnverifiedParts.Length == 0
+                ? "COMPLETE" : "PARTIAL";
+            var summary = await wamAndOffice +
+                "; " + (device?.Snapshot ?? TpmBitLockerSnapshot.Unknown).ToSafeSummary() +
+                "; DeviceProbeCoverage: " + coverage;
             if (IsDisposed || Disposing) return;
             var capture = JsonSerializer.Serialize(new
             {
