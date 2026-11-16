@@ -29,7 +29,9 @@ internal sealed class DeviceSecurityAdvancedForm : Form
     private readonly Button suspend = UiTheme.CreateActionButton(string.Empty);
     private readonly Button resume = UiTheme.CreateActionButton(string.Empty);
     private readonly Button decrypt = UiTheme.CreateActionButton(string.Empty, destructive: true);
-    private readonly Button tpm = UiTheme.CreateActionButton(string.Empty, destructive: true);
+    // Launching the native TPM console is not itself a TPM Clear. Preserve
+    // the full confirmation gate but avoid a misleading destructive red button.
+    private readonly Button tpm = UiTheme.CreateActionButton(string.Empty);
     private readonly Button bitlocker = UiTheme.CreateActionButton(string.Empty);
     private readonly Button close = UiTheme.CreateActionButton(string.Empty);
     private bool working;
@@ -132,7 +134,7 @@ internal sealed class DeviceSecurityAdvancedForm : Form
         UiIcons.Assign(suspend, UiGlyph.Reset);
         UiIcons.Assign(resume, UiGlyph.Repair);
         UiIcons.Assign(decrypt, UiGlyph.Error, destructive: true);
-        UiIcons.Assign(tpm, UiGlyph.Error, destructive: true);
+        UiIcons.Assign(tpm, UiGlyph.Settings);
         UiIcons.Assign(bitlocker, UiGlyph.Settings);
         UiIcons.Assign(close, UiGlyph.Reset);
         UiIcons.TrackDpi(this);
@@ -201,7 +203,7 @@ internal sealed class DeviceSecurityAdvancedForm : Form
         suspend.Text = T("Suspend (1 reboot)", "Приостановить (1 запуск)", "השהה לאתחול אחד");
         resume.Text = T("Resume protection", "Возобновить защиту", "חדש הגנה");
         decrypt.Text = T("Decrypt / Turn off", "Расшифровать / Отключить", "פענח / כבה");
-        tpm.Text = T("Open Clear TPM console", "Открыть консоль Clear TPM",
+        tpm.Text = T("Open TPM management", "Открыть управление TPM",
             "פתח ניהול TPM");
         bitlocker.Text = T("Windows BitLocker settings", "Настройки BitLocker в Windows",
             "הגדרות BitLocker");

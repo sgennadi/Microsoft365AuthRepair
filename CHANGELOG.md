@@ -1,3 +1,13 @@
+## 1.0.2-preview.28 — 2026-11-16 — Preview
+
+1. Bring **View full details**, **Windows BitLocker settings**, and **Advanced device security** together to the top of the TPM/BitLocker card; shortcuts wrap for narrow/200%-DPI layouts.
+2. Preserve read-only status inspection during scanning. External Windows settings and Advanced actions cannot launch while the scan is busy.
+3. Keep dangerous operations behind administrator checks and both confirmation gates; never request UAC implicitly for current-user WAM diagnosis.
+4. Use a neutral icon and explicit label for opening native TPM management (opening is not a TPM Clear).
+5. Extend WinForms shortcut and availability self-tests; Stable 1.0.1 untouched.
+
+[Preview.28 release notes](docs/releases/v1.0.2-preview.28.md)
+
 ## 1.0.2-preview.27 — 2026-11-16 — Preview
 
 1. Prefer the non-admin OS-volume BitLocker ConversionStatus property; retain bounded method fallback and truthful partial statuses.

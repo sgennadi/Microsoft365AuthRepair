@@ -503,6 +503,26 @@ internal sealed class MainForm : Form
             using var inspector = new TpmBitLockerDialog(lastDeviceProtection);
             inspector.ShowDialog(this);
         };
+        deviceSecurityCard.AdvancedRequested += (_, _) =>
+        {
+            if (busy || lastDeviceProtection is null) return;
+            // Never elevate implicitly or run actions from Check & Diagnose.
+            // A non-admin can inspect the dialog but cannot execute operations.
+            using var advanced = new DeviceSecurityAdvancedForm();
+            advanced.ShowDialog(this);
+        };
+        deviceSecurityCard.BitLockerSettingsRequested += (_, _) =>
+        {
+            if (busy || lastDeviceProtection is null) return;
+            try { DeviceSecurityAdvancedActions.OpenBitLockerManagement(); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                ShowStatus(UpdateUiText.T(
+                    "Windows BitLocker settings unavailable.",
+                    "Не удалось открыть настройки BitLocker Windows.",
+                    "הגדרות BitLocker של Windows אינן זמינות."), UiGlyph.Info);
+            }
+        };
         signInWorks.Click += (_, _) =>
         {
             if (busy || lastRawDiagnostic is null) return;
@@ -918,7 +938,9 @@ internal sealed class MainForm : Form
     internal bool HasActivityJournal => activityJournal.HasCopyControl &&
         activityJournal.CopyText.Contains("Microsoft 365 Auth Repair", StringComparison.Ordinal);
     internal bool HasDeviceSecuritySection =>
-        deviceSecurityCard.Parent == mainLayout && deviceSecurityCard.HasReadOnlyDetailsLink &&
+        deviceSecurityCard.Parent == mainLayout &&
+        deviceSecurityCard.HasReadOnlyDetailsLink &&
+        deviceSecurityCard.HasDirectSecurityShortcuts &&
         deviceProtectionLink.Parent is FlowLayoutPanel;
     // A hidden WinForms form has no calculated table layout yet, so
     // GetPositionFromControl may report an empty/uncomputed position in CI.
