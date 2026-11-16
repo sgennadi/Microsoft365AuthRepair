@@ -36,6 +36,10 @@ internal sealed record TpmBitLockerSnapshot(
     {
         "0X80090016" or "80090016" or "-2146893802" => "0x80090016 / NTE_BAD_KEYSET: cryptographic keyset is missing or invalid. " +
             "Review the affected user's WAM/DPAPI and device registration. This is NOT proof of broken TPM hardware.",
+        "0X80090030" or "80090030" => "0x80090030 / NTE_DEVICE_NOT_READY: the cryptographic device is not ready. " +
+            "Review TPM provisioning, OS/firmware updates and Microsoft device registration. Do not clear TPM as the first step.",
+        "0XC0090016" or "C0090016" => "0xC0090016: Office/WAM reported a cryptographic sign-in error. " +
+            "Review WAM identity and Entra device registration; this code is not assumed to be 0x80090016.",
         "0X80090031" or "80090031" or "-2146893775" => "0x80090031 / NTE_AUTHENTICATION_IGNORED: may indicate a temporary TPM lockout. " +
             "Allow cooldown and review TPM state. Do not clear TPM automatically.",
         "0X80090034" => "0x80090034: a cryptographic provider error was reported. " +
@@ -82,6 +86,8 @@ internal sealed record TpmBitLockerSnapshot(
             (healthy with { TpmReady = false }).NeedsTpmReview &&
             DescribeError("0x80090016").Contains("NOT proof", StringComparison.Ordinal) &&
             DescribeError("-2146893802") == DescribeError("0x80090016") &&
+            DescribeError("0x80090030").Contains("NTE_DEVICE_NOT_READY", StringComparison.Ordinal) &&
+            !DescribeError("0xC0090016").Contains("0x80090016", StringComparison.Ordinal) &&
             !DescribeError("random text").Contains("failed", StringComparison.OrdinalIgnoreCase) &&
             !healthy.CompactSummary().Contains("Recovery", StringComparison.OrdinalIgnoreCase) &&
             !healthy.ToSafeSummary().Contains("Recovery", StringComparison.OrdinalIgnoreCase) &&
