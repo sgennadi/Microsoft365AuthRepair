@@ -214,6 +214,22 @@ internal sealed class TpmBitLockerDialog : Form
             Line("OS BitLocker encryption", "Шифрование BitLocker системного диска",
                 "הצפנת BitLocker בכונן המערכת", x.OsVolumeConversion) +
             newline +
+            Line("Third-party disk encryption software",
+                "Сторонние средства шифрования",
+                "תוכנות הצפנת דיסקים חיצוניות",
+                x.ThirdPartyEncryptionProducts == "NONE_DETECTED" ? "NONE_DETECTED" :
+                ThirdPartyDiskEncryptionProbe.IsDetected(x.ThirdPartyEncryptionProducts)
+                    ? ThirdPartyDiskEncryptionProbe.DisplayNames(
+                        x.ThirdPartyEncryptionProducts) : "UNKNOWN") +
+            Line("Third-party system-drive encryption",
+                "Шифрование системного диска сторонними средствами",
+                "הצפנת כונן מערכת בתוכנה חיצונית",
+                "NOT_VERIFIED") +
+            UpdateUiText.T(
+                "Software/driver detection does not prove a drive is encrypted. A vendor-specific read-only status check is necessary.",
+                "Наличие программы или драйвера не доказывает шифрование диска. Нужна отдельная проверка средствами производителя.",
+                "זיהוי תוכנה או מנהל התקן אינו מוכיח שהדיסק מוצפן. יש לאמת באמצעות כלי היצרן.") + newline +
+            newline +
             Line("Memory Integrity configured", "Memory Integrity настроен",
                 "תצורת Memory Integrity", x.MemoryIntegrityConfigured) +
             Line("Memory Integrity running", "Memory Integrity работает",
