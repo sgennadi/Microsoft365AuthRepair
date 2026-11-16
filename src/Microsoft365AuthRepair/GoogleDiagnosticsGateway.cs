@@ -10,7 +10,8 @@ using System.Text.RegularExpressions;
 namespace Microsoft365AuthRepair;
 
 // Shared UniversalDiagnostics v1 payload adapted to the common Google gateway.
-// No username, UPN, SID, domain, hostname, log, URL, raw error text or tokens
+// No username, UPN, SID, domain, hostname, log, URL, raw error text, tokens,
+// TPM owner authorization, raw BitLocker/Hello state or device key evidence
 // are ever included in the outgoing payload.
 internal sealed record PreparedDiagnostic(string Id, string Json);
 
@@ -174,7 +175,10 @@ internal static class M365DiagnosticPayload
                 " OfficeInstalled: YES; OfficeEdition: PROPLUS_2024; OfficeActivation: LICENSED;" +
                 " OfficeWmiRecords: THREE_PLUS; OfficeLicensedRecords: ONE;" +
                 " OfficePreviewRecords: TWO; OfficePreviewKeyRecords: NONE;" +
-                " OfficeKmsHost: internal.example; OfficeKey: XJ2XN-FW8RK-P4HMP-DKDBV-GCVGB"
+                " OfficeKmsHost: internal.example; OfficeKey: XJ2XN-FW8RK-P4HMP-DKDBV-GCVGB;" +
+                " TpmReady: NO; TpmLockedOut: YES; KeySignTest: FAILED;" +
+                " BitLockerRecoveryPassword: PRIVATE_RECOVERY_PASSWORD;" +
+                " TpmOwnerAuth: PRIVATE_TPM_OWNER_AUTH; DeviceId: PRIVATE_DEVICE_ID"
         } });
         var outgoing = Prepare(source).Json;
         using var parsed = JsonDocument.Parse(outgoing);
@@ -191,6 +195,11 @@ internal static class M365DiagnosticPayload
             !outgoing.Contains("XJ2XN-", StringComparison.Ordinal) &&
             !outgoing.Contains("OfficeKmsHost", StringComparison.Ordinal) &&
             !outgoing.Contains("OfficeKey", StringComparison.Ordinal) &&
+            !outgoing.Contains("PRIVATE_RECOVERY_PASSWORD", StringComparison.Ordinal) &&
+            !outgoing.Contains("PRIVATE_TPM_OWNER_AUTH", StringComparison.Ordinal) &&
+            !outgoing.Contains("PRIVATE_DEVICE_ID", StringComparison.Ordinal) &&
+            !outgoing.Contains("TpmLockedOut", StringComparison.Ordinal) &&
+            !outgoing.Contains("KeySignTest", StringComparison.Ordinal) &&
             !outgoing.Contains("PRIVATE_USER_NAME", StringComparison.Ordinal) &&
             !outgoing.Contains("summary", StringComparison.OrdinalIgnoreCase) &&
             GoogleDiagnosticsGateway.ApprovedIssueUrl(
