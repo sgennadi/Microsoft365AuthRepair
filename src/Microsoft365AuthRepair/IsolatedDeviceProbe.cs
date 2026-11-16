@@ -114,10 +114,14 @@ internal static class IsolatedDeviceProbe
                         TpmFirmwareVersion = TpmBitLockerProbe.FirmwareVersion(
                             state.TpmFirmwareVersion)
                     },
-                "BITLOCKER_WMI" when state.OsVolumeProtection is "ON" or "OFF" or "UNKNOWN" &&
-                    state.OsVolumeConversion is "FULLY_DECRYPTED" or
-                        "FULLY_ENCRYPTED" or "ENCRYPTING" or "DECRYPTING" or
-                        "ENCRYPTION_PAUSED" or "DECRYPTION_PAUSED" or "UNKNOWN" => state,
+                // Separate protection and conversion stages: a timed-out
+                // GetConversionStatus must not erase valid protection evidence.
+                "BITLOCKER_WMI" when state.OsVolumeProtection is
+                    "ON" or "OFF" or "UNKNOWN" => state,
+                "BITLOCKER_CONVERSION" when state.OsVolumeConversion is
+                    "FULLY_DECRYPTED" or "FULLY_ENCRYPTED" or "ENCRYPTING" or
+                    "DECRYPTING" or "ENCRYPTION_PAUSED" or
+                    "DECRYPTION_PAUSED" or "UNKNOWN" => state,
                 "DEVICE_GUARD_WMI" when state.MemoryIntegrityRuntime is
                     "RUNNING" or "NOT_RUNNING" or "UNKNOWN" &&
                     state.MemoryIntegrityConfigured is "ON" or "OFF" or
@@ -271,15 +275,33 @@ internal static class IsolatedDeviceProbe
         });
         var virtualResult = Parse("VIRTUAL_MACHINE",
             JsonSerializer.Serialize(virtualGuest));
+        var protection = Pack("BITLOCKER_WMI",
+            unknown with { OsVolumeProtection = "ON" });
+        var conversion = Pack("BITLOCKER_CONVERSION",
+            unknown with { OsVolumeConversion = "FULLY_ENCRYPTED" });
+        var protectionResult = Parse("BITLOCKER_WMI",
+            JsonSerializer.Serialize(protection));
+        var conversionResult = Parse("BITLOCKER_CONVERSION",
+            JsonSerializer.Serialize(conversion));
         var secureBoot = Pack("SECURE_BOOT", unknown with {
             SecureBootState = "ON", FirmwareType = "UEFI"
         });
         var secureResult = Parse("SECURE_BOOT", JsonSerializer.Serialize(secureBoot));
-        return TpmBitLockerProbe.PartNames.Length == 8 &&
-            TpmBitLockerProbe.PartNames.Distinct().Count() == 8 &&
+        return TpmBitLockerProbe.PartNames.Length == 9 &&
+            TpmBitLockerProbe.PartNames.Distinct().Count() == 9 &&
             PartTimeoutSeconds >= 5 && PartTimeoutSeconds <= 15 &&
             MaxParallel >= 1 && MaxParallel <= 3 &&
             invalid is null && parsed?.TpmLockedOut == "YES" &&
+            protectionResult?.OsVolumeProtection == "ON" &&
+            protectionResult.OsVolumeConversion == "UNKNOWN" &&
+            conversionResult?.OsVolumeConversion == "FULLY_ENCRYPTED" &&
+            conversionResult.OsVolumeProtection == "UNKNOWN" &&
+            Parse("BITLOCKER_WMI", JsonSerializer.Serialize(conversion)) is null &&
+            Parse("BITLOCKER_CONVERSION", JsonSerializer.Serialize(protection)) is null &&
+            TpmBitLockerProbe.MergePart(protectionResult, "BITLOCKER_CONVERSION",
+                conversionResult).OsVolumeProtection == "ON" &&
+            TpmBitLockerProbe.MergePart(protectionResult, "BITLOCKER_CONVERSION",
+                conversionResult).OsVolumeConversion == "FULLY_ENCRYPTED" &&
             Parse("TPM_WMI", JsonSerializer.Serialize(probe)) is null &&
             !TpmBitLockerProbe.HasPartEvidence("TPM_WMI", unknown) &&
             TpmBitLockerProbe.HasPartEvidence("TPM_LOCKOUT", parsed) &&
