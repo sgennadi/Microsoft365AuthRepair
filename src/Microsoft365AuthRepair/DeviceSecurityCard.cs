@@ -151,9 +151,11 @@ internal sealed class DeviceSecurityCard : TableLayoutPanel
 
     internal void UpdateLanguage()
     {
+        title.UseMnemonic = false;
         title.Text = T("TPM & BITLOCKER · DEVICE SECURITY",
             "TPM И BITLOCKER · ЗАЩИТА УСТРОЙСТВА",
             "TPM ו-BitLocker · אבטחת מכשיר");
+        detailsLink.UseMnemonic = false;
         detailsLink.Text = T("View full details", "Подробнее", "הצג פרטים מלאים");
         detailsLink.AccessibleName = T("Open TPM and BitLocker read-only details",
             "Открыть подробности TPM и BitLocker (только чтение)",
