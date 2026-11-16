@@ -1,3 +1,15 @@
+## 1.0.1 — 2026-11-16 — Stable
+
+1. Smart Repair Center: evidence-based WAM/Entra/Office recommendations and non-destructive preflight.
+2. Office/Visio/Project 2024 Volume activation inventory and conservative Preview-key handling; Microsoft 365 subscription state is separate and read-only.
+3. Office WMI rows are explicitly identified as licensing records/templates, not additional installed copies. Reports include only allowlisted Office installed/activation categories and coarse record counts, never license keys, endpoints or identity data.
+4. Controlled Current user and All users repair workflows; protected task history and explicit selected failed-WAM retry at next sign-in only.
+5. Optional audited Microsoft Graph Correlation ID lookup via Device Code or certificate, adapted from BitKeyBridge with AuditLog.Read.All only and process-memory token reuse.
+6. Per-user post-repair local recheck, explicit user-reported Office app sign-in status, compact EN/RU/HE HiDPI UI and validated updater flow.
+7. Stable Windows x64/ARM64 CI, GUI/self-tests, script parsing, safe background-worker tests and immutable release ZIP/SHA-256 validation. Real tenant/KMS, domain task execution, ARM64 hardware and RTL/200% DPI field tests remain required.
+
+[Stable v1.0.1 notes](docs/releases/v1.0.1.md)
+
 ## 1.0.1-preview.18 — 2026-11-16 — Preview
 
 1. Introduced an evidence-based Smart Repair recommendation and read-only preflight (running apps, Microsoft HTTPS transport, clock and AppX policy hints).
