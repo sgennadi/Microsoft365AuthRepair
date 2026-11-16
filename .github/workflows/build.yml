@@ -1,8 +1,8 @@
-name: Microsoft 365 Auth Repair - Preview x64 and ARM64
+name: Microsoft 365 Auth Repair - Stable x64 and ARM64
 on:
   workflow_dispatch:
   push:
-    branches: [preview]
+    branches: [main]
     paths:
       - 'src/**'
       - 'MODULES.lock'
@@ -139,41 +139,41 @@ jobs:
       - name: Upload verified build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Microsoft365AuthRepair-preview-x64-arm64
+          name: Microsoft365AuthRepair-stable-v1.0.1-x64-arm64
           path: artifacts/*
           if-no-files-found: error
           retention-days: 14
 
 
-  publish-preview:
-    name: Publish signed-off Preview release
+  publish-stable:
+    name: Publish immutable Stable v1.0.1 release
     needs: windows-publish
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/preview' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - name: Checkout the tested preview commit
+      - name: Checkout the exact tested stable commit
         uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Fetch verified x64 and ARM64 packages
         uses: actions/download-artifact@v4
         with:
-          name: Microsoft365AuthRepair-preview-x64-arm64
+          name: Microsoft365AuthRepair-stable-v1.0.1-x64-arm64
           path: release-assets
-      - name: Validate preview version and both SHA-256 packages
+      - name: Validate stable version, archive contents and both SHA-256 packages
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           [xml]$project = Get-Content src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj
           $version = [string]$project.Project.PropertyGroup.Version
-          if ($version -cnotmatch '^1[.]0[.][1-9][0-9]*-preview[.][1-9][0-9]*$') {
-            throw "Unexpected version for preview workflow: $version"
+          if ($version -cne '1.0.1') {
+            throw "Stable v1.0.1 required, got: $version"
           }
           $repairVersion = Get-Content src/Microsoft365AuthRepair/Repair.cs -Raw
           if (-not $repairVersion.Contains('internal const string Version = "' + $version + '";')) {
-            throw 'Preview runtime version and build metadata differ.'
+            throw 'Stable runtime version and build metadata differ.'
           }
           $expected = @('Microsoft365AuthRepair-win-x64.zip', 'Microsoft365AuthRepair-win-arm64.zip')
           $checksums = @(Get-Content release-assets/SHA256SUMS.txt)
@@ -194,8 +194,8 @@ jobs:
             }
             finally { $archive.Dispose() }
           }
-          Write-Host "Preview package verification passed: $version"
-      - name: Create immutable-by-policy Preview GitHub release
+          Write-Host "Stable package verification passed: $version"
+      - name: Publish immutable Stable v1.0.1 GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -203,10 +203,10 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' src/Microsoft365AuthRepair/Microsoft365AuthRepair.csproj | head -1)"
-          test "$version" = "1.0.1-preview.18"
+          test "$version" = "1.0.1"
           tag="v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "$tag already exists; refusing to overwrite a published preview."
+            echo "$tag already exists; refusing to overwrite an immutable stable release."
             exit 0
           fi
           gh release create "$tag" \
@@ -214,6 +214,6 @@ jobs:
             release-assets/Microsoft365AuthRepair-win-arm64.zip \
             release-assets/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
-            --title "Microsoft 365 Auth Repair $version (Preview)" \
-            --notes-file docs/releases/v1.0.1-preview.18.md \
-            --prerelease
+            --title "Microsoft 365 Auth Repair $version (Stable)" \
+            --notes-file docs/releases/v1.0.1.md \
+            --latest
