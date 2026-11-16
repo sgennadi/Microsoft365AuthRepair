@@ -449,13 +449,17 @@ internal sealed class OfficeVolumeLicenseForm : Form
         int hidden = Math.Max(0, inventory.Products.Count - preferred.Count);
         otherRecordsLink.Visible = hidden > 0;
         otherRecordsLink.Text = showTechnicalRows
-            ? UpdateUiText.T("Hide technical license records (not Office installs)",
-                "Скрыть технические записи лицензий (не установки Office)",
-                "הסתר רשומות רישוי טכניות")
-            : UpdateUiText.T("Show technical license records (not Office installs)",
-                "Показать технические записи лицензий (не установки Office)",
-                "הצג רשומות רישוי טכניות") + " (" + hidden + ")";
+            ? UpdateUiText.T("Hide WMI details", "Скрыть записи WMI",
+                "הסתר פרטי WMI")
+            : UpdateUiText.T("Show WMI details", "Показать записи WMI",
+                "הצג פרטי WMI") + " (" + hidden + ")";
+        // Keep the clickable text compact at 200% DPI; explanation is
+        // available below and to screen readers.
         otherRecordsLink.AccessibleName = otherRecordsLink.Text;
+        otherRecordsLink.AccessibleDescription = UpdateUiText.T(
+            "Technical WMI licensing entries are not additional Office installations.",
+            "Технические записи лицензий WMI не означают отдельные установки Office.",
+            "רשומות WMI נוספות אינן התקנות Office נוספות.");
         SelectProduct();
     }
 
