@@ -121,7 +121,16 @@ internal static class M365DiagnosticPayload
             ["tpm_manufacturer_class"] = Allowed("TpmManufacturerClass", [
                 "STM", "MSFT", "OTHER", "UNKNOWN"]),
             ["windows_tpm_release"] = Allowed("WindowsTpmRelease", [
-                "WIN11_24H2", "WIN11_25H2", "WIN11_NEWER", "OTHER", "UNKNOWN"])
+                "WIN11_24H2", "WIN11_25H2", "WIN11_NEWER", "OTHER", "UNKNOWN"]),
+            ["secure_boot_state"] = Allowed("SecureBootState",
+                ["ON", "OFF", "UNSUPPORTED", "UNKNOWN"]),
+            ["memory_integrity_configured"] = Allowed("MemoryIntegrityConfigured",
+                ["ON", "OFF", "NOT_SET", "UNKNOWN"]),
+            // Old saved reports lack this field. Do not misrepresent them as
+            // complete: explicit NOT_VERIFIED is the safe compatibility value.
+            ["device_probe_coverage"] = Allowed("DeviceProbeCoverage",
+                ["COMPLETE", "PARTIAL", "NOT_VERIFIED"]) is var coverage &&
+                coverage != "UNKNOWN" ? coverage : "NOT_VERIFIED"
         };
     }
 
@@ -205,6 +214,8 @@ internal static class M365DiagnosticPayload
                 " DpapiDomainJoined: YES; DpapiWritableDc: AVAILABLE;" +
                 " TpmAikEnrollment: NOT_FOUND; TpmEkCertStore: IMPORT_INCOMPLETE;" +
                 " TpmManufacturerClass: STM; WindowsTpmRelease: WIN11_24H2;" +
+                " SecureBootState: OFF; MemoryIntegrityConfigured: ON;" +
+                " DeviceProbeCoverage: PARTIAL;" +
                 " TpmLockedOut: YES; KeySignTest: FAILED; AadRecoveryEnabled: YES;" +
                 " NgcKeyId: PRIVATE_NGC_KEY_ID; KeyContainerId: PRIVATE_CONTAINER_ID;" +
                 " TPMFirmwareVersion: secret.device.build;" +
@@ -236,6 +247,10 @@ internal static class M365DiagnosticPayload
             signals.GetProperty("tpm_ek_cert_store").GetString() == "IMPORT_INCOMPLETE" &&
             signals.GetProperty("tpm_manufacturer_class").GetString() == "STM" &&
             signals.GetProperty("windows_tpm_release").GetString() == "WIN11_24H2" &&
+            signals.GetProperty("secure_boot_state").GetString() == "OFF" &&
+            signals.GetProperty("memory_integrity_configured").GetString() == "ON" &&
+            signals.GetProperty("device_probe_coverage").GetString() == "PARTIAL" &&
+            signals.EnumerateObject().Count() == 29 &&
             !outgoing.Contains("secret.device.build", StringComparison.Ordinal) &&
             !outgoing.Contains("TPMFirmwareVersion", StringComparison.Ordinal) &&
             !outgoing.Contains("TpmLockedOut", StringComparison.Ordinal) &&
@@ -358,12 +373,12 @@ internal sealed class GoogleDiagnosticsGateway : IDisposable
                 schema.ValueKind != JsonValueKind.Number ||
                 !schema.TryGetInt32(out var version))
                 return (false, "GATEWAY_SCHEMA_UNAVAILABLE");
-            if (version < 3 ||
+            if (version < 4 ||
                 !root.TryGetProperty("capabilities", out var capabilities) ||
                 capabilities.ValueKind != JsonValueKind.Array ||
                 !capabilities.EnumerateArray().Any(x => x.ValueKind == JsonValueKind.String &&
-                    x.GetString() == "microsoft365-auth-repair/v1"))
-                return (false, "DEPLOY_GATEWAY_V3");
+                    x.GetString() == "microsoft365-auth-repair/v2"))
+                return (false, "DEPLOY_GATEWAY_V4");
             return (true, "GATEWAY_V3_ONLINE");
         }
         catch (JsonException)
@@ -377,6 +392,13 @@ internal sealed class GoogleDiagnosticsGateway : IDisposable
     {
         if (!ApprovedEndpoint(Endpoint))
             throw new InvalidOperationException("Approved shared diagnostics endpoint is unavailable.");
+        // v3 accepts only six M365 fields and rejects an expanded report.
+        // Never upload an operator-approved payload to an incompatible
+        // receiver or silently discard evidence to force it through.
+        var readiness = await CheckReceiverAsync(ct).ConfigureAwait(false);
+        if (!readiness.Ready)
+            throw new InvalidOperationException(readiness.Code.StartsWith("GATEWAY_",
+                StringComparison.Ordinal) ? readiness.Code : "GATEWAY_" + readiness.Code);
         using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Microsoft365AuthRepair", "1.0"));
