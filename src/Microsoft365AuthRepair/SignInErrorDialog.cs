@@ -79,8 +79,8 @@ internal sealed class SignInErrorDialog : Form
         title.Text = UpdateUiText.T("What does this sign-in error mean?",
             "Что означает ошибка входа?", "מה משמעות שגיאת ההתחברות?");
         source.Text = UpdateUiText.T(
-            "Type an error code (AADSTS53003, 1001, 0x80090016) or a problem name. Results appear instantly. Do not paste passwords or logs.",
-            "Введите код (AADSTS53003, 1001, 0x80090016) или название проблемы — результат появится сразу. Не вставляйте пароли и журналы.",
+            "Type an error code (AADSTS53003, 1001, 0x80090034) or a problem name. Results appear instantly. Do not paste passwords or logs.",
+            "Введите код (AADSTS53003, 1001, 0x80090034) или название проблемы — результат появится сразу. Не вставляйте пароли и журналы.",
             "הקלד קוד שגיאה או תיאור בעיה — התוצאות יופיעו מיד. אל תדביק סיסמאות או יומנים.");
         layout.Controls.Add(title, 0, 0);
         layout.Controls.Add(source, 0, 1);
