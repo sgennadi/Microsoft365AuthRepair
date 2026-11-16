@@ -86,6 +86,7 @@ internal static class Program
                     ("Office report evidence privacy", OfficeDiagnosticEvidence.SelfTest),
                     ("Volume licensing UI", OfficeVolumeLicenseForm.SelfTest),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
+                    ("Bounded read-only scan", ReadOnlyDiagnosticScan.SelfTest),
                     ("Local-only Entra key evidence", EntraKeySignals.SelfTest),
                     ("WAM result card", DiagnosticResultCard.SelfTest),
                     ("What's New format", UpdateUiText.SelfTest),
