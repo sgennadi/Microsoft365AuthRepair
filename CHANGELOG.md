@@ -1,3 +1,15 @@
+## 1.0.2-preview.19 — 2026-11-16 — Preview
+
+1. Read-only TPM readiness, firmware class, OS-volume BitLocker protection/encryption, Memory Integrity and DPAPI ProtectionPolicy inspection; no keys or protectors accessed.
+2. Distinguish Office/WAM keyset error 0x80090016, DPAPI encryption 0x80090034 and TPM readiness 0x80090030 from AIK/Autopilot attestation 0x80070490 and timeout 0x800705B4.
+3. Advisory writable domain controller discovery for domain DPAPI key-backup issues; does not mutate ProtectionPolicy or treat network failure as TPM damage.
+4. Existing AIK enrollment error (where recorded) and EK provisioning warning bit are checked without clearing TPM or issuing an enrollment request.
+5. Add a responsive EN/RU/HE TPM & BitLocker inspection dialog within Smart Repair; no BitLocker key exports, TPM reset, Entra leave or automatic credential deletion.
+6. Reviewed anonymous reports get only strict TPM, BitLocker, DPAPI, AIK and Windows release categories; regression tests enforce exclusion of recovery keys, firmware data, user and domain identifiers.
+7. Version advances to 1.0.2-preview.19 for correct SemVer ordering above Stable 1.0.1. x64/ARM64 and GUI CI required; on-device TPM/BitLocker and RTL/200% DPI testing remain essential.
+
+[Preview.19 notes](docs/releases/v1.0.2-preview.19.md)
+
 ## 1.0.1-preview.18 — 2026-11-16 — Preview
 
 1. Introduced an evidence-based Smart Repair recommendation and read-only preflight (running apps, Microsoft HTTPS transport, clock and AppX policy hints).
