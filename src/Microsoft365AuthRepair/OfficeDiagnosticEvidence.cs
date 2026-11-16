@@ -40,8 +40,12 @@ internal sealed record OfficeDiagnosticEvidence(
             !string.IsNullOrEmpty(volume.Warning))
             return new("YES", "VOLUME_OTHER", "UNKNOWN", 0, 0, 0, 0);
 
+        // WMI may enumerate the same SoftwareLicensingProduct instance more
+        // than once. Count distinct activation records, never Office installs.
         var installed = volume.Products.Where(x =>
-            OfficeVolumeLicensing.MatchesInstalledProduct(x, volume)).ToArray();
+            OfficeVolumeLicensing.MatchesInstalledProduct(x, volume))
+            .DistinctBy(x => x.ActivationId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         int active = installed.Count(x =>
             OfficeVolumeLicensing.IsActive(x) && !x.IsPreview);
         int preview = installed.Count(x => x.IsPreview);
@@ -66,14 +70,21 @@ internal sealed record OfficeDiagnosticEvidence(
 
     // Only these allowlisted words are appended to the local diagnostic
     // summary. The transport re-parses them into a strict outgoing allowlist.
-    internal string ToSafeSummary() =>
-        "OfficeInstalled: " + Installed +
-        "; OfficeEdition: " + Edition +
-        "; OfficeActivation: " + Activation +
-        "; OfficeWmiRecords: " + CountBand(WmiRecords) +
-        "; OfficeLicensedRecords: " + CountBand(LicensedRecords) +
-        "; OfficePreviewRecords: " + CountBand(PreviewRecords) +
-        "; OfficePreviewKeyRecords: " + CountBand(PreviewKeyRecords);
+    internal string ToSafeSummary()
+    {
+        string band(int count) => Installed == "UNKNOWN" ||
+            (Edition == "VOLUME_OTHER" && Activation == "UNKNOWN")
+                ? "UNKNOWN" :
+            Edition is "MICROSOFT_365" or "RETAIL" or "UNKNOWN"
+                ? "NOT_APPLICABLE" : CountBand(count);
+        return "OfficeInstalled: " + Installed +
+            "; OfficeEdition: " + Edition +
+            "; OfficeActivation: " + Activation +
+            "; OfficeWmiRecords: " + band(WmiRecords) +
+            "; OfficeLicensedRecords: " + band(LicensedRecords) +
+            "; OfficePreviewRecords: " + band(PreviewRecords) +
+            "; OfficePreviewKeyRecords: " + band(PreviewKeyRecords);
+    }
 
     internal static OfficeDiagnosticEvidence Unknown =>
         new("UNKNOWN", "UNKNOWN", "UNKNOWN", 0, 0, 0, 0);
@@ -112,8 +123,8 @@ internal sealed record OfficeDiagnosticEvidence(
         return evidence.Installed == "YES" &&
             evidence.Edition == "PROPLUS_2024" &&
             evidence.Activation == "LICENSED" &&
-            evidence.WmiRecords == 4 &&
-            evidence.LicensedRecords == 2 &&
+            evidence.WmiRecords == 3 &&
+            evidence.LicensedRecords == 1 &&
             evidence.PreviewRecords == 1 &&
             evidence.PreviewKeyRecords == 0 &&
             FromInventory(subscription, volume).Activation == "NOT_VERIFIED" &&
