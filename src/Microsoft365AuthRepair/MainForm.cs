@@ -27,14 +27,6 @@ internal sealed class MainForm : Form
     private OfficeActivationHealth? lastOfficeActivation;
     private RepairPreflight? lastPreflight;
     private TpmBitLockerSnapshot? lastDeviceProtection;
-    // In the result banner, this shortcut scrolls directly to the new
-    // visible security card, even when the recommendations are collapsed.
-    private readonly LinkLabel deviceProtectionLink = new()
-    {
-        AutoSize = true, TabStop = true, Visible = false,
-        LinkBehavior = LinkBehavior.HoverUnderline,
-        Margin = new Padding(12, 5, 0, 5)
-    };
     // The device card may push Activity below the fold on smaller 200%-DPI
     // windows. A compact status-banner link jumps to the existing journal;
     // no duplicate diagnostic action or re-query is created.
@@ -318,7 +310,6 @@ internal sealed class MainForm : Form
         banner.Controls.Add(statusGlyph);
         banner.Controls.Add(status);
         banner.Controls.Add(diagnosticToggle);
-        banner.Controls.Add(deviceProtectionLink);
         banner.Controls.Add(activityLink);
         root.Controls.Add(banner, 0, 6);
 
@@ -326,6 +317,7 @@ internal sealed class MainForm : Form
         // activity journal, so the collected TPM results are not buried.
         root.Controls.Add(deviceSecurityCard, 0, 7);
         activityJournal.Height = 188;
+        activityJournal.Visible = false; // Compact journal; expandable via one meaningful link.
         root.Controls.Add(activityJournal, 0, 8);
         root.Controls.Add(diagnosticResult, 0, 9);
         officeLicenseSummary.Visible = false;
@@ -409,10 +401,8 @@ internal sealed class MainForm : Form
         hints.SetToolTip(settings, "Configure all-users repair tasks and review old scheduled workers.");
         hints.SetToolTip(applyRecommendation, "Start only the specifically recommended WAM action with the existing independent confirmation.");
         hints.SetToolTip(entraReview, "Optional read-only Microsoft Graph sign-in audit using Device Code or an approved certificate.");
-        hints.SetToolTip(deviceProtectionLink,
-            "Jump to the TPM / BitLocker read-only diagnostic card. No recovery keys are read.");
         hints.SetToolTip(activityLink,
-            "Jump to the existing local Activity journal; no new checks are started.");
+            "Expand or collapse the existing local Activity log; no new checks are started.");
         hints.SetToolTip(signInWorks, "You confirm that an actual Microsoft 365 application completed sign-in; this is not independently tested.");
         hints.SetToolTip(signInFailed, "App sign-in still failed. Review the error and optional Entra audit.");
 
@@ -487,15 +477,8 @@ internal sealed class MainForm : Form
             using var reviewer = new EntraSignInReviewDialog();
             reviewer.ShowDialog(this);
         };
-        deviceProtectionLink.LinkClicked += (_, _) =>
-        {
-            if (lastDeviceProtection is null) return;
-            if (diagnosticsCollapsed && lastRawDiagnostic is not null)
-                SetDiagnosticsCollapsed(false);
-            mainLayout?.ScrollControlIntoView(deviceSecurityCard);
-        };
         activityLink.LinkClicked += (_, _) =>
-            mainLayout?.ScrollControlIntoView(activityJournal);
+            SetActivityVisible(!activityJournal.Visible, scrollWhenExpanded: true);
         deviceSecurityCard.DetailsRequested += (_, _) =>
         {
             if (lastDeviceProtection is null) return;
@@ -715,16 +698,8 @@ internal sealed class MainForm : Form
             "Entra sign-in log (optional)", "Журнал входов Entra (необязательно)",
             "יומן כניסה ל-Entra (אופציונלי)");
         entraReview.AccessibleName = entraReview.Text;
-        deviceProtectionLink.Text = UpdateUiText.T(
-            "TPM & BitLocker", "TPM и BitLocker", "TPM ו-BitLocker");
         deviceSecurityCard.UpdateLanguage();
-        deviceProtectionLink.AccessibleName = deviceProtectionLink.Text;
-        activityLink.Text = UpdateUiText.T("View activity", "Показать журнал",
-            "הצגת פעילות");
-        activityLink.AccessibleName = UpdateUiText.T(
-            "Show local read-only activity and timeout results",
-            "Открыть журнал локальной диагностики и тайм-аутов",
-            "הצגת יומן הבדיקה המקומית ופקיעות הזמן");
+        UpdateActivityLink();
         signInWorks.Text = UpdateUiText.T(
             "App sign-in works", "Вход в приложение работает", "הכניסה לאפליקציה פועלת");
         signInFailed.Text = UpdateUiText.T(
@@ -833,7 +808,6 @@ internal sealed class MainForm : Form
             lastSmartDecision.NextAction;
         preflightSummary.Text = FormatPreflight(lastPreflight);
         deviceSecurityCard.ShowResult(lastDeviceProtection);
-        deviceProtectionLink.Visible = true;
         applyRecommendation.Visible = lastSmartDecision.SafeToOfferRepair &&
             lastSmartDecision.Action == SmartRepairAction.ReRegisterWam &&
             scope.SelectedIndex == 0 && ownSession;
@@ -850,7 +824,6 @@ internal sealed class MainForm : Form
         if (diagnosticsCollapsed)
         {
             diagnosticResult.Visible = false;
-            deviceSecurityCard.Visible = false;
             officeLicenseSummary.Visible = false;
             officeVolumeLink.Visible = false;
             smartPanel.Visible = false;
@@ -924,11 +897,27 @@ internal sealed class MainForm : Form
         if (!collapsed) mainLayout?.ScrollControlIntoView(diagnosticResult);
     }
 
+    private void UpdateActivityLink()
+    {
+        activityLink.Text = activityJournal.Visible
+            ? UpdateUiText.T("Hide activity log", "Скрыть журнал", "הסתר יומן פעילות")
+            : UpdateUiText.T("Show activity log", "Показать журнал", "הצג יומן פעילות");
+        activityLink.AccessibleName = activityLink.Text;
+    }
+
+    private void SetActivityVisible(bool visible, bool scrollWhenExpanded = false)
+    {
+        activityJournal.Visible = visible;
+        UpdateActivityLink();
+        if (visible && scrollWhenExpanded)
+            mainLayout?.ScrollControlIntoView(activityJournal);
+    }
+
     private void UpdateDiagnosticsToggle()
     {
         diagnosticToggle.Text = diagnosticsCollapsed
-            ? UpdateUiText.T("Expand results", "Развернуть результаты", "הצג תוצאות")
-            : UpdateUiText.T("Collapse results", "Свернуть результаты", "הסתר תוצאות");
+            ? UpdateUiText.T("Show WAM / Office results", "Показать WAM / Office", "הצג תוצאות WAM / Office")
+            : UpdateUiText.T("Hide WAM / Office results", "Скрыть WAM / Office", "הסתר תוצאות WAM / Office");
         diagnosticToggle.AccessibleName = diagnosticToggle.Text;
         diagnosticToggle.Visible = lastRawDiagnostic is not null;
     }
@@ -941,7 +930,7 @@ internal sealed class MainForm : Form
         deviceSecurityCard.Parent == mainLayout &&
         deviceSecurityCard.HasReadOnlyDetailsLink &&
         deviceSecurityCard.HasDirectSecurityShortcuts &&
-        deviceProtectionLink.Parent is FlowLayoutPanel;
+        deviceSecurityCard.Parent == mainLayout;
     // A hidden WinForms form has no calculated table layout yet, so
     // GetPositionFromControl may report an empty/uncomputed position in CI.
     // Verify the actual control ownership and compact cancel composition;
@@ -967,7 +956,6 @@ internal sealed class MainForm : Form
             applyRecommendation.Enabled = entraReview.Enabled =
             signInWorks.Enabled = signInFailed.Enabled = !isBusy;
         // Read-only device details remain accessible while checking.
-        deviceProtectionLink.Enabled = !isBusy || diagnosticCancellation is not null;
         scope.Enabled = !isBusy;
         activityJournal.SetCancellationAvailable(isBusy &&
             diagnosticCancellation is not null &&
@@ -1231,7 +1219,6 @@ internal sealed class MainForm : Form
         // stale green TPM or BitLocker status after changing sign-in state.
         lastDeviceProtection = null;
         deviceSecurityCard.ClearResult();
-        deviceProtectionLink.Visible = false;
         activityLink.Visible = false;
         lastRawDiagnostic = null;
         lastOfficeLicense = null;
@@ -1409,7 +1396,6 @@ internal sealed class MainForm : Form
         lastPreflight = null;
         lastDeviceProtection = null;
         deviceSecurityCard.ClearResult();
-        deviceProtectionLink.Visible = false;
         activityLink.Visible = false;
         recommendedHelpKey = null;
         officeLicenseSummary.Visible = false;
@@ -1425,8 +1411,8 @@ internal sealed class MainForm : Form
         var liveDevice = TpmBitLockerSnapshot.Unknown;
         lastDeviceProtection = liveDevice;
         deviceSecurityCard.ShowResult(liveDevice, inProgress: true);
-        deviceProtectionLink.Visible = true;
         activityLink.Visible = true;
+        SetActivityVisible(true);
 
         // Bound the entire UI operation. The native Windows provider may hang;
         // a later diagnostic reuses any in-flight machine query instead of
@@ -1616,7 +1602,11 @@ internal sealed class MainForm : Form
                 diagnosticCancellation = null;
             diagnosticTimer.Stop();
             activityJournal.SetCancellationAvailable(false);
-            if (!IsDisposed && !Disposing) SetBusy(false);
+            if (!IsDisposed && !Disposing)
+            {
+                SetActivityVisible(false);
+                SetBusy(false);
+            }
         }
     }
 
