@@ -64,6 +64,20 @@ internal sealed record OfficeDiagnosticEvidence(
         return FromInventory(machine, OfficeVolumeLicensing.Read());
     }
 
+    // Only these allowlisted words are appended to the local diagnostic
+    // summary. The transport re-parses them into a strict outgoing allowlist.
+    internal string ToSafeSummary() =>
+        "OfficeInstalled: " + Installed +
+        "; OfficeEdition: " + Edition +
+        "; OfficeActivation: " + Activation +
+        "; OfficeWmiRecords: " + CountBand(WmiRecords) +
+        "; OfficeLicensedRecords: " + CountBand(LicensedRecords) +
+        "; OfficePreviewRecords: " + CountBand(PreviewRecords) +
+        "; OfficePreviewKeyRecords: " + CountBand(PreviewKeyRecords);
+
+    internal static OfficeDiagnosticEvidence Unknown =>
+        new("UNKNOWN", "UNKNOWN", "UNKNOWN", 0, 0, 0, 0);
+
     internal static string CountBand(int count) => count switch
     {
         <= 0 => "NONE",
@@ -106,6 +120,9 @@ internal sealed record OfficeDiagnosticEvidence(
             unavailable.Activation == "UNKNOWN" &&
             noInstalled.Installed == "UNKNOWN" &&
             CountBand(0) == "NONE" && CountBand(2) == "TWO" &&
-            CountBand(50) == "THREE_PLUS";
+            CountBand(50) == "THREE_PLUS" &&
+            evidence.ToSafeSummary().Contains("OfficeActivation: LICENSED") &&
+            !evidence.ToSafeSummary().Contains("GCVGB") &&
+            !evidence.ToSafeSummary().Contains("internal.example");
     }
 }
