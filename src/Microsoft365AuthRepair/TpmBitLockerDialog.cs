@@ -211,8 +211,8 @@ internal sealed class TpmBitLockerDialog : Form
             newline +
             Line("OS BitLocker protection", "Защита BitLocker системного диска",
                 "הגנת BitLocker", x.OsVolumeProtection) +
-            Line("OS volume encryption", "Шифрование системного диска",
-                "הצפנת דיסק מערכת", x.OsVolumeConversion) +
+            Line("OS BitLocker encryption", "Шифрование BitLocker системного диска",
+                "הצפנת BitLocker בכונן המערכת", x.OsVolumeConversion) +
             newline +
             Line("Memory Integrity configured", "Memory Integrity настроен",
                 "תצורת Memory Integrity", x.MemoryIntegrityConfigured) +
