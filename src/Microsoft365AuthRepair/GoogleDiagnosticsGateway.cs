@@ -78,7 +78,25 @@ internal static class M365DiagnosticPayload
             ["device_auth_status"] = Allowed("DeviceAuthStatus", ["SUCCESS", "FAILED"]),
             ["azure_ad_prt"] = Allowed("AzureAdPrt", yn),
             ["wam_default_set"] = Allowed("WamDefaultSet", yn),
-            ["broker_plugin"] = Allowed("BrokerPlugin", ["PRESENT", "MISSING"])
+            ["broker_plugin"] = Allowed("BrokerPlugin", ["PRESENT", "MISSING"]),
+            // Office state is deliberately restricted to enumerated, coarse
+            // machine-wide signals. No raw Office WMI rows, host, key, PID,
+            // tenant, SID or per-user subscription contents are transmitted.
+            ["office_installed"] = Allowed("OfficeInstalled", ["YES", "NO", "UNKNOWN"]),
+            ["office_edition"] = Allowed("OfficeEdition",
+                ["PROPLUS_2024", "STANDARD_2024", "VISIO_2024", "PROJECT_2024",
+                 "MULTIPLE_VOLUME", "VOLUME_OTHER", "MICROSOFT_365", "RETAIL", "UNKNOWN"]),
+            ["office_activation"] = Allowed("OfficeActivation",
+                ["LICENSED", "UNLICENSED", "PREVIEW_KEY_PRESENT",
+                 "NOT_VERIFIED", "UNKNOWN"]),
+            ["office_wmi_records"] = Allowed("OfficeWmiRecords",
+                ["NONE", "ONE", "TWO", "THREE_PLUS", "NOT_APPLICABLE", "UNKNOWN"]),
+            ["office_licensed_records"] = Allowed("OfficeLicensedRecords",
+                ["NONE", "ONE", "TWO", "THREE_PLUS", "NOT_APPLICABLE", "UNKNOWN"]),
+            ["office_preview_records"] = Allowed("OfficePreviewRecords",
+                ["NONE", "ONE", "TWO", "THREE_PLUS", "NOT_APPLICABLE", "UNKNOWN"]),
+            ["office_preview_key_records"] = Allowed("OfficePreviewKeyRecords",
+                ["NONE", "ONE", "TWO", "THREE_PLUS", "NOT_APPLICABLE", "UNKNOWN"])
         };
     }
 
@@ -152,13 +170,27 @@ internal static class M365DiagnosticPayload
             timestamp_utc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
             project = Project, component, error_type = type, code, level = "info",
             version = "1.0.1-preview.1", platform = "Windows", architecture = "ARM64", fingerprint,
-            summary = "AzureAdJoined : YES; DomainJoined : YES; DeviceAuthStatus : SUCCESS; WamDefaultSet : YES; AzureAdPrt : YES; PRIVATE_USER_NAME"
+            summary = "AzureAdJoined : YES; DomainJoined : YES; DeviceAuthStatus : SUCCESS; WamDefaultSet : YES; AzureAdPrt : YES; PRIVATE_USER_NAME;" +
+                " OfficeInstalled: YES; OfficeEdition: PROPLUS_2024; OfficeActivation: LICENSED;" +
+                " OfficeWmiRecords: THREE_PLUS; OfficeLicensedRecords: ONE;" +
+                " OfficePreviewRecords: TWO; OfficePreviewKeyRecords: NONE;" +
+                " OfficeKmsHost: internal.example; OfficeKey: XJ2XN-FW8RK-P4HMP-DKDBV-GCVGB"
         } });
         var outgoing = Prepare(source).Json;
         using var parsed = JsonDocument.Parse(outgoing);
         var signals = parsed.RootElement.GetProperty("event").GetProperty("signals");
         return signals.GetProperty("azure_ad_prt").GetString() == "YES" &&
             signals.GetProperty("broker_plugin").GetString() == "UNKNOWN" &&
+            signals.GetProperty("office_installed").GetString() == "YES" &&
+            signals.GetProperty("office_edition").GetString() == "PROPLUS_2024" &&
+            signals.GetProperty("office_activation").GetString() == "LICENSED" &&
+            signals.GetProperty("office_wmi_records").GetString() == "THREE_PLUS" &&
+            signals.GetProperty("office_preview_records").GetString() == "TWO" &&
+            signals.GetProperty("office_preview_key_records").GetString() == "NONE" &&
+            !outgoing.Contains("internal.example", StringComparison.Ordinal) &&
+            !outgoing.Contains("XJ2XN-", StringComparison.Ordinal) &&
+            !outgoing.Contains("OfficeKmsHost", StringComparison.Ordinal) &&
+            !outgoing.Contains("OfficeKey", StringComparison.Ordinal) &&
             !outgoing.Contains("PRIVATE_USER_NAME", StringComparison.Ordinal) &&
             !outgoing.Contains("summary", StringComparison.OrdinalIgnoreCase) &&
             GoogleDiagnosticsGateway.ApprovedIssueUrl(
