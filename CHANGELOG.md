@@ -4,7 +4,8 @@
 2. Query only the validated Windows system drive instead of enumerating other BitLocker volumes.
 3. Preserve a verified protection state if encryption conversion times out, and vice versa; unknown remains Not verified.
 4. Distinguish protection versus encryption failures in Activity and partial-scan status, including EN/RU/HE labels.
-5. Add independent-part IPC tests and drive-letter input validation. Stable 1.0.1 remains unchanged.
+5. Add a compact View activity link to jump to the existing journal below the TPM card on small/high-DPI screens; no duplicate scan runs.
+6. Add independent-part IPC tests and drive-letter input validation. Stable 1.0.1 remains unchanged.
 
 [Preview.26 notes](docs/releases/v1.0.2-preview.26.md)
 
