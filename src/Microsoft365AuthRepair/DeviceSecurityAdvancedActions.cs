@@ -50,6 +50,24 @@ internal static class DeviceSecurityAdvancedActions
                 File.Exists(filename) ||
                 (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
                 return false;
+            // Refuse common cloud-synchronized roots even if the underlying
+            // filesystem is local NTFS. A recovery password must not be
+            // unintentionally synced into OneDrive/Dropbox/Google Drive/iCloud.
+            var absolute = Path.GetFullPath(filename);
+            foreach (var name in new[] { "OneDrive", "OneDriveCommercial",
+                         "OneDriveConsumer", "Dropbox", "GoogleDrive", "iCloudDrive" })
+            {
+                var sync = Environment.GetEnvironmentVariable(name);
+                if (!string.IsNullOrWhiteSpace(sync) &&
+                    absolute.StartsWith(Path.GetFullPath(sync).TrimEnd('\\') + "\\",
+                        StringComparison.OrdinalIgnoreCase)) return false;
+            }
+            if (absolute.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries)
+                .Any(part => part.StartsWith("OneDrive", StringComparison.OrdinalIgnoreCase) ||
+                    part.Equals("Dropbox", StringComparison.OrdinalIgnoreCase) ||
+                    part.Equals("Google Drive", StringComparison.OrdinalIgnoreCase) ||
+                    part.Equals("iCloudDrive", StringComparison.OrdinalIgnoreCase)))
+                return false;
             var root = Path.GetPathRoot(directory);
             if (string.IsNullOrWhiteSpace(root)) return false;
             var drive = new DriveInfo(root);
@@ -237,6 +255,7 @@ internal static class DeviceSecurityAdvancedActions
             IsRecoveryPasswordShape("111111-222222-333333-444444-555555-666666-777777-888888") &&
             !IsRecoveryPasswordShape("anything-secret") &&
             !MayExportTo(@"\\untrusted\share\recovery.txt") &&
-            !MayExportTo(@"C:\secret.dat");
+            !MayExportTo(@"C:\secret.dat") &&
+            !MayExportTo(@"C:\Users\Person\OneDrive\recovery.txt");
     }
 }
