@@ -1,6 +1,6 @@
 ## Preview.29 — compact Advanced device-security window
 
-**Advanced device security** has a restrained, responsive WinForms layout: authorization is in one clearly labeled section; local recovery-key export and native Windows consoles are grouped separately from protection controls; **Decrypt / Turn off** is isolated in a subtle Danger zone. Action buttons align with their descriptions on roomy screens and stack above them when the window is narrow or shown at 200% DPI. The footer keeps status on the left and **Close** on the right without scrolling. Exact typed phrases, administrator checks, final warnings, secret-file protections and read-only diagnostics are unchanged.
+**Advanced device security** has a restrained, responsive WinForms layout: authorization is in one clearly labeled section; local recovery-key export and native Windows consoles are grouped as Tools & Windows settings, separately from protection controls; **Decrypt / Turn off** is isolated in a subtle Danger zone. Action buttons align with their descriptions on roomy screens and stack above them when the window is narrow or shown at 200% DPI. The footer keeps status on the left and **Close** on the right without scrolling. Exact typed phrases, administrator checks, final warnings, secret-file protections and read-only diagnostics are unchanged.
 
 [Preview.29 release notes](docs/releases/v1.0.2-preview.29.md)
 

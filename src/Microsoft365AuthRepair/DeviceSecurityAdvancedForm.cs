@@ -344,8 +344,8 @@ internal sealed class DeviceSecurityAdvancedForm : Form
         confirmation.AccessibleName = T("Exact action phrase", "Точная фраза подтверждения",
             "ביטוי האישור המדויק");
 
-        safeHeading.Text = T("SAFE / INFORMATIONAL", "ИНФОРМАЦИЯ И ДОСТУП",
-            "מידע וגישה");
+        safeHeading.Text = T("TOOLS & WINDOWS SETTINGS", "ИНСТРУМЕНТЫ И НАСТРОЙКИ",
+            "כלים והגדרות Windows");
         protectionHeading.Text = T("PROTECTION CONTROLS", "УПРАВЛЕНИЕ ЗАЩИТОЙ",
             "ניהול הגנה");
         dangerHeading.Text = T("DANGER ZONE", "ОПАСНЫЕ ОПЕРАЦИИ", "אזור סיכון");
