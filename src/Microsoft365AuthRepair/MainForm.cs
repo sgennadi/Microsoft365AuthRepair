@@ -1349,6 +1349,10 @@ internal sealed class MainForm : Form
         using var request = new CancellationTokenSource();
         diagnosticCancellation = request;
         activityJournal.Add(ActivityStep.ReadOnlyCheck, ActivityOutcome.Started);
+        activityJournal.Add(ActivityStep.WamEntra, ActivityOutcome.Started);
+        activityJournal.Add(ActivityStep.OfficeLicensing, ActivityOutcome.Started);
+        activityJournal.Add(ActivityStep.TpmBitLocker, ActivityOutcome.Started);
+        activityJournal.Add(ActivityStep.NetworkPreflight, ActivityOutcome.Started);
         diagnosticStartedUtc = DateTimeOffset.UtcNow;
         diagnosticCompletedCount = 0;
         diagnosticLastCompleted = string.Empty;
@@ -1359,6 +1363,7 @@ internal sealed class MainForm : Form
         try
         {
             var ownAccount = !elevated || desktopUser.SameAsProcess;
+            var recordedSections = new HashSet<ActivityStep>();
             var sectionProgress = new Progress<DiagnosticSectionProgress>(update =>
             {
                 if (!ReferenceEquals(diagnosticCancellation, request) ||
@@ -1367,7 +1372,8 @@ internal sealed class MainForm : Form
                 diagnosticCompletedCount = update.Completed;
                 diagnosticLastCompleted = update.LastCompleted;
                 var section = ActivityFromDiagnosticSection(update.LastCompleted);
-                if (section != ActivityStep.ReadOnlyCheck)
+                if (section != ActivityStep.ReadOnlyCheck &&
+                    recordedSections.Add(section))
                     activityJournal.Add(section, update.Verified
                         ? ActivityOutcome.Finished : ActivityOutcome.NotVerified);
                 ShowDiagnosticProgress();
@@ -1398,7 +1404,8 @@ internal sealed class MainForm : Form
                 foreach (var section in data.UnverifiedSections)
                 {
                     var step = ActivityFromDiagnosticSection(section);
-                    if (step != ActivityStep.ReadOnlyCheck)
+                    if (step != ActivityStep.ReadOnlyCheck &&
+                        recordedSections.Add(step))
                         activityJournal.Add(step, ActivityOutcome.NotVerified);
                 }
                 activityJournal.Add(ActivityStep.ReadOnlyCheck,
