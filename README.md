@@ -1,3 +1,13 @@
+## Preview.19 — v1.0.2-preview.19 (test only)
+
+TPM & BitLocker read-only diagnostics are available from **Check & Diagnose → TPM & BitLocker details**. Inspect TPM readiness, system-drive encryption/protection, Memory Integrity, DPAPI policy, writable DC discovery and existing AIK enrollment/EK provisioning status. The inspector explains `0x80090016`, `0x80090034`, `0x80090030`, `0x80070490` (NOT_FOUND) and `0x800705B4` (timeout) as distinct issues.
+
+No TPM clear, BitLocker disable/suspend, recovery key enumeration, NGC/BrokerPlugin deletion, TPM attestation enrollment, Entra leave, firmware change or DPAPI policy modification can be triggered from this viewer. The reviewed anonymous report contains only coarse allowlisted states, not keys, DC names, firmware identifiers or other sensitive material. Windows WMI indicators may show UNKNOWN without administrative access. Pilot test on a BitLocker-protected Windows computer before promoting to Stable.
+
+Version **1.0.2-preview.19** is intentionally newer than **Stable 1.0.1** under SemVer. The program does not install previews for Stable users unless Preview is explicitly selected in Update Center.
+
+[Preview.19 release notes](docs/releases/v1.0.2-preview.19.md)
+
 ## Preview v1.0.1-preview.18 — Smart Repair Center
 
 Seven integrated improvements: evidence-driven Smart Repair (without automatic destructive changes); read-only preflight; separate Office Volume versus Microsoft 365 subscription activation evidence; selected confirmed-failed WAM task retry after explicit approval, at next sign-in only; optional authorized Microsoft Graph sign-in audit with **AuditLog.Read.All only** using BitKeyBridge-style Device Code or certificate session; post-repair read-only check with honest user-reported Word/Outlook/Teams sign-in confirmation; compact DPI-aware EN/RU/HE UI.
