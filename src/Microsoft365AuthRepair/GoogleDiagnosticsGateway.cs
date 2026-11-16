@@ -117,7 +117,7 @@ internal static class M365DiagnosticPayload
                 "NOT_FOUND", "TIMEOUT", "INVALID_PUBLIC_KEY", "SERVER_ERROR",
                 "OTHER_ERROR", "NONE_RECORDED", "UNKNOWN"]),
             ["tpm_ek_cert_store"] = Allowed("TpmEkCertStore", [
-                "PRESENT", "EMPTY", "NOT_FOUND", "UNKNOWN"]),
+                "IMPORT_INCOMPLETE", "UNKNOWN"]),
             ["tpm_manufacturer_class"] = Allowed("TpmManufacturerClass", [
                 "STM", "MSFT", "OTHER", "UNKNOWN"]),
             ["windows_tpm_release"] = Allowed("WindowsTpmRelease", [
@@ -203,7 +203,7 @@ internal static class M365DiagnosticPayload
                 " BitLockerProtection: ON; BitLockerConversion: FULLY_ENCRYPTED;" +
                 " MemoryIntegrityRuntime: RUNNING; DpapiProtectionPolicy: NOT_SET;" +
                 " DpapiDomainJoined: YES; DpapiWritableDc: AVAILABLE;" +
-                " TpmAikEnrollment: NOT_FOUND; TpmEkCertStore: NOT_FOUND;" +
+                " TpmAikEnrollment: NOT_FOUND; TpmEkCertStore: IMPORT_INCOMPLETE;" +
                 " TpmManufacturerClass: STM; WindowsTpmRelease: WIN11_24H2;" +
                 " TPMFirmwareVersion: secret.device.build;" +
                 " BitLockerRecoveryKey: 111111-222222-333333-444444-555555-666666;" +
@@ -231,7 +231,7 @@ internal static class M365DiagnosticPayload
             signals.GetProperty("dpapi_domain_joined").GetString() == "YES" &&
             signals.GetProperty("dpapi_writable_dc").GetString() == "AVAILABLE" &&
             signals.GetProperty("tpm_aik_enrollment").GetString() == "NOT_FOUND" &&
-            signals.GetProperty("tpm_ek_cert_store").GetString() == "NOT_FOUND" &&
+            signals.GetProperty("tpm_ek_cert_store").GetString() == "IMPORT_INCOMPLETE" &&
             signals.GetProperty("tpm_manufacturer_class").GetString() == "STM" &&
             signals.GetProperty("windows_tpm_release").GetString() == "WIN11_24H2" &&
             !outgoing.Contains("secret.device.build", StringComparison.Ordinal) &&
