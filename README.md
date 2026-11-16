@@ -1,3 +1,9 @@
+## Preview.22 — isolated TPM/BitLocker checks (test only)
+
+If Check & Diagnose previously stopped at "TPM / BitLocker · Not verified" after 60 seconds, Preview.22 isolates six read-only Windows providers with separate 10-second limits. The Activity journal now identifies the actual blocked provider (TPM, BitLocker, Device Guard, domain DC, TPM lockout or DPAPI/AIK) while preserving completed evidence. No TPM clearing, Office sign-in reset, credential deletion or BitLocker recovery key access occurs. The detailed TPM inspector uses the same bounded checker.
+
+[Preview.22 release notes](docs/releases/v1.0.2-preview.22.md)
+
 ## Preview.21 — v1.0.2-preview.21 (test only)
 
 The **Activity** panel appears below **Ready**, uses the empty space for a scrolling event log, and retains results on completion. The **Copy log** link copies sanitized step names, outcomes, timestamps and elapsed seconds. No UPN, device ID, BitLocker key, password, token, path or raw PowerShell/WMI output is copied.
