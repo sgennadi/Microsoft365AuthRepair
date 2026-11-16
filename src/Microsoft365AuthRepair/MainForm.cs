@@ -1387,9 +1387,14 @@ internal sealed class MainForm : Form
         {
             var ownAccount = !elevated || desktopUser.SameAsProcess;
             var recordedSections = new HashSet<ActivityStep>();
+            // Progress<T> posts callbacks asynchronously to WinForms. Do
+            // not let a queued partial update overwrite final results after
+            // the await has returned.
+            bool acceptingProgress = true;
             var deviceProgress = new Progress<DeviceProbeProgress>(update =>
             {
-                if (!ReferenceEquals(diagnosticCancellation, request) ||
+                if (!acceptingProgress ||
+                    !ReferenceEquals(diagnosticCancellation, request) ||
                     request.IsCancellationRequested || IsDisposed || Disposing)
                     return;
                 var section = ActivityFromDiagnosticSection(update.Part);
@@ -1417,7 +1422,8 @@ internal sealed class MainForm : Form
             });
             var sectionProgress = new Progress<DiagnosticSectionProgress>(update =>
             {
-                if (!ReferenceEquals(diagnosticCancellation, request) ||
+                if (!acceptingProgress ||
+                    !ReferenceEquals(diagnosticCancellation, request) ||
                     request.IsCancellationRequested || IsDisposed || Disposing)
                     return;
                 diagnosticCompletedCount = update.Completed;
@@ -1431,6 +1437,7 @@ internal sealed class MainForm : Form
             });
             var data = await ReadOnlyDiagnosticScan.RunAsync(
                 ownAccount, sectionProgress, request.Token, deviceProgress);
+            acceptingProgress = false;
             if (IsDisposed || Disposing || request.IsCancellationRequested) return;
 
             lastRawDiagnostic = data.WamReport;
