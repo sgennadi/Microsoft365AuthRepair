@@ -538,6 +538,10 @@ internal sealed class MainForm : Form
         updateTimer.Tick += async (_, _) => await CheckForUpdatesAsync();
         Shown += async (_, _) =>
         {
+            // A successful update retains its rollback .bak until this
+            // exact installed version has opened a real interactive UI.
+            // --ui-self-test / worker / unsuccessful updates never clean it.
+            UpdateHandoff.CleanupSuccessfulBackupAfterStartup();
             updateTimer.Start();
             // UAC handoff can only request this explicit, independently
             // confirmed action; no repair runs on wizard completion or UAC.
