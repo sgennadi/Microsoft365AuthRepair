@@ -148,6 +148,7 @@ internal sealed record TpmBitLockerSnapshot(
             TpmBitLockerProbe.VendorClass(0x4D534654u) == "MSFT" &&
             TpmBitLockerProbe.VendorClass(0x53544D20u) == "STM" &&
             TpmBitLockerProbe.AikErrorClass(0x80070490u) == "NOT_FOUND" &&
+            TpmBitLockerProbe.AikErrorClass(unchecked((int)0x80070490u)) == "NOT_FOUND" &&
             TpmBitLockerProbe.AikErrorClass(0x800705B4u) == "TIMEOUT" &&
             TpmBitLockerProbe.FirmwareVersion("9.8.7") == "9.8.7" &&
             TpmBitLockerProbe.FirmwareVersion("device secret") == "UNKNOWN";
@@ -197,7 +198,14 @@ internal static class TpmBitLockerProbe
     {
         if (value is null) return "UNKNOWN";
         uint code;
-        try { code = Convert.ToUInt32(value, System.Globalization.CultureInfo.InvariantCulture); }
+        try
+        {
+            // Registry REG_DWORD may return a signed Int32 for HRESULTs with
+            // the highest bit set. Preserve the original 32-bit bit pattern.
+            code = value is int signed
+                ? unchecked((uint)signed)
+                : Convert.ToUInt32(value, System.Globalization.CultureInfo.InvariantCulture);
+        }
         catch (Exception ex) when (ex is InvalidCastException or FormatException
             or OverflowException) { return "UNKNOWN"; }
         return code switch
