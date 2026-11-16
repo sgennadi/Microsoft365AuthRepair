@@ -1,6 +1,6 @@
 ## Preview.26 — independent BitLocker status and more precise diagnostics
 
-**Check & Diagnose** now queries BitLocker protection and volume encryption independently, using two isolated, timeout-limited, read-only workers restricted to the Windows system volume. A stalled encryption-status method no longer discards a successfully read protection status. Activity labels distinguish **BitLocker protection (WMI)** from **BitLocker encryption (WMI)**; a timed-out or inaccessible provider remains **Not verified** rather than being marked off or healthy. No recovery keys, protectors, TPM state or Office credentials are modified.
+**Check & Diagnose** now queries BitLocker protection and volume encryption independently, using two isolated, timeout-limited, read-only workers restricted to the Windows system volume. A stalled encryption-status method no longer discards a successfully read protection status. Activity labels distinguish **BitLocker protection (WMI)** from **BitLocker encryption (WMI)**; a timed-out or inaccessible provider remains **Not verified** rather than being marked off or healthy. No recovery keys, protectors, TPM state or Office credentials are modified. A new **View activity** link beside the result-banner shortcuts jumps to the existing local journal when it falls below the fold on small/high-DPI windows.
 
 [Preview.26 release notes](docs/releases/v1.0.2-preview.26.md)
 
