@@ -1,3 +1,13 @@
+## 1.0.2-preview.26 — 2026-11-16 — Preview
+
+1. Separate BitLocker system-drive ProtectionStatus and GetConversionStatus into independent read-only child stages, each with the existing 10-second timeout.
+2. Query only the validated Windows system drive instead of enumerating other BitLocker volumes.
+3. Preserve a verified protection state if encryption conversion times out, and vice versa; unknown remains Not verified.
+4. Distinguish protection versus encryption failures in Activity and partial-scan status, including EN/RU/HE labels.
+5. Add independent-part IPC tests and drive-letter input validation. Stable 1.0.1 remains unchanged.
+
+[Preview.26 notes](docs/releases/v1.0.2-preview.26.md)
+
 ## 1.0.2-preview.25 — 2026-11-16 — Preview
 
 1. Make TPM and BitLocker results visible during, not only after, Check & Diagnose; stream completed, categorized read-only provider evidence into the security card.
