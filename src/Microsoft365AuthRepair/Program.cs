@@ -37,6 +37,7 @@ internal static class Program
                     initialScheduleOnly: false, elevated: false);
                 using var signInGuide = new SignInErrorDialog();
                 using var volumeLicensing = new OfficeVolumeLicenseForm();
+                using var advancedSecurity = new DeviceSecurityAdvancedForm();
                 form.CreateControl();
                 updater.CreateControl();
                 reports.CreateControl();
@@ -47,6 +48,7 @@ internal static class Program
                 tpmInspector.CreateControl();
                 signInGuide.CreateControl();
                 volumeLicensing.CreateControl();
+                advancedSecurity.CreateControl();
                 // On a headless Windows CI runner the GUI has no console.
                 // Record boolean test names only; never log user identities.
                 var tests = new (string Name, Func<bool> Run)[]
@@ -65,6 +67,7 @@ internal static class Program
                     ("Volume licensing icon", () => UiIcons.Verify(volumeLicensing)),
                     ("Entra review icon", () => UiIcons.Verify(entraReview)),
                     ("TPM inspector icon", () => UiIcons.Verify(tpmInspector)),
+                    ("Device Advanced icon", () => UiIcons.Verify(advancedSecurity)),
                     ("Responsive geometry", ResponsiveLayout.SelfTest),
                     ("Updater channel precedence", UpdaterIntegration.SelfTest),
                     ("Updater default channel", () => updater.IncludesPreviews == UpdaterIntegration.InstalledIsPreview),
@@ -104,6 +107,10 @@ internal static class Program
                     ("What's New format", UpdateUiText.SelfTest),
                     ("Diagnostic payload", M365DiagnosticPayload.SelfTest),
                     ("Updater helper", UpdateHandoff.SelfTest),
+                    ("Advanced security commands and recovery-key restrictions",
+                        DeviceSecurityAdvancedActions.SelfTest),
+                    ("Advanced security explicit confirmation and buttons",
+                        advancedSecurity.SelfTest),
                     ("User scope", UserScopeSupport.SelfTest),
                     ("Scheduled worker resource", Scheduling.SelfTest),
                     ("Protected worker maintenance rules", ScheduledWorkerMaintenance.SelfTest),
@@ -117,7 +124,9 @@ internal static class Program
                     ("Sign-in guide buttons", () => UiTheme.VerifyButtons(signInGuide, 1)),
                     ("Volume licensing buttons", () => UiTheme.VerifyButtons(volumeLicensing, 2)),
                     ("Entra review buttons", () => UiTheme.VerifyButtons(entraReview, 4)),
-                    ("TPM inspector buttons", () => UiTheme.VerifyButtons(tpmInspector, 2))
+                    ("TPM inspector buttons", () => UiTheme.VerifyButtons(tpmInspector, 2)),
+                    ("Advanced device security buttons", () =>
+                        UiTheme.VerifyButtons(advancedSecurity, 7))
                 };
                 var outcomes = new List<string>();
                 bool passed = true;
