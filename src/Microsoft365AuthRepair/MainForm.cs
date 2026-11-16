@@ -32,6 +32,7 @@ internal sealed class MainForm : Form
     private readonly LinkLabel deviceProtectionLink = new()
     {
         AutoSize = true, TabStop = true, Visible = false,
+        UseMnemonic = false,
         LinkBehavior = LinkBehavior.HoverUnderline,
         Margin = new Padding(12, 5, 0, 5)
     };
@@ -410,9 +411,9 @@ internal sealed class MainForm : Form
         hints.SetToolTip(applyRecommendation, "Start only the specifically recommended WAM action with the existing independent confirmation.");
         hints.SetToolTip(entraReview, "Optional read-only Microsoft Graph sign-in audit using Device Code or an approved certificate.");
         hints.SetToolTip(deviceProtectionLink,
-            "Jump to the TPM / BitLocker read-only diagnostic card. No recovery keys are read.");
+            "Open the read-only TPM & BitLocker details without starting a repair.");
         hints.SetToolTip(activityLink,
-            "Jump to the existing local Activity journal; no new checks are started.");
+            "Open the local live Activity journal in a separate readable window.");
         hints.SetToolTip(signInWorks, "You confirm that an actual Microsoft 365 application completed sign-in; this is not independently tested.");
         hints.SetToolTip(signInFailed, "App sign-in still failed. Review the error and optional Entra audit.");
 
@@ -487,22 +488,9 @@ internal sealed class MainForm : Form
             using var reviewer = new EntraSignInReviewDialog();
             reviewer.ShowDialog(this);
         };
-        deviceProtectionLink.LinkClicked += (_, _) =>
-        {
-            if (lastDeviceProtection is null) return;
-            if (diagnosticsCollapsed && lastRawDiagnostic is not null)
-                SetDiagnosticsCollapsed(false);
-            mainLayout?.ScrollControlIntoView(deviceSecurityCard);
-        };
-        activityLink.LinkClicked += (_, _) =>
-            mainLayout?.ScrollControlIntoView(activityJournal);
-        deviceSecurityCard.DetailsRequested += (_, _) =>
-        {
-            if (lastDeviceProtection is null) return;
-            // Inspect the current snapshot without starting any new WMI query.
-            using var inspector = new TpmBitLockerDialog(lastDeviceProtection);
-            inspector.ShowDialog(this);
-        };
+        deviceProtectionLink.LinkClicked += (_, _) => OpenDeviceSecurityDetails();
+        activityLink.LinkClicked += (_, _) => OpenActivityJournal();
+        deviceSecurityCard.DetailsRequested += (_, _) => OpenDeviceSecurityDetails();
         signInWorks.Click += (_, _) =>
         {
             if (busy || lastRawDiagnostic is null) return;
@@ -917,9 +905,24 @@ internal sealed class MainForm : Form
     internal bool AreDiagnosticsCollapsed => diagnosticsCollapsed;
     internal bool HasActivityJournal => activityJournal.HasCopyControl &&
         activityJournal.CopyText.Contains("Microsoft 365 Auth Repair", StringComparison.Ordinal);
+    // Both banner shortcuts are real actions, not no-op scroll-to-already-visible links.
+    private void OpenDeviceSecurityDetails()
+    {
+        // Reuse the snapshot; the inspector remains strictly read-only.
+        using var inspector = new TpmBitLockerDialog(lastDeviceProtection);
+        inspector.ShowDialog(this);
+    }
+
+    private void OpenActivityJournal()
+    {
+        using var journal = new ActivityJournalDialog(() => activityJournal.CopyText);
+        journal.ShowDialog(this);
+    }
+
     internal bool HasDeviceSecuritySection =>
         deviceSecurityCard.Parent == mainLayout && deviceSecurityCard.HasReadOnlyDetailsLink &&
-        deviceProtectionLink.Parent is FlowLayoutPanel;
+        deviceProtectionLink.Parent is FlowLayoutPanel && !deviceProtectionLink.UseMnemonic &&
+        deviceProtectionLink.Text.Contains("&", StringComparison.Ordinal);
     // A hidden WinForms form has no calculated table layout yet, so
     // GetPositionFromControl may report an empty/uncomputed position in CI.
     // Verify the actual control ownership and compact cancel composition;
@@ -929,6 +932,7 @@ internal sealed class MainForm : Form
         activityJournal.Parent == mainLayout &&
         activityLink.Parent == statusBanner &&
         activityLink.TabStop &&
+        deviceProtectionLink.TabStop &&
         activityJournal.HasCompactCancellation;
 
     private void ShowStatus(string message, UiGlyph glyph)
