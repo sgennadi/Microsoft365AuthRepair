@@ -5,7 +5,7 @@ namespace Microsoft365AuthRepair;
 internal enum SmartRepairAction
 {
     None, ReviewDeviceTrust, ReviewSession, ReviewNetwork,
-    ReRegisterWam, ReviewOfficeLicensing, VerifyAppSignIn, ReviewPolicy
+    ReRegisterWam, ReviewOfficeLicensing, VerifyAppSignIn, ReviewPolicy, ReviewTpmState
 }
 
 internal sealed record SmartRepairDecision(
@@ -26,7 +26,8 @@ internal static class SmartRepairEngine
 
     internal static SmartRepairDecision Evaluate(
         WamHealthResult wam, OfficeLicenseSnapshot? office,
-        RepairPreflight? preflight, bool ownDesktopAccount)
+        RepairPreflight? preflight, bool ownDesktopAccount,
+        TpmBitLockerSnapshot? deviceProtection = null)
     {
         // Never repair another administrator's broker or identity by mistake.
         if (!ownDesktopAccount || preflight?.CurrentUserContext == false)
@@ -38,6 +39,19 @@ internal static class SmartRepairEngine
                 T("Launch without elevation as the affected user; do not reset another profile.",
                   "Запустите программу без повышения прав от нужного пользователя; не сбрасывайте чужой профиль.",
                   "הפעל כמשתמש הרלוונטי ללא הרשאות מנהל."), false, false);
+
+        // TPM-not-ready is a local warning, not proof of TPM hardware failure.
+        // In this case prioritize diagnosis over blind identity cache resets.
+        if (deviceProtection?.NeedsTpmReview == true)
+            return new(SmartRepairAction.ReviewTpmState,
+                T("TPM readiness needs review", "Требуется проверка готовности TPM",
+                    "יש לבדוק את מוכנות TPM"),
+                T("Windows reported a TPM that is not ready or not enabled/owned. A missing Office cryptographic keyset can also be a profile or WAM problem; clearing TPM is not an automatic fix.",
+                  "Windows сообщает, что TPM не готов либо не включён/инициализирован. Ошибка криптографических ключей Office может относиться к профилю или WAM. Очистка TPM не является автоматическим решением.",
+                  "TPM אינו מוכן. ייתכן שהבעיה ב-WAM או בפרופיל; אין לנקות TPM."),
+                T("Open TPM & BitLocker details and ask IT to review device protection, BitLocker and Entra trust before making changes.",
+                  "Откройте сведения TPM и BitLocker и проверьте с IT состояние устройства и Entra перед изменениями.",
+                  "בדוק TPM, BitLocker ו-Entra עם מנהל המערכת."), false, true);
 
         // Local WAM registration does not restore device trust.
         if (SignalIs(wam, "DeviceAuthStatus", WamSignalState.Attention))
@@ -167,6 +181,12 @@ internal static class SmartRepairEngine
             Evaluate(baseResult, fakeVolume, basePreflight, true)
                 .Action == SmartRepairAction.ReviewOfficeLicensing &&
             Evaluate(missingBroker, null, basePreflight, false).Action == SmartRepairAction.ReviewSession &&
+            Evaluate(missingBroker, null, basePreflight, true,
+                TpmBitLockerSnapshot.Unknown with { TpmPresent = "YES", TpmReady = false })
+                .Action == SmartRepairAction.ReviewTpmState &&
+            !Evaluate(missingBroker, null, basePreflight, true,
+                TpmBitLockerSnapshot.Unknown with { TpmPresent = "YES", TpmReady = false })
+                .SafeToOfferRepair &&
             Evaluate(baseResult, null, basePreflight with { MicrosoftLoginReachable = false }, true)
                 .Action == SmartRepairAction.ReviewNetwork;
     }
