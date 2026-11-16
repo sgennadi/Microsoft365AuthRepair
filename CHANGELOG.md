@@ -1,3 +1,14 @@
+## 1.0.2-preview.21 — 2026-11-16 — Preview
+
+1. Corrected misleading 'applications may close' message for read-only Check & Diagnose.
+2. Run WAM/Entra, Office activation, TPM/BitLocker and HTTPS preflight concurrently with live stage count and elapsed time.
+3. Bound total UI wait to 60 seconds; on timeout show available partial evidence and mark unavailable sections not verified.
+4. Add Cancel check that stops waiting without changing authentication, credentials or TPM/BitLocker.
+5. Reuse blocked native read-only scan tasks within the process; bound inherited PowerShell stdout/stderr draining.
+6. Add diagnostic self-test and publish x64/ARM64 only after Windows CI. Stable 1.0.1 is unchanged.
+
+[Preview.21 notes](docs/releases/v1.0.2-preview.21.md)
+
 ## 1.0.2-preview.20 — 2026-11-16 — Preview
 
 1. Added read-only `KeySignTest`, `AadRecoveryEnabled`, `TpmProtected` and `NgcSet` Entra user/device health signals; unknown remains unknown.
