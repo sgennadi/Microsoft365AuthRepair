@@ -153,7 +153,7 @@ internal static class DeviceSecurityAdvancedActions
             // security-descriptor updates while the file is still EMPTY;
             // restrict its DACL before writing a single secret byte.
             using var stream = new FileStream(file, FileMode.CreateNew,
-                FileAccess.Write, FileShare.ReadWrite | FileShare.Delete,
+                FileAccess.Write, FileShare.ReadWrite,
                 4096, FileOptions.WriteThrough);
             created = true;
             var security = new FileSecurity();
