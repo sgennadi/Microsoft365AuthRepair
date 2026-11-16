@@ -28,6 +28,7 @@ internal static class Program
                     new PreparedDiagnostic("00000000-0000-4000-8000-000000000001", "{}"), null);
                 using var taskStatus = new AllUsersTaskStatusForm();
                 using var entraReview = new EntraSignInReviewDialog();
+                using var tpmInspector = new TpmBitLockerDialog(TpmBitLockerSnapshot.Unknown);
                 using var wizard = new AllUsersWizard(ScheduledWorkerMode.Exe,
                     initialScheduleOnly: false, elevated: false);
                 using var signInGuide = new SignInErrorDialog();
@@ -39,6 +40,7 @@ internal static class Program
                 wizard.CreateControl();
                 taskStatus.CreateControl();
                 entraReview.CreateControl();
+                tpmInspector.CreateControl();
                 signInGuide.CreateControl();
                 volumeLicensing.CreateControl();
                 // On a headless Windows CI runner the GUI has no console.
@@ -58,6 +60,7 @@ internal static class Program
                         signInGuide.Icon is not null && signInGuide.ShowIcon),
                     ("Volume licensing icon", () => UiIcons.Verify(volumeLicensing)),
                     ("Entra review icon", () => UiIcons.Verify(entraReview)),
+                    ("TPM inspector icon", () => UiIcons.Verify(tpmInspector)),
                     ("Responsive geometry", ResponsiveLayout.SelfTest),
                     ("Updater channel precedence", UpdaterIntegration.SelfTest),
                     ("Updater default channel", () => updater.IncludesPreviews == UpdaterIntegration.InstalledIsPreview),
@@ -73,11 +76,14 @@ internal static class Program
                     ("Office subscription activation parser", OfficeActivationProbe.SelfTest),
                     ("BitKeyBridge-style Graph session policy", GraphSignInSession.SelfTest),
                     ("Optional Entra review UI", entraReview.SelfTest),
+                    ("TPM and BitLocker local-only diagnostics", TpmBitLockerSnapshot.SelfTest),
+                    ("TPM inspector responsive controls", tpmInspector.SelfTest),
                     ("Sign-in error codes", SignInIssueAdvisor.SelfTest),
                     ("Sign-in guide", SignInErrorDialog.SelfTest),
                     ("Microsoft Learn knowledge base", SignInKnowledgeBase.SelfTest),
                     ("Native vNext license checks", OfficeLicenseDiagnostics.SelfTest),
                     ("Office 2024 Volume product identity", OfficeVolumeLicensing.SelfTest),
+                    ("Office report evidence privacy", OfficeDiagnosticEvidence.SelfTest),
                     ("Volume licensing UI", OfficeVolumeLicenseForm.SelfTest),
                     ("WAM health analysis", WamHealthAnalysis.SelfTest),
                     ("WAM result card", DiagnosticResultCard.SelfTest),
@@ -96,7 +102,8 @@ internal static class Program
                     ("Task status buttons", () => UiTheme.VerifyButtons(taskStatus, 2)),
                     ("Sign-in guide buttons", () => UiTheme.VerifyButtons(signInGuide, 1)),
                     ("Volume licensing buttons", () => UiTheme.VerifyButtons(volumeLicensing, 2)),
-                    ("Entra review buttons", () => UiTheme.VerifyButtons(entraReview, 4))
+                    ("Entra review buttons", () => UiTheme.VerifyButtons(entraReview, 4)),
+                    ("TPM inspector buttons", () => UiTheme.VerifyButtons(tpmInspector, 2))
                 };
                 var outcomes = new List<string>();
                 bool passed = true;
