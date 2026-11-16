@@ -47,9 +47,19 @@ internal static class DeviceSecurityAdvancedActions
         {
             var directory = Path.GetDirectoryName(Path.GetFullPath(filename));
             if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory) ||
-                File.Exists(filename) ||
-                (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
-                return false;
+                File.Exists(filename)) return false;
+            // A nested junction could silently redirect an apparently local
+            // NTFS path into a synchronized or remote location.
+            for (var cursor = directory; !string.IsNullOrWhiteSpace(cursor);)
+            {
+                if ((File.GetAttributes(cursor) & FileAttributes.ReparsePoint) != 0)
+                    return false;
+                var parent = Path.GetDirectoryName(cursor.TrimEnd('\\'));
+                if (string.IsNullOrEmpty(parent) ||
+                    string.Equals(parent, cursor, StringComparison.OrdinalIgnoreCase))
+                    break;
+                cursor = parent;
+            }
             // Refuse common cloud-synchronized roots even if the underlying
             // filesystem is local NTFS. A recovery password must not be
             // unintentionally synced into OneDrive/Dropbox/Google Drive/iCloud.
@@ -139,8 +149,12 @@ internal static class DeviceSecurityAdvancedActions
         bool created = false;
         try
         {
+            // FileInfo.SetAccessControl needs a second Windows handle. Permit
+            // security-descriptor updates while the file is still EMPTY;
+            // restrict its DACL before writing a single secret byte.
             using var stream = new FileStream(file, FileMode.CreateNew,
-                FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough);
+                FileAccess.Write, FileShare.ReadWrite | FileShare.Delete,
+                4096, FileOptions.WriteThrough);
             created = true;
             var security = new FileSecurity();
             var user = WindowsIdentity.GetCurrent().User ??
